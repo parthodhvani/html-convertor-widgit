@@ -96,7 +96,7 @@ final class ElementorJsonGenerator
 
 		$report = array(
 			'mode' => 'native',
-			'engine_version' => 2,
+			'engine_version' => 3,
 			'sections' => count($sections),
 			'containers' => (int) $stats['containers'],
 			'widgets' => (int) $stats['widgets'],
@@ -105,6 +105,8 @@ final class ElementorJsonGenerator
 			'widget_breakdown' => $stats['widget_breakdown'],
 			'components' => $stats['roles'],
 			'engines' => $this->last_engines,
+			'max_nesting_depth' => (int) ($stats['max_depth'] ?? 0),
+			'html_fallback_reasons' => $stats['html_fallback_reasons'] ?? array(),
 		);
 
 		$validated = $this->orchestrator->validate(
@@ -116,6 +118,7 @@ final class ElementorJsonGenerator
 				'engines' => $this->last_engines,
 				'wrappers_eliminated' => (int) ($this->last_engines['wrappers_eliminated'] ?? 0),
 				'compare' => $opts['compare'] ?? null,
+				'threshold' => (int) ($opts['confidence'] ?? 95),
 			)
 		);
 

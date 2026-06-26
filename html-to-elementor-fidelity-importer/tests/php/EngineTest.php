@@ -11,7 +11,13 @@ namespace HtmlToElementor\Tests;
 
 use HtmlToElementor\Engine\AnimationEngine;
 use HtmlToElementor\Engine\ComponentRecognitionEngine;
-use HtmlToElementor\Engine\ConstraintLayoutEngine;
+use HtmlToElementor\Engine\AlignmentEngine;
+use HtmlToElementor\Engine\ConstraintLayoutSolver;
+use HtmlToElementor\Engine\Geometry;
+use HtmlToElementor\Engine\PixelRepairEngine;
+use HtmlToElementor\Engine\SemanticComponentRecognizer;
+use HtmlToElementor\Engine\VisualTreeBuilder;
+use HtmlToElementor\Engine\WhitespaceAnalyzer;
 use HtmlToElementor\Engine\DesignTokenExtractor;
 use HtmlToElementor\Engine\LayoutGraphEngine;
 use HtmlToElementor\Engine\MediaEngine;
@@ -64,7 +70,7 @@ final class EngineTest extends TestCase
 
 	public function test_component_recognition_prefers_native_hero_over_html_fallback(): void
 	{
-		$engine = new ComponentRecognitionEngine();
+		$engine = new SemanticComponentRecognizer();
 		$hero = array(
 			'tag' => 'section',
 			'cls' => 'page-hero',
@@ -74,23 +80,120 @@ final class EngineTest extends TestCase
 		$this->assertFalse($engine->container_needs_fallback($hero));
 	}
 
-	public function test_constraint_layout_infers_gap_from_child_margins(): void
+	public function test_constraint_solver_detects_horizontal_stack(): void
 	{
-		$engine = new ConstraintLayoutEngine();
+		$solver = new ConstraintLayoutSolver();
 		$sections = array(
 			array(
 				'tree' => array(
 					'tag' => 'div',
-					's' => array('disp' => 'flex', 'fd' => 'column'),
+					'cls' => 'row',
+					's' => array('disp' => 'flex', 'fd' => 'row'),
 					'children' => array(
-						array('tag' => 'p', 's' => array('mb' => 24), 'atomic' => true),
-						array('tag' => 'p', 's' => array('mb' => 24), 'atomic' => true),
+						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
+						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 320, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
 					),
 				),
 			),
 		);
+		$out = $solver->solve($sections);
+		$constraint = $out[0]['tree']['layoutConstraint'] ?? array();
+		$this->assertSame('row', $constraint['direction'] ?? '');
+		$this->assertGreaterThan(0, $constraint['gap'] ?? 0);
+	}
+
+	public function test_whitespace_analyzer_measures_gap_from_bbox(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 400),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 40), 's' => array()),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 64, 'width' => 600, 'height' => 40), 's' => array()),
+					),
+					'layoutConstraint' => array('direction' => 'column', 'gap' => 24),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$this->assertGreaterThan(0, $out[0]['tree']['whitespace']['gap'] ?? 0);
+	}
+
+	public function test_alignment_engine_detects_shared_left(): void
+	{
+		$engine = new AlignmentEngine();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'children' => array(
+						array('tag' => 'h2', 'atomic' => true, 'bbox' => array('x' => 48, 'y' => 0, 'width' => 200, 'height' => 32), 's' => array()),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 48, 'y' => 48, 'width' => 400, 'height' => 20), 's' => array()),
+					),
+					'layoutConstraint' => array('direction' => 'column'),
+				),
+			),
+		);
 		$out = $engine->apply($sections);
-		$this->assertStringContainsString('24', (string) ($out[0]['tree']['s']['gap'] ?? ''));
+		$this->assertTrue($out[0]['tree']['alignment']['shared_left'] ?? false);
+	}
+
+	public function test_visual_tree_builder_promotes_visual_child(): void
+	{
+		$builder = new VisualTreeBuilder();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'block'),
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 100, 'height' => 100),
+					'children' => array(
+						array(
+							'tag' => 'div',
+							'cls' => 'card',
+							's' => array('bg' => 'rgb(255,0,0)'),
+							'bbox' => array('x' => 0, 'y' => 0, 'width' => 100, 'height' => 100),
+							'children' => array(),
+						),
+					),
+				),
+			),
+		);
+		$out = $builder->build($sections);
+		$this->assertSame('card', $out[0]['tree']['cls'] ?? '');
+	}
+
+	public function test_pixel_repair_applies_flex_gap(): void
+	{
+		$repair = new PixelRepairEngine(2);
+		$data = array(
+			array(
+				'id' => 'c1',
+				'elType' => 'container',
+				'settings' => array('_css_classes' => 'row', 'flex_direction' => 'row'),
+				'elements' => array(
+					array('id' => 'w1', 'elType' => 'widget', 'widgetType' => 'heading', 'settings' => array(), 'elements' => array()),
+					array('id' => 'w2', 'elType' => 'widget', 'widgetType' => 'heading', 'settings' => array(), 'elements' => array()),
+				),
+				'isInner' => false,
+			),
+		);
+		$sections = array(
+			array('tree' => array('cls' => 'row', 'layoutConstraint' => array('direction' => 'row', 'gap' => 24), 'alignment' => array('justify' => 'flex-start'))),
+		);
+		$result = $repair->repair($data, array('sections' => $sections));
+		$this->assertTrue($result['changed']);
+		$this->assertArrayHasKey('flex_gap', $result['data'][0]['settings']);
+	}
+
+	public function test_geometry_horizontal_gap(): void
+	{
+		$a = array('x' => 0.0, 'y' => 0.0, 'width' => 100.0, 'height' => 50.0);
+		$b = array('x' => 124.0, 'y' => 0.0, 'width' => 100.0, 'height' => 50.0);
+		$this->assertSame(24.0, Geometry::horizontal_gap($a, $b));
 	}
 
 	public function test_design_token_extractor_builds_scales(): void
@@ -156,7 +259,7 @@ final class EngineTest extends TestCase
 
 	public function test_visual_validation_repairs_simple_html_heading(): void
 	{
-		$validator = new VisualValidationEngine(95, 2);
+		$repair = new PixelRepairEngine(2);
 		$data = array(
 			array(
 				'id' => 'abc1234',
@@ -174,10 +277,10 @@ final class EngineTest extends TestCase
 				'isInner' => false,
 			),
 		);
-		$result = $validator->validate_and_repair($data, array('report' => array('native_widgets' => 0, 'html_widgets' => 1), 'sections' => array()));
+		$result = $repair->repair($data, array('sections' => array(), 'validation' => array()));
 		$widget = $result['data'][0]['elements'][0];
 		$this->assertSame('heading', $widget['widgetType']);
-		$this->assertTrue($result['repaired']);
+		$this->assertTrue($result['changed']);
 	}
 
 	public function test_orchestrator_prepare_enriches_sections(): void
@@ -201,7 +304,7 @@ final class EngineTest extends TestCase
 		$orch = new VisualReconstructionOrchestrator();
 		$prepared = $orch->prepare(RenderResult::from_array($layout));
 		$this->assertArrayHasKey('engines', $prepared);
-		$this->assertSame(2, $prepared['engines']['version']);
+		$this->assertSame(3, $prepared['engines']['version']);
 		$this->assertNotEmpty($prepared['tokens']);
 	}
 }

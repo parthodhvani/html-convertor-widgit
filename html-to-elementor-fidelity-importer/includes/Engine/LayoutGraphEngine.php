@@ -148,9 +148,32 @@ final class LayoutGraphEngine implements EngineInterface
 	 */
 	private function infer_layout_type(array $node): string
 	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 2) {
+			return count($children) >= 1 ? 'stack' : '';
+		}
+
+		// Geometry-first inference from bounding boxes.
+		$boxes = array_map(array(Geometry::class, 'bbox'), $children);
+		$row_votes = 0;
+		$col_votes = 0;
+		for ($i = 0; $i < count($boxes) - 1; ++$i) {
+			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1]) && Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1]) >= 0) {
+				++$row_votes;
+			}
+			if (Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 4) {
+				++$col_votes;
+			}
+		}
+		if ($row_votes > $col_votes) {
+			return 'row';
+		}
+		if ($col_votes > 0) {
+			return 'stack';
+		}
+
 		$s = $node['s'] ?? array();
 		$disp = (string) ($s['disp'] ?? '');
-		$children = (array) ($node['children'] ?? array());
 
 		if (false !== strpos($disp, 'grid')) {
 			$cols = count($children);

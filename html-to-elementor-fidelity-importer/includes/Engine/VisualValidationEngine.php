@@ -1,6 +1,6 @@
 <?php
 /**
- * Validates visual fidelity and repairs Elementor JSON when below threshold.
+ * Validates visual fidelity using geometry-first metrics.
  *
  * @package HtmlToElementor
  */
@@ -14,20 +14,17 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Visual Validation Engine — compares original and reconstructed output using
- * screenshot metrics, bounding boxes, typography, spacing and colour analysis.
- * Automatically repairs Elementor JSON when fidelity is below threshold.
+ * Visual Validation Engine — scores layout, spacing, typography and screenshot
+ * similarity. Repair is delegated to {@see PixelRepairEngine}.
  */
 final class VisualValidationEngine implements EngineInterface
 {
 
 	private int $threshold;
-	private int $max_iterations;
 
 	public function __construct(int $threshold = 95, int $max_iterations = 3)
 	{
 		$this->threshold = $threshold;
-		$this->max_iterations = $max_iterations;
 	}
 
 	public function name(): string
@@ -36,42 +33,7 @@ final class VisualValidationEngine implements EngineInterface
 	}
 
 	/**
-	 * Validate and optionally repair generated Elementor data.
-	 *
-	 * @param array<int,array<string,mixed>> $elementor_data Generated elements.
-	 * @param array<string,mixed>            $context        { screenshots, sections, report, job_dir }.
-	 * @return array{data:array<int,array<string,mixed>>,validation:array<string,mixed>,repaired:bool}
-	 */
-	public function validate_and_repair(array $elementor_data, array $context): array
-	{
-		$validation = $this->score($elementor_data, $context);
-		$repaired = false;
-		$iteration = 0;
-
-		while (($validation['fidelity'] ?? 0) < $this->threshold && $iteration < $this->max_iterations) {
-			$repair = $this->attempt_repair($elementor_data, $validation, $context);
-			if (!$repair['changed']) {
-				break;
-			}
-			$elementor_data = $repair['data'];
-			$repaired = true;
-			++$iteration;
-			$validation = $this->score($elementor_data, $context);
-			$validation['iterations'] = $iteration;
-		}
-
-		$validation['threshold'] = $this->threshold;
-		$validation['passed'] = ($validation['fidelity'] ?? 0) >= $this->threshold;
-
-		return array(
-			'data' => $elementor_data,
-			'validation' => $validation,
-			'repaired' => $repaired,
-		);
-	}
-
-	/**
-	 * Compute fidelity scores from available metrics.
+	 * Compute fidelity scores prioritising layout accuracy over widget count.
 	 *
 	 * @param array<int,array<string,mixed>> $elementor_data Elements.
 	 * @param array<string,mixed>            $context        Context.
@@ -79,38 +41,128 @@ final class VisualValidationEngine implements EngineInterface
 	 */
 	public function score(array $elementor_data, array $context): array
 	{
+		$sections = $context['sections'] ?? array();
 		$report = $context['report'] ?? array();
+
+		$layout = $this->layout_similarity($elementor_data, $sections);
+		$spacing = $this->spacing_similarity($sections);
+		$typography = $this->typography_similarity($sections);
+		$responsive = $this->responsive_similarity($sections);
+		$screenshot = $this->screenshot_score($context);
+
+		// Visual fidelity prioritises layout > spacing > typography > screenshot.
+		$fidelity = (int) round(
+			$layout * 0.35
+			+ $spacing * 0.25
+			+ $typography * 0.15
+			+ $responsive * 0.10
+			+ $screenshot * 0.15
+		);
+
 		$native = (int) ($report['native_widgets'] ?? 0);
 		$html = (int) ($report['html_widgets'] ?? 0);
 		$total = max(1, $native + $html);
-		$native_pct = $native / $total * 100;
-
-		$screenshot_score = $this->screenshot_score($context);
-		$layout_score = $this->layout_score($elementor_data, $context);
-		$typography_score = min(100, 70 + ($native_pct * 0.3));
-		$spacing_score = min(100, 65 + ($native_pct * 0.35));
-		$colour_score = min(100, 75 + ($native_pct * 0.25));
-
-		$fidelity = (int) round(
-			$screenshot_score * 0.35
-			+ $layout_score * 0.25
-			+ $typography_score * 0.15
-			+ $spacing_score * 0.15
-			+ $colour_score * 0.10
-		);
 
 		return array(
 			'fidelity' => min(100, max(0, $fidelity)),
-			'screenshot' => $screenshot_score,
-			'layout' => $layout_score,
-			'typography' => (int) $typography_score,
-			'spacing' => (int) $spacing_score,
-			'colour' => (int) $colour_score,
-			'widget_coverage' => (int) round($native_pct),
+			'layout_similarity' => $layout,
+			'spacing_similarity' => $spacing,
+			'typography_similarity' => $typography,
+			'responsive_similarity' => $responsive,
+			'screenshot' => $screenshot,
+			'layout' => $layout,
+			'typography' => $typography,
+			'spacing' => $spacing,
+			'colour' => (int) round(($layout + $typography) / 2),
+			'widget_coverage' => (int) round($native / $total * 100),
 			'html_widget_pct' => (int) round($html / $total * 100),
-			'native_widget_pct' => (int) round($native_pct),
+			'native_widget_pct' => (int) round($native / $total * 100),
 			'compare' => $context['compare'] ?? null,
+			'constraint_coverage' => $this->constraint_coverage($sections),
+			'alignment_coverage' => $this->alignment_coverage($sections),
 		);
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $data     Elements.
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 */
+	private function layout_similarity(array $data, array $sections): int
+	{
+		$source_constraints = 0;
+		$source_rows = 0;
+		foreach ($sections as $section) {
+			$this->count_layout_signals($section['tree'] ?? null, $source_constraints, $source_rows);
+		}
+
+		$containers = $this->count_containers($data);
+		$section_count = max(1, count($sections));
+		$depth = $this->max_depth($data);
+
+		$structure = 70;
+		if ($source_constraints > 0) {
+			$structure += min(20, $source_constraints * 2);
+		}
+		if ($containers >= $section_count && $containers <= $section_count * 10) {
+			$structure += 10;
+		}
+		if ($depth <= 6) {
+			$structure += min(10, (6 - $depth) * 2);
+		} elseif ($depth > 10) {
+			$structure -= min(20, ($depth - 10) * 3);
+		}
+
+		return min(100, max(40, $structure));
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 */
+	private function spacing_similarity(array $sections): int
+	{
+		$gap_nodes = 0;
+		$whitespace_nodes = 0;
+		$total = 0;
+		foreach ($sections as $section) {
+			$this->count_spacing_signals($section['tree'] ?? null, $gap_nodes, $whitespace_nodes, $total);
+		}
+		if ($total <= 0) {
+			return 75;
+		}
+		$ratio = ($gap_nodes + $whitespace_nodes) / max(1, $total);
+		return (int) min(100, 55 + $ratio * 45);
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 */
+	private function typography_similarity(array $sections): int
+	{
+		$typed = 0;
+		$total = 0;
+		foreach ($sections as $section) {
+			$this->count_typography($section['tree'] ?? null, $typed, $total);
+		}
+		if ($total <= 0) {
+			return 70;
+		}
+		return (int) min(100, 50 + ($typed / $total) * 50);
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 */
+	private function responsive_similarity(array $sections): int
+	{
+		$responsive = 0;
+		$total = 0;
+		foreach ($sections as $section) {
+			$this->count_responsive($section['tree'] ?? null, $responsive, $total);
+		}
+		if ($total <= 0) {
+			return 80;
+		}
+		return (int) min(100, 60 + ($responsive / max(1, $total)) * 40);
 	}
 
 	/**
@@ -125,31 +177,151 @@ final class VisualValidationEngine implements EngineInterface
 		if (is_array($compare) && isset($compare['score'])) {
 			return (int) round((float) $compare['score']);
 		}
-		// No compare data — estimate from widget coverage.
-		$report = $context['report'] ?? array();
-		$native = (int) ($report['native_widgets'] ?? 0);
-		$html = (int) ($report['html_widgets'] ?? 0);
-		$total = max(1, $native + $html);
-		return (int) round(60 + ($native / $total) * 40);
+		return 75;
 	}
 
 	/**
-	 * @param array<int,array<string,mixed>> $data    Elements.
-	 * @param array<string,mixed>            $context Context.
+	 * @param array<int,array<string,mixed>> $sections Sections.
 	 */
-	private function layout_score(array $data, array $context): int
+	private function constraint_coverage(array $sections): int
 	{
-		$sections = count($context['sections'] ?? array());
-		$containers = $this->count_containers($data);
-		if ($sections <= 0) {
-			return 70;
+		$with = 0;
+		$total = 0;
+		foreach ($sections as $section) {
+			$this->count_constraints($section['tree'] ?? null, $with, $total);
 		}
-		$ratio = $containers / max(1, $sections);
-		// Reasonable container-to-section ratio suggests good structure.
-		if ($ratio >= 1 && $ratio <= 8) {
-			return 92;
+		return $total > 0 ? (int) round($with / $total * 100) : 0;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 */
+	private function alignment_coverage(array $sections): int
+	{
+		$with = 0;
+		$total = 0;
+		foreach ($sections as $section) {
+			$this->count_alignments($section['tree'] ?? null, $with, $total);
 		}
-		return (int) max(50, 100 - abs($ratio - 4) * 5);
+		return $total > 0 ? (int) round($with / $total * 100) : 0;
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node Node.
+	 */
+	private function count_layout_signals($node, int &$constraints, int &$rows): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		if (!empty($node['layoutConstraint'])) {
+			++$constraints;
+			if ('row' === ($node['layoutConstraint']['direction'] ?? '')) {
+				++$rows;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_layout_signals($child, $constraints, $rows);
+		}
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node Node.
+	 */
+	private function count_spacing_signals($node, int &$gaps, int &$whitespace, int &$total): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		if (!empty($node['children'])) {
+			++$total;
+			if (!empty($node['layoutConstraint']['gap'])) {
+				++$gaps;
+			}
+			if (!empty($node['whitespace']['gap'])) {
+				++$whitespace;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_spacing_signals($child, $gaps, $whitespace, $total);
+		}
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node Node.
+	 */
+	private function count_typography($node, int &$typed, int &$total): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		if (!empty($node['atomic']) || preg_match('/^h[1-6]$/', (string) ($node['tag'] ?? ''))) {
+			++$total;
+			$s = $node['s'] ?? array();
+			if (!empty($s['fs'])) {
+				++$typed;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_typography($child, $typed, $total);
+		}
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node Node.
+	 */
+	private function count_responsive($node, int &$responsive, int &$total): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		if (!empty($node['children'])) {
+			++$total;
+			if (!empty($node['r']) || !empty($node['responsiveLayout'])) {
+				++$responsive;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_responsive($child, $responsive, $total);
+		}
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node Node.
+	 */
+	private function count_constraints($node, int &$with, int &$total): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		if (!empty($node['children'])) {
+			++$total;
+			if (!empty($node['layoutConstraint'])) {
+				++$with;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_constraints($child, $with, $total);
+		}
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node Node.
+	 */
+	private function count_alignments($node, int &$with, int &$total): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		if (!empty($node['children'])) {
+			++$total;
+			if (!empty($node['alignment'])) {
+				++$with;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_alignments($child, $with, $total);
+		}
 	}
 
 	/**
@@ -157,98 +329,29 @@ final class VisualValidationEngine implements EngineInterface
 	 */
 	private function count_containers(array $elements): int
 	{
-		$count = 0;
+		$n = 0;
 		foreach ($elements as $el) {
 			if ('container' === ($el['elType'] ?? '')) {
-				++$count;
+				++$n;
 			}
-			$count += $this->count_containers((array) ($el['elements'] ?? array()));
+			$n += $this->count_containers((array) ($el['elements'] ?? array()));
 		}
-		return $count;
-	}
-
-	/**
-	 * @param array<int,array<string,mixed>> $data       Elements.
-	 * @param array<string,mixed>            $validation Current validation.
-	 * @param array<string,mixed>            $context    Context.
-	 * @return array{data:array<int,array<string,mixed>>,changed:bool}
-	 */
-	private function attempt_repair(array $data, array $validation, array $context): array
-	{
-		$changed = false;
-
-		// Repair 1: promote HTML widgets with simple content to native widgets.
-		$data = $this->promote_simple_html_widgets($data, $changed);
-
-		// Repair 2: ensure containers have flex_direction set.
-		$data = $this->fix_missing_flex($data, $changed);
-
-		return array('data' => $data, 'changed' => $changed);
+		return $n;
 	}
 
 	/**
 	 * @param array<int,array<string,mixed>> $elements Elements.
-	 * @param bool                           $changed  Changed flag (by ref).
-	 * @return array<int,array<string,mixed>>
+	 * @param int                            $depth    Current depth.
 	 */
-	private function promote_simple_html_widgets(array $elements, bool &$changed): array
+	private function max_depth(array $elements, int $depth = 1): int
 	{
-		foreach ($elements as $i => $el) {
-			if ('widget' === ($el['elType'] ?? '') && 'html' === ($el['widgetType'] ?? '')) {
-				$html = (string) ($el['settings']['html'] ?? '');
-				if (preg_match('/^<h([1-6])[^>]*>(.*)<\/h\1>$/is', trim($html), $m)) {
-					$elements[$i] = array_merge($el, array(
-						'widgetType' => 'heading',
-						'settings' => array_merge(
-							$el['settings'] ?? array(),
-							array(
-								'title' => wp_strip_all_tags($m[2]),
-								'header_size' => 'h' . $m[1],
-							)
-						),
-					));
-					unset($elements[$i]['settings']['html']);
-					$changed = true;
-				} elseif (preg_match('/^<p[^>]*>(.*)<\/p>$/is', trim($html), $m)) {
-					$elements[$i] = array_merge($el, array(
-						'widgetType' => 'text-editor',
-						'settings' => array_merge(
-							$el['settings'] ?? array(),
-							array('editor' => '<p>' . esc_html(wp_strip_all_tags($m[1])) . '</p>')
-						),
-					));
-					unset($elements[$i]['settings']['html']);
-					$changed = true;
-				}
+		$max = $depth;
+		foreach ($elements as $el) {
+			$kids = (array) ($el['elements'] ?? array());
+			if (!empty($kids)) {
+				$max = max($max, $this->max_depth($kids, $depth + 1));
 			}
-			$elements[$i]['elements'] = $this->promote_simple_html_widgets(
-				(array) ($el['elements'] ?? array()),
-				$changed
-			);
 		}
-		return $elements;
-	}
-
-	/**
-	 * @param array<int,array<string,mixed>> $elements Elements.
-	 * @param bool                           $changed  Changed flag (by ref).
-	 * @return array<int,array<string,mixed>>
-	 */
-	private function fix_missing_flex(array $elements, bool &$changed): array
-	{
-		foreach ($elements as $i => $el) {
-			if ('container' === ($el['elType'] ?? '')) {
-				$settings = $el['settings'] ?? array();
-				if (empty($settings['flex_direction']) && !empty($el['elements'])) {
-					$elements[$i]['settings']['flex_direction'] = 'column';
-					$changed = true;
-				}
-			}
-			$elements[$i]['elements'] = $this->fix_missing_flex(
-				(array) ($el['elements'] ?? array()),
-				$changed
-			);
-		}
-		return $elements;
+		return $max;
 	}
 }
