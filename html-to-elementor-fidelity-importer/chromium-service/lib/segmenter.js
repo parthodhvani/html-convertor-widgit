@@ -129,9 +129,20 @@ function browserPageSegmenter() {
       pos: cs.position,
       td: cs.textDecorationLine || cs.textDecoration,
       fst: cs.fontStyle,
+      vis: cs.visibility,
+      pe: cs.pointerEvents,
+      wm: cs.writingMode,
+      of: cs.objectFit,
+      ar: cs.aspectRatio,
     };
     if (cs.zIndex && cs.zIndex !== 'auto') s.z = cs.zIndex;
     if (cs.overflow && cs.overflow !== 'visible') s.ov = cs.overflow;
+    if (cs.transform && cs.transform !== 'none') s.tf = cs.transform;
+    if (cs.filter && cs.filter !== 'none') s.filter = cs.filter;
+    if (cs.clipPath && cs.clipPath !== 'none') s.clip = cs.clipPath;
+    if (cs.maskImage && cs.maskImage !== 'none') s.mask = cs.maskImage;
+    if (cs.transition && cs.transition !== 'all 0s ease 0s') s.transition = cs.transition;
+    if (cs.animationName && cs.animationName !== 'none') s.animation = cs.animationName;
     if (cs.display.indexOf('flex') !== -1) {
       s.fd = cs.flexDirection;
       s.fw_wrap = cs.flexWrap;
@@ -165,6 +176,21 @@ function browserPageSegmenter() {
     return s;
   }
 
+  function domPath(el) {
+    const parts = [];
+    let cur = el;
+    while (cur && cur.nodeType === 1 && cur !== document.body) {
+      let part = cur.tagName.toLowerCase();
+      if (cur.id) part += '#' + cur.id;
+      else if (cur.className && typeof cur.className === 'string' && cur.className.trim()) {
+        part += '.' + cur.className.trim().split(/\s+/).slice(0, 2).join('.');
+      }
+      parts.unshift(part);
+      cur = cur.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
   function buildTree(el, depth) {
     if (depth > MAX_DEPTH || counter.n > MAX_NODES) return null;
     if (!isVisible(el)) return null;
@@ -176,6 +202,7 @@ function browserPageSegmenter() {
     el.setAttribute('data-h2e-uid', uid);
 
     const cs = window.getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
     const node = {
       tag,
       uid,
@@ -183,11 +210,17 @@ function browserPageSegmenter() {
       cls: typeof el.className === 'string' ? el.className.trim() : '',
       text: directText(el),
       s: styleSet(cs),
+      bbox: { x: num(rect.x), y: num(rect.y), width: num(rect.width), height: num(rect.height) },
+      domPath: domPath(el),
+      ariaRole: el.getAttribute('role') || '',
     };
 
     if (tag === 'img') {
       node.src = el.currentSrc || el.getAttribute('src') || '';
       node.alt = el.getAttribute('alt') || '';
+      node.loading = el.getAttribute('loading') || '';
+      node.lazy = el.loading === 'lazy' || el.getAttribute('data-src') ? true : undefined;
+      if (el.getAttribute('data-src')) node.dataSrc = el.getAttribute('data-src');
     }
     if (tag === 'a') {
       node.href = el.getAttribute('href') || '';

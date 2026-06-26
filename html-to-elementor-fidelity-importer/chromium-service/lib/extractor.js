@@ -23,7 +23,15 @@ const puppeteer = require('puppeteer');
 const { browserPageSegmenter } = require('./segmenter');
 
 const DEFAULT_CONFIG = {
-  breakpoints: { desktop: 1440, tablet: 768, mobile: 480 },
+  breakpoints: {
+    wide: 1920,
+    desktop: 1440,
+    laptop: 1280,
+    tablet_landscape: 1024,
+    tablet: 768,
+    mobile_landscape: 480,
+    mobile: 375,
+  },
   waitUntil: 'networkidle0',
   timeout: 60000,
   captureScreenshots: true,
@@ -86,22 +94,37 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
     const uidMaps = {};
     const screenshots = {};
 
+    // Primary desktop screenshot.
+    const desktopWidth = config.breakpoints.desktop || config.breakpoints.wide || 1440;
+    await page.setViewport({ width: desktopWidth, height: 900, deviceScaleFactor: 1 });
+
     if (config.captureScreenshots) {
       screenshots.desktop = await screenshot(page, outDir, 'desktop');
     }
 
-    // Tablet + mobile passes — re-measure tagged sections and nodes.
-    for (const device of ['tablet', 'mobile']) {
+    // Responsive passes — re-measure tagged sections and nodes at each breakpoint.
+    const responsiveDevices = Object.keys(config.breakpoints).filter((k) => k !== 'desktop');
+    for (const device of responsiveDevices) {
       const width = config.breakpoints[device];
       if (!width) continue;
       await page.setViewport({ width, height: 900, deviceScaleFactor: 1 });
       await sleep(350);
       await waitForStable(page, config);
-      sectionResponsive[device] = await page.evaluate(measureTaggedSections);
+      if ('tablet' === device || 'mobile' === device) {
+        sectionResponsive[device] = await page.evaluate(measureTaggedSections);
+      }
       uidMaps[device] = await page.evaluate(measureUids);
       if (config.captureScreenshots) {
         screenshots[device] = await screenshot(page, outDir, device);
       }
+    }
+
+    // Backwards-compatible tablet/mobile section maps.
+    if (!sectionResponsive.tablet && uidMaps.tablet_landscape) {
+      sectionResponsive.tablet = sectionResponsive.tablet_landscape || {};
+    }
+    if (!sectionResponsive.mobile && uidMaps.mobile) {
+      sectionResponsive.mobile = sectionResponsive.mobile || {};
     }
 
     // Merge responsive measurements back into sections and their trees.
@@ -201,8 +224,14 @@ function attachNodeResponsive(node, uidMaps) {
   if (!node) return;
   if (node.uid !== undefined) {
     const r = {};
-    if (uidMaps.tablet && uidMaps.tablet[node.uid]) r.tablet = uidMaps.tablet[node.uid];
-    if (uidMaps.mobile && uidMaps.mobile[node.uid]) r.mobile = uidMaps.mobile[node.uid];
+    // Map all captured breakpoints; keep tablet/mobile aliases for PHP CssMapper.
+    const alias = { tablet_landscape: 'tablet', mobile: 'mobile', laptop: 'laptop' };
+    Object.keys(uidMaps).forEach((device) => {
+      if (uidMaps[device] && uidMaps[device][node.uid]) {
+        r[device] = uidMaps[device][node.uid];
+        if (alias[device]) r[alias[device]] = uidMaps[device][node.uid];
+      }
+    });
     if (Object.keys(r).length) node.r = r;
   }
   (node.children || []).forEach((c) => attachNodeResponsive(c, uidMaps));

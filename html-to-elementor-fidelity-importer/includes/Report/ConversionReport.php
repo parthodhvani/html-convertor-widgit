@@ -49,13 +49,19 @@ final class ConversionReport
 			'editable_content' => $native_pct,
 			'elementor_compatibility' => (int) max(0, 100 - ($html_pct * 1.2)),
 			'responsive_fidelity' => $native > 0 ? 92 : 60,
-			'visual_fidelity' => (int) max(40, round(100 - ($html_pct * 0.6))),
+			'visual_fidelity' => (int) ($this->meta['validation']['fidelity'] ?? max(40, round(100 - ($html_pct * 0.6)))),
+			'layout' => (int) ($this->meta['validation']['layout'] ?? 0),
+			'typography' => (int) ($this->meta['validation']['typography'] ?? 0),
+			'spacing' => (int) ($this->meta['validation']['spacing'] ?? 0),
 		);
+
+		$quality = $this->meta['quality'] ?? array();
 
 		return array(
 			'job' => $this->meta['job'] ?? null,
 			'title' => $this->meta['title'] ?? null,
 			'mode' => $this->generator_report['mode'] ?? 'native',
+			'engine_version' => $this->generator_report['engine_version'] ?? 1,
 			'sections' => (int) ($this->generator_report['sections'] ?? 0),
 			'containers' => (int) ($this->generator_report['containers'] ?? 0),
 			// Backwards-compatible keys consumed by the admin UI.
@@ -69,6 +75,9 @@ final class ConversionReport
 			'widget_breakdown' => $this->generator_report['widget_breakdown'] ?? array(),
 			'components' => $this->generator_report['components'] ?? array(),
 			'scores' => $scores,
+			'quality' => $quality,
+			'validation' => $this->meta['validation'] ?? array(),
+			'engines' => $this->generator_report['engines'] ?? array(),
 			'tokens' => $this->meta['tokens'] ?? array(),
 			'screenshots' => $this->meta['screenshots'] ?? array(),
 			'generated_at' => gmdate('c'),

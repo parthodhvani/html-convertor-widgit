@@ -62,6 +62,8 @@ final class ConversionPipeline
 				'title' => $result->title(),
 				'screenshots' => $result->screenshots(),
 				'tokens' => $generated['tokens'] ?? array(),
+				'quality' => $generated['quality'] ?? array(),
+				'validation' => $generated['validation'] ?? array(),
 			)
 		))->to_array();
 

@@ -10,6 +10,9 @@ declare(strict_types=1);
 
 namespace HtmlToElementor\Elementor;
 
+use HtmlToElementor\Engine\ComponentRecognitionEngine;
+use HtmlToElementor\Engine\CssMappingEngine;
+
 if (!defined('ABSPATH')) {
     exit;
 }
@@ -25,6 +28,8 @@ final class LayoutTreeConverter
 
     private CssMapper $css;
     private WidgetClassifier $classifier;
+    private ?ComponentRecognitionEngine $recognition = null;
+    private ?CssMappingEngine $css_engine = null;
 
     /**
      * Running statistics for the conversion report.
@@ -38,6 +43,15 @@ final class LayoutTreeConverter
         $this->css = $css ?? new CssMapper();
         $this->classifier = $classifier ?? new WidgetClassifier();
         $this->reset_stats();
+    }
+
+    /**
+     * Wire v2 engine subsystems from the orchestrator.
+     */
+    public function use_engines(ComponentRecognitionEngine $recognition, CssMappingEngine $css_engine): void
+    {
+        $this->recognition = $recognition;
+        $this->css_engine = $css_engine;
     }
 
     /**
@@ -73,7 +87,22 @@ final class LayoutTreeConverter
      */
     public function convert_section(array $tree): ?array
     {
-        if ($this->classifier->container_needs_fallback($tree)) {
+        $role = (string) ($tree['layoutRole'] ?? '');
+
+        if ('hero' === $role) {
+            $hero = $this->reconstruct_hero($tree);
+            if (null !== $hero) {
+                return $hero;
+            }
+        }
+        if ('navigation' === $role) {
+            $nav = $this->reconstruct_navigation($tree);
+            if (null !== $nav) {
+                return $nav;
+            }
+        }
+
+        if ($this->needs_fallback($tree)) {
             return $this->wrap_section($tree, array($this->html_widget($tree)));
         }
         $children = $this->convert_node($tree, true);
@@ -100,7 +129,7 @@ final class LayoutTreeConverter
             return $this->convert_leaf($node);
         }
 
-        if ($this->classifier->container_needs_fallback($node)) {
+        if ($this->needs_fallback($node)) {
             return array($this->html_widget($node));
         }
 
@@ -159,6 +188,25 @@ final class LayoutTreeConverter
      */
     private function convert_leaf(array $node): array
     {
+        if (null !== $this->recognition) {
+            $classified = $this->recognition->classify($node);
+            if ('container' === $classified['kind']) {
+                $text = trim((string) ($node['text'] ?? ''));
+                return '' !== $text ? array($this->text_widget($text, $node)) : array();
+            }
+            if ('fallback' === $classified['kind']) {
+                return array($this->html_widget($node));
+            }
+            if ('pattern' === $classified['kind']) {
+                return array();
+            }
+            return array($this->widget(
+                (string) ($classified['type'] ?? 'text-editor'),
+                $classified['settings'] ?? array(),
+                $node
+            ));
+        }
+
         $classified = $this->classifier->classify($node);
 
         if (null === $classified) {
@@ -214,21 +262,24 @@ final class LayoutTreeConverter
             'content_width' => 'full',
         );
 
-        $flex = $this->css->flex($node);
-        $settings = array_merge($settings, $flex);
-        if (empty($settings['flex_direction'])) {
-            $settings['flex_direction'] = 'column';
+        if (null !== $this->css_engine) {
+            $settings = array_merge($settings, $this->css_engine->map_container($node, $is_section));
+        } else {
+            $flex = $this->css->flex($node);
+            $settings = array_merge($settings, $flex);
+            if (empty($settings['flex_direction'])) {
+                $settings['flex_direction'] = 'column';
+            }
+            $settings = array_merge(
+                $settings,
+                $this->css->background($node),
+                $this->css->border($node),
+                $this->css->box_shadow($node),
+                $this->css->sizing($node),
+                $this->css->spacing($node, !$is_section)
+            );
         }
-
-        $settings = array_merge(
-            $settings,
-            $this->css->background($node),
-            $this->css->border($node),
-            $this->css->box_shadow($node),
-            $this->css->sizing($node),
-            $this->css->spacing($node, !$is_section),
-            $this->identity($node)
-        );
+        $settings = array_merge($settings, $this->identity($node));
 
         // When this container is a column/cell inside a flex-row parent, give it
         // a percentage width derived from its measured share of the parent so
@@ -348,14 +399,176 @@ final class LayoutTreeConverter
     /* --------------------------------------------------------------------- */
 
     /**
-     * Map computed CSS to controls appropriate for a given widget type.
+     * Whether a container should fall back to an HTML widget.
      *
-     * @param string              $type Widget type.
      * @param array<string,mixed> $node Source node.
-     * @return array<string,mixed>
      */
+    private function needs_fallback(array $node): bool
+    {
+        if (null !== $this->recognition) {
+            return $this->recognition->container_needs_fallback($node);
+        }
+        return $this->classifier->container_needs_fallback($node);
+    }
+
+    /**
+     * Reconstruct a hero section natively: background image, overlay, content.
+     *
+     * @param array<string,mixed> $node Hero section node.
+     * @return array<string,mixed>|null
+     */
+    private function reconstruct_hero(array $node): ?array
+    {
+        $children = (array) ($node['children'] ?? array());
+        $bg_image = null;
+        $overlay = null;
+        $content_children = array();
+
+        foreach ($children as $child) {
+            $tag = strtolower((string) ($child['tag'] ?? ''));
+            $pos = strtolower((string) ($child['s']['pos'] ?? ''));
+            $cls = strtolower((string) ($child['cls'] ?? ''));
+
+            if ('img' === $tag) {
+                $bg_image = $child;
+                continue;
+            }
+            if (false !== strpos($cls, 'overlay') || ('absolute' === $pos && empty($child['text']) && empty($child['children']))) {
+                $overlay = $child;
+                continue;
+            }
+            if ('absolute' === $pos || false !== strpos($cls, 'hero-content') || false !== strpos($cls, 'content')) {
+                foreach ($this->convert_node($child, false) as $el) {
+                    $content_children[] = $el;
+                }
+                continue;
+            }
+            foreach ($this->convert_node($child, false) as $el) {
+                $content_children[] = $el;
+            }
+        }
+
+        if (empty($content_children) && empty($bg_image)) {
+            return null;
+        }
+
+        $settings = array_merge(
+            array('content_width' => 'full', 'flex_direction' => 'column', 'min_height' => array('unit' => 'px', 'size' => (float) ($node['s']['h'] ?? 380))),
+            $this->css->background($node),
+            $this->css->sizing($node),
+            $this->identity($node)
+        );
+
+        if (null !== $bg_image) {
+            $src = (string) ($bg_image['src'] ?? '');
+            if ('' !== $src) {
+                $settings['background_background'] = 'classic';
+                $settings['background_image'] = array('url' => $src, 'id' => '');
+                $settings['background_position'] = 'center center';
+                $settings['background_size'] = 'cover';
+            }
+        }
+        if (null !== $overlay && !empty($overlay['s']['bgImg'])) {
+            $settings['_h2e_hero_overlay'] = (string) $overlay['s']['bgImg'];
+        }
+
+        $this->stats['containers']++;
+        $this->stats['roles']['hero'] = ($this->stats['roles']['hero'] ?? 0) + 1;
+
+        return array(
+            'id' => ElementId::generate(),
+            'elType' => 'container',
+            'settings' => $settings,
+            'elements' => array_values($content_children),
+            'isInner' => false,
+        );
+    }
+
+    /**
+     * Reconstruct navigation as nested containers + native widgets.
+     *
+     * @param array<string,mixed> $node Nav node.
+     * @return array<string,mixed>|null
+     */
+    private function reconstruct_navigation(array $node): ?array
+    {
+        $widgets = array();
+        foreach ($this->flatten_nav_widgets($node) as $w) {
+            $widgets[] = $w;
+        }
+        if (empty($widgets)) {
+            return null;
+        }
+
+        $settings = array_merge(
+            array(
+                'content_width' => 'full',
+                'flex_direction' => 'row',
+                'flex_justify_content' => 'space-between',
+                'flex_align_items' => 'center',
+            ),
+            $this->css->background($node),
+            $this->css->spacing($node, true),
+            $this->identity($node)
+        );
+
+        $this->stats['containers']++;
+        $this->stats['roles']['nav'] = ($this->stats['roles']['nav'] ?? 0) + 1;
+
+        return array(
+            'id' => ElementId::generate(),
+            'elType' => 'container',
+            'settings' => $settings,
+            'elements' => $widgets,
+            'isInner' => false,
+        );
+    }
+
+    /**
+     * Flatten nav tree into a row of native widgets.
+     *
+     * @param array<string,mixed> $node Nav node.
+     * @return array<int,array<string,mixed>>
+     */
+    private function flatten_nav_widgets(array $node): array
+    {
+        $out = array();
+        if (!empty($node['atomic'])) {
+            $leaf = $this->convert_leaf($node);
+            return $leaf;
+        }
+        foreach ((array) ($node['children'] ?? array()) as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+            $tag = strtolower((string) ($child['tag'] ?? ''));
+            if (in_array($tag, array('ul', 'ol'), true)) {
+                foreach ((array) ($child['children'] ?? array()) as $li) {
+                    if (!is_array($li)) {
+                        continue;
+                    }
+                    foreach ($this->convert_leaf($li) as $w) {
+                        $out[] = $w;
+                    }
+                }
+                continue;
+            }
+            if (!empty($child['children'])) {
+                $out = array_merge($out, $this->flatten_nav_widgets($child));
+                continue;
+            }
+            foreach ($this->convert_leaf($child) as $w) {
+                $out[] = $w;
+            }
+        }
+        return $out;
+    }
+
     private function style_for_widget(string $type, array $node): array
     {
+        if (null !== $this->css_engine) {
+            return $this->css_engine->map_widget($node, $type);
+        }
         switch ($type) {
             case 'heading':
                 return array_merge(
