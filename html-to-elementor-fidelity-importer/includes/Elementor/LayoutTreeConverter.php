@@ -10,8 +10,8 @@ declare(strict_types=1);
 
 namespace HtmlToElementor\Elementor;
 
-use HtmlToElementor\Engine\ComponentRecognitionEngine;
 use HtmlToElementor\Engine\CssMappingEngine;
+use HtmlToElementor\Engine\SemanticComponentRecognizer;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -28,7 +28,7 @@ final class LayoutTreeConverter
 
     private CssMapper $css;
     private WidgetClassifier $classifier;
-    private ?ComponentRecognitionEngine $recognition = null;
+    private ?SemanticComponentRecognizer $recognition = null;
     private ?CssMappingEngine $css_engine = null;
 
     /**
@@ -48,7 +48,7 @@ final class LayoutTreeConverter
     /**
      * Wire v2 engine subsystems from the orchestrator.
      */
-    public function use_engines(ComponentRecognitionEngine $recognition, CssMappingEngine $css_engine): void
+    public function use_engines(SemanticComponentRecognizer $recognition, CssMappingEngine $css_engine): void
     {
         $this->recognition = $recognition;
         $this->css_engine = $css_engine;
@@ -66,6 +66,8 @@ final class LayoutTreeConverter
             'native_widgets' => 0,
             'widget_breakdown' => array(),
             'roles' => array(),
+            'html_fallback_reasons' => array(),
+            'max_depth' => 0,
         );
     }
 
@@ -121,8 +123,10 @@ final class LayoutTreeConverter
      * @param bool                $parent_row Whether the parent lays children in a row.
      * @return array<int,array<string,mixed>>
      */
-    private function convert_node(array $node, bool $is_section = false, bool $parent_row = false, float $parent_width = 0.0): array
+    private function convert_node(array $node, bool $is_section = false, bool $parent_row = false, float $parent_width = 0.0, int $depth = 0): array
     {
+        $this->stats['max_depth'] = max((int) ($this->stats['max_depth'] ?? 0), $depth);
+
         $is_container = isset($node['children']) && empty($node['atomic']);
 
         if (!$is_container) {
@@ -144,7 +148,7 @@ final class LayoutTreeConverter
         }
 
         foreach ((array) ($node['children'] ?? array()) as $child) {
-            foreach ($this->convert_node($child, false, $child_row, $self_width) as $el) {
+            foreach ($this->convert_node($child, false, $child_row, $self_width, $depth + 1) as $el) {
                 $children[] = $el;
             }
         }
@@ -169,6 +173,14 @@ final class LayoutTreeConverter
      */
     private function row_direction(array $node): string
     {
+        $constraint = $node['layoutConstraint'] ?? array();
+        if (!empty($constraint['direction'])) {
+            return (string) $constraint['direction'];
+        }
+        if ('row' === ($node['visualGroup'] ?? '')) {
+            return 'row';
+        }
+
         $s = $node['s'] ?? array();
         $disp = (string) ($s['disp'] ?? '');
         if (false !== strpos($disp, 'grid')) {
@@ -195,6 +207,12 @@ final class LayoutTreeConverter
                 return '' !== $text ? array($this->text_widget($text, $node)) : array();
             }
             if ('fallback' === $classified['kind']) {
+                $this->stats['html_fallback_reasons'][] = array(
+                    'role' => (string) ($classified['role'] ?? ''),
+                    'confidence' => (int) ($classified['confidence'] ?? 0),
+                    'tag' => (string) ($node['tag'] ?? ''),
+                    'cls' => (string) ($node['cls'] ?? ''),
+                );
                 return array($this->html_widget($node));
             }
             if ('pattern' === $classified['kind']) {
@@ -279,6 +297,9 @@ final class LayoutTreeConverter
                 $this->css->spacing($node, !$is_section)
             );
         }
+
+        // v3 geometry-derived layout overrides CSS literals.
+        $settings = array_merge($settings, $this->geometry_settings($node));
         $settings = array_merge($settings, $this->identity($node));
 
         // When this container is a column/cell inside a flex-row parent, give it
@@ -397,6 +418,43 @@ final class LayoutTreeConverter
     /* --------------------------------------------------------------------- */
     /* Style + identity                                                      */
     /* --------------------------------------------------------------------- */
+
+    /**
+     * Map geometry constraints to Elementor container settings.
+     *
+     * @param array<string,mixed> $node Source node.
+     * @return array<string,mixed>
+     */
+    private function geometry_settings(array $node): array
+    {
+        $out = array();
+        $constraint = $node['layoutConstraint'] ?? array();
+        $alignment = $node['alignment'] ?? array();
+        $whitespace = $node['whitespace'] ?? array();
+
+        if (!empty($constraint['direction'])) {
+            $out['flex_direction'] = (string) $constraint['direction'];
+        }
+        $gap = (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0);
+        if ($gap > 0) {
+            $g = (string) round($gap);
+            $out['flex_gap'] = array(
+                'column' => $g,
+                'row' => $g,
+                'isLinked' => true,
+                'unit' => 'px',
+                'size' => round($gap),
+            );
+        }
+        if (!empty($alignment['justify'])) {
+            $out['flex_justify_content'] = (string) $alignment['justify'];
+        }
+        if (!empty($alignment['align_items'])) {
+            $out['flex_align_items'] = (string) $alignment['align_items'];
+        }
+
+        return $out;
+    }
 
     /**
      * Whether a container should fall back to an HTML widget.

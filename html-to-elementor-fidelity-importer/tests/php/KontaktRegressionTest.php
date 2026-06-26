@@ -140,7 +140,7 @@ final class KontaktRegressionTest extends TestCase
 		$result = $gen->generate(RenderResult::from_array($this->kontakt_layout()), array('mode' => 'native'));
 
 		$this->assertSame('native', $result['report']['mode']);
-		$this->assertSame(2, $result['report']['engine_version']);
+		$this->assertSame(3, $result['report']['engine_version']);
 		$this->assertGreaterThanOrEqual(5, $result['report']['native_widgets']);
 		$html_pct = ($result['report']['html_widgets'] / max(1, $result['report']['native_widgets'] + $result['report']['html_widgets'])) * 100;
 		$this->assertLessThan(30, $html_pct, 'HTML widgets should be under 30% for kontakt layout');
@@ -193,8 +193,10 @@ final class KontaktRegressionTest extends TestCase
 
 		$this->assertArrayHasKey('validation', $result);
 		$this->assertArrayHasKey('fidelity', $result['validation']);
+		$this->assertArrayHasKey('layout_similarity', $result['validation']);
+		$this->assertArrayHasKey('spacing_similarity', $result['validation']);
 		$this->assertArrayHasKey('quality', $result);
-		$this->assertGreaterThan(0, $result['quality']['native_widget_percentage']);
+		$this->assertGreaterThan(0, $result['quality']['visual_fidelity_score']);
 	}
 
 	public function test_kontakt_improved_over_preserve_mode(): void
