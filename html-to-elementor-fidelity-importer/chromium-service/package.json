@@ -1,0 +1,21 @@
+{
+  "name": "h2e-chromium-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless Chromium rendering + DOM/computed-style extraction + section segmentation for the HTML To Elementor Fidelity Importer.",
+  "license": "GPL-2.0-or-later",
+  "type": "commonjs",
+  "bin": {
+    "h2e-render": "cli.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "convert": "node cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0"
+  }
+}

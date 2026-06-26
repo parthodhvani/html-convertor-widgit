@@ -1,0 +1,90 @@
+.h2e-wrap .h2e-tagline {
+	max-width: 70ch;
+	color: #50575e;
+	font-size: 14px;
+}
+
+.h2e-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+	margin-top: 16px;
+}
+
+@media (max-width: 960px) {
+	.h2e-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.h2e-card {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	padding: 20px;
+	margin-bottom: 20px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.h2e-card h2 {
+	margin-top: 0;
+}
+
+.h2e-status {
+	margin-top: 12px;
+	padding: 10px 14px;
+	border-radius: 6px;
+	font-weight: 600;
+}
+
+.h2e-status.is-loading {
+	background: #f0f6fc;
+	color: #0a4b78;
+}
+
+.h2e-status.is-success {
+	background: #edfaef;
+	color: #00611c;
+}
+
+.h2e-status.is-error {
+	background: #fcf0f1;
+	color: #8a1f11;
+}
+
+.h2e-report .h2e-metric {
+	display: inline-flex;
+	flex-direction: column;
+	min-width: 110px;
+	margin: 0 16px 16px 0;
+}
+
+.h2e-report .h2e-metric strong {
+	font-size: 28px;
+	line-height: 1.1;
+	color: #1d2327;
+}
+
+.h2e-report .h2e-metric span {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #646970;
+}
+
+.h2e-shots {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 10px;
+}
+
+.h2e-shots img {
+	max-width: 220px;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+}
+
+.h2e-actions {
+	margin-top: 12px;
+}

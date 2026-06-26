@@ -1,0 +1,18 @@
+{
+  "name": "html-to-elementor-fidelity-importer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build tooling for the HTML To Elementor Fidelity Importer WordPress plugin.",
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "install:chromium": "npm --prefix chromium-service install",
+    "start:service": "node chromium-service/server.js",
+    "build:assets": "webpack --config webpack.config.js",
+    "build": "npm run install:chromium && npm run build:assets",
+    "zip": "bash bin/build-zip.sh"
+  },
+  "devDependencies": {
+    "webpack": "^5.93.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

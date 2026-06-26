@@ -1,0 +1,8 @@
+/vendor/
+/node_modules/
+/chromium-service/node_modules/
+/assets/dist/
+/build/
+/dist/
+/.phpunit.cache/
+*.log
