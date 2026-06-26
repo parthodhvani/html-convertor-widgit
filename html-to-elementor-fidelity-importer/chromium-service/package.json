@@ -10,7 +10,8 @@
   },
   "scripts": {
     "start": "node server.js",
-    "convert": "node cli.js"
+    "convert": "node cli.js",
+    "compare": "node compare.js"
   },
   "engines": {
     "node": ">=18"

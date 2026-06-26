@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace HtmlToElementor\Elementor;
 
+use HtmlToElementor\Engine\VisualReconstructionOrchestrator;
 use HtmlToElementor\Services\RenderResult;
 
 if (!defined('ABSPATH')) {
@@ -18,9 +19,9 @@ if (!defined('ABSPATH')) {
 /**
  * The Elementor JSON generator.
  *
- * Default ("native") mode rebuilds each section as nested Elementor containers
- * and native widgets via {@see LayoutTreeConverter}, mapping computed CSS to
- * Elementor controls and using HTML widgets only as a last resort.
+ * Default ("native") mode runs the Visual Reconstruction Engine v2 pipeline:
+ * visual tree → layout graph → component recognition → native Elementor
+ * containers/widgets, with iterative validation and repair.
  *
  * Legacy ("preserve") mode wraps each section's original HTML in a single HTML
  * widget for maximum raw fidelity.
@@ -30,19 +31,24 @@ final class ElementorJsonGenerator
 
 	private LayoutTreeConverter $converter;
 	private DesignTokens $tokens;
+	private VisualReconstructionOrchestrator $orchestrator;
+
+	/** @var array<string,mixed> */
+	private array $last_engines = array();
 
 	public function __construct()
 	{
 		$this->converter = new LayoutTreeConverter();
 		$this->tokens = new DesignTokens();
+		$this->orchestrator = new VisualReconstructionOrchestrator();
 	}
 
 	/**
 	 * Generate Elementor data plus a structured report and design tokens.
 	 *
 	 * @param RenderResult        $result Layout document.
-	 * @param array<string,mixed> $opts   { mode: "native"|"preserve" }.
-	 * @return array{data:array<int,array<string,mixed>>,report:array<string,mixed>,tokens:array<string,mixed>,assets:array<string,mixed>}
+	 * @param array<string,mixed> $opts   { mode: "native"|"preserve", confidence }.
+	 * @return array{data:array<int,array<string,mixed>>,report:array<string,mixed>,tokens:array<string,mixed>,assets:array<string,mixed>,validation?:array<string,mixed>,quality?:array<string,mixed>}
 	 */
 	public function generate(RenderResult $result, array $opts = array()): array
 	{
@@ -52,20 +58,26 @@ final class ElementorJsonGenerator
 			return $this->generate_preserve($result);
 		}
 
-		return $this->generate_native($result);
+		return $this->generate_native($result, $opts);
 	}
 
 	/**
-	 * Native reconstruction: nested containers + native widgets.
+	 * Native reconstruction via Visual Reconstruction Engine v2.
 	 *
-	 * @param RenderResult $result Layout document.
-	 * @return array{data:array<int,array<string,mixed>>,report:array<string,mixed>,tokens:array<string,mixed>,assets:array<string,mixed>}
+	 * @param RenderResult        $result Layout document.
+	 * @param array<string,mixed> $opts   Options.
+	 * @return array{data:array<int,array<string,mixed>>,report:array<string,mixed>,tokens:array<string,mixed>,assets:array<string,mixed>,validation:array<string,mixed>,quality:array<string,mixed>}
 	 */
-	private function generate_native(RenderResult $result): array
+	private function generate_native(RenderResult $result, array $opts): array
 	{
+		$prepared = $this->orchestrator->prepare($result, $opts);
+		$this->last_engines = $prepared['engines'];
+
+		$this->converter->use_engines($prepared['recognition'], $prepared['css']);
 		$this->converter->reset_stats();
+
 		$elements = array();
-		$sections = $result->sections();
+		$sections = $prepared['result']->sections();
 
 		foreach ($sections as $section) {
 			$tree = $section['tree'] ?? null;
@@ -76,15 +88,15 @@ final class ElementorJsonGenerator
 					continue;
 				}
 			}
-			// Fallback: whole section as HTML when no usable tree was produced.
 			$elements[] = $this->section_html_fallback($section);
 		}
 
 		$stats = $this->converter->stats();
-		$tokens = $this->tokens->extract($sections);
+		$tokens = $prepared['tokens'];
 
 		$report = array(
 			'mode' => 'native',
+			'engine_version' => 2,
 			'sections' => count($sections),
 			'containers' => (int) $stats['containers'],
 			'widgets' => (int) $stats['widgets'],
@@ -92,13 +104,31 @@ final class ElementorJsonGenerator
 			'html_widgets' => (int) $stats['html_widgets'],
 			'widget_breakdown' => $stats['widget_breakdown'],
 			'components' => $stats['roles'],
+			'engines' => $this->last_engines,
 		);
 
+		$validated = $this->orchestrator->validate(
+			$elements,
+			array(
+				'report' => $report,
+				'sections' => $sections,
+				'screenshots' => $result->screenshots(),
+				'engines' => $this->last_engines,
+				'wrappers_eliminated' => (int) ($this->last_engines['wrappers_eliminated'] ?? 0),
+				'compare' => $opts['compare'] ?? null,
+			)
+		);
+
+		$report['validation'] = $validated['validation'];
+		$report['quality'] = $validated['quality'];
+
 		return array(
-			'data' => $elements,
+			'data' => $validated['data'],
 			'report' => $report,
 			'tokens' => $tokens,
-			'assets' => $result->assets(),
+			'assets' => array_merge($result->assets(), array('media' => $prepared['media'])),
+			'validation' => $validated['validation'],
+			'quality' => $validated['quality'],
 		);
 	}
 

@@ -46,10 +46,16 @@ final class Settings
 			'conversion_mode' => 'native',   // "native" (containers + widgets) | "preserve" (raw HTML).
 			'widget_confidence' => 95,         // Minimum % confidence to convert a node to a widget.
 			'breakpoints' => array(
+				'wide' => 1920,
 				'desktop' => 1440,
+				'laptop' => 1280,
+				'tablet_landscape' => 1024,
 				'tablet' => 768,
-				'mobile' => 480,
+				'mobile_landscape' => 480,
+				'mobile' => 375,
 			),
+			'fidelity_threshold' => 95,
+			'validation_max_iterations' => 3,
 			'wait_until' => 'networkidle0',
 			'render_timeout_ms' => 60000,
 			'capture_screenshots' => true,
