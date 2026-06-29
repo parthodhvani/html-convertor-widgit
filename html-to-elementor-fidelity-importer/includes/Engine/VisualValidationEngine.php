@@ -49,6 +49,9 @@ final class VisualValidationEngine implements EngineInterface
 		$typography = $this->typography_similarity($sections);
 		$responsive = $this->responsive_similarity($sections);
 		$screenshot = $this->screenshot_score($context);
+		$compare = (array) ($context['compare'] ?? array());
+		$ocr = isset($compare['ocr']) ? (int) round((float) $compare['ocr'] * 100) : (isset($compare['ocr_similarity']) ? (int) round((float) $compare['ocr_similarity']) : 0);
+		$phash = isset($compare['phash']) ? (int) round((float) $compare['phash'] * 100) : (isset($compare['perceptual_hash_similarity']) ? (int) round((float) $compare['perceptual_hash_similarity']) : 0);
 
 		// Visual fidelity prioritises layout > spacing > typography > screenshot.
 		$fidelity = (int) round(
@@ -70,6 +73,8 @@ final class VisualValidationEngine implements EngineInterface
 			'typography_similarity' => $typography,
 			'responsive_similarity' => $responsive,
 			'screenshot' => $screenshot,
+			'ocr_similarity' => max(0, min(100, $ocr)),
+			'perceptual_hash_similarity' => max(0, min(100, $phash)),
 			'layout' => $layout,
 			'typography' => $typography,
 			'spacing' => $spacing,
@@ -171,11 +176,11 @@ final class VisualValidationEngine implements EngineInterface
 	private function screenshot_score(array $context): int
 	{
 		$compare = $context['compare'] ?? null;
-		if (is_array($compare) && isset($compare['ssim'])) {
-			return (int) round((float) $compare['ssim'] * 100);
-		}
-		if (is_array($compare) && isset($compare['score'])) {
-			return (int) round((float) $compare['score']);
+		if (is_array($compare)) {
+			$ssim = isset($compare['ssim']) ? (float) $compare['ssim'] * 100 : (float) ($compare['score'] ?? 75);
+			$phash = isset($compare['phash']) ? (float) $compare['phash'] * 100 : (isset($compare['perceptual_hash_similarity']) ? (float) $compare['perceptual_hash_similarity'] : $ssim);
+			$ocr = isset($compare['ocr']) ? (float) $compare['ocr'] * 100 : (isset($compare['ocr_similarity']) ? (float) $compare['ocr_similarity'] : $ssim);
+			return (int) round(($ssim * 0.6) + ($phash * 0.25) + ($ocr * 0.15));
 		}
 		return 75;
 	}

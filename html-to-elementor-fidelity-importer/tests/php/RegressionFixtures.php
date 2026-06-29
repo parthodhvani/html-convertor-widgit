@@ -153,6 +153,166 @@ trait RegressionFixtures
 	}
 
 	/**
+	 * @return array<string,mixed>
+	 */
+	protected function bootstrapmade_layout(): array
+	{
+		return array(
+			'meta' => array('title' => 'BootstrapMade Agency'),
+			'sections' => array(
+				array('tag' => 'header', 'tree' => $this->row_node('header fixed-top', array(
+					$this->heading_node('BizLand', 160, 34, 32, 18),
+					$this->row_node('navbar', array(
+						$this->text_node('Home', 60, 24, 840, 24),
+						$this->text_node('Services', 80, 24, 930, 24),
+						$this->text_node('Contact', 80, 24, 1030, 24),
+					), 360, 40, 820, 16),
+				), 1220, 76, 0, 0)),
+				array('tag' => 'section', 'tree' => $this->stack_node('hero d-flex', array(
+					$this->heading_node('Grow your business', 540, 62, 120, 120),
+					$this->text_node('Modern responsive agency starter.', 480, 24, 120, 200),
+					$this->button_node('Get Started', 150, 44, 120, 248),
+				), 1220, 420, 0, 76, array('bg' => 'rgb(240,246,255)'))),
+				array('tag' => 'section', 'tree' => $this->row_node('features row', array(
+					$this->card_node('Planning', 280, 180, 40, 0),
+					$this->card_node('Design', 280, 180, 340, 0),
+					$this->card_node('Delivery', 280, 180, 640, 0),
+					$this->card_node('Support', 280, 180, 940, 0),
+				), 1220, 220, 0, 520)),
+			),
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	protected function agency_layout(): array
+	{
+		return array(
+			'meta' => array('title' => 'Agency Landing'),
+			'sections' => array(
+				array('tag' => 'section', 'tree' => $this->stack_node('agency-hero', array(
+					$this->heading_node('Creative Agency', 500, 56, 350, 120),
+					$this->text_node('We ship digital products.', 420, 24, 390, 196),
+					$this->button_node('Start Project', 170, 44, 515, 250),
+				), 1200, 420, 0, 0, array('bg' => 'rgb(26,27,34)', 'ta' => 'center'))),
+				array('tag' => 'section', 'tree' => $this->row_node('services-grid', array(
+					$this->card_node('Branding', 360, 210, 0, 0),
+					$this->card_node('Web Design', 360, 210, 384, 0),
+					$this->card_node('Marketing', 360, 210, 768, 0),
+				), 1200, 240, 0, 450)),
+				array('tag' => 'section', 'tree' => $this->row_node('logo-cloud', array(
+					array('tag' => 'img', 'src' => 'https://example.com/logo-1.svg', 'atomic' => true, 's' => array('w' => 140, 'h' => 40), 'bbox' => array('x' => 80, 'y' => 30, 'width' => 140, 'height' => 40)),
+					array('tag' => 'img', 'src' => 'https://example.com/logo-2.svg', 'atomic' => true, 's' => array('w' => 140, 'h' => 40), 'bbox' => array('x' => 300, 'y' => 30, 'width' => 140, 'height' => 40)),
+					array('tag' => 'img', 'src' => 'https://example.com/logo-3.svg', 'atomic' => true, 's' => array('w' => 140, 'h' => 40), 'bbox' => array('x' => 520, 'y' => 30, 'width' => 140, 'height' => 40)),
+					array('tag' => 'img', 'src' => 'https://example.com/logo-4.svg', 'atomic' => true, 's' => array('w' => 140, 'h' => 40), 'bbox' => array('x' => 740, 'y' => 30, 'width' => 140, 'height' => 40)),
+				), 1200, 100, 0, 730)),
+			),
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	protected function business_layout(): array
+	{
+		return array(
+			'meta' => array('title' => 'Business Site'),
+			'sections' => array(
+				array('tag' => 'section', 'tree' => $this->row_node('stats-row', array(
+					$this->stack_node('stat', array($this->heading_node('25+', 120, 42, 30, 20), $this->text_node('Years', 120, 20, 30, 70)), 180, 120, 0, 0),
+					$this->stack_node('stat', array($this->heading_node('180', 120, 42, 260, 20), $this->text_node('Clients', 120, 20, 260, 70)), 180, 120, 230, 0),
+					$this->stack_node('stat', array($this->heading_node('92%', 120, 42, 490, 20), $this->text_node('Retention', 120, 20, 490, 70)), 180, 120, 460, 0),
+				), 800, 140, 0, 0)),
+				array('tag' => 'section', 'tree' => $this->row_node('pricing-grid', array(
+					$this->stack_node('pricing-card', array($this->heading_node('Basic', 120, 26, 50, 30), $this->text_node('$19/mo', 140, 24, 50, 70)), 260, 200, 20, 0, array('bg' => 'rgb(255,255,255)', 'br' => 10)),
+					$this->stack_node('pricing-card', array($this->heading_node('Pro', 120, 26, 350, 30), $this->text_node('$49/mo', 140, 24, 350, 70)), 260, 200, 320, 0, array('bg' => 'rgb(255,255,255)', 'br' => 10)),
+				), 620, 220, 0, 200)),
+			),
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	protected function portfolio_layout(): array
+	{
+		return array(
+			'meta' => array('title' => 'Portfolio'),
+			'sections' => array(
+				array('tag' => 'section', 'tree' => $this->row_node('portfolio-grid', array(
+					$this->stack_node('portfolio-card', array(
+						array('tag' => 'img', 'src' => 'https://example.com/work-1.jpg', 'atomic' => true, 's' => array('w' => 360, 'h' => 220), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 360, 'height' => 220)),
+						$this->heading_node('Project One', 280, 28, 40, 240),
+					), 360, 300, 0, 0, array('bg' => 'rgb(255,255,255)', 'br' => 8)),
+					$this->stack_node('portfolio-card', array(
+						array('tag' => 'img', 'src' => 'https://example.com/work-2.jpg', 'atomic' => true, 's' => array('w' => 360, 'h' => 220), 'bbox' => array('x' => 400, 'y' => 0, 'width' => 360, 'height' => 220)),
+						$this->heading_node('Project Two', 280, 28, 440, 240),
+					), 360, 300, 400, 0, array('bg' => 'rgb(255,255,255)', 'br' => 8)),
+					$this->stack_node('portfolio-card', array(
+						array('tag' => 'img', 'src' => 'https://example.com/work-3.jpg', 'atomic' => true, 's' => array('w' => 360, 'h' => 220), 'bbox' => array('x' => 800, 'y' => 0, 'width' => 360, 'height' => 220)),
+						$this->heading_node('Project Three', 280, 28, 840, 240),
+					), 360, 300, 800, 0, array('bg' => 'rgb(255,255,255)', 'br' => 8)),
+				), 1200, 320, 0, 0)),
+			),
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	protected function docs_layout(): array
+	{
+		return array(
+			'meta' => array('title' => 'Documentation'),
+			'sections' => array(
+				array('tag' => 'div', 'tree' => $this->row_node('docs-layout', array(
+					$this->stack_node('sidebar', array(
+						$this->text_node('Introduction', 180, 24, 20, 20),
+						$this->text_node('Getting Started', 180, 24, 20, 56),
+						$this->text_node('API', 180, 24, 20, 92),
+					), 240, 620, 0, 0, array('bg' => 'rgb(248,249,252)')),
+					$this->stack_node('docs-content', array(
+						$this->heading_node('API Reference', 500, 42, 300, 20),
+						$this->text_node('Use these endpoints to integrate.', 520, 24, 300, 78),
+						$this->stack_node('faq-block', array(
+							$this->text_node('How do I authenticate?', 420, 28, 300, 130),
+							$this->text_node('Use a bearer token.', 420, 24, 300, 166),
+							$this->text_node('Can I paginate?', 420, 28, 300, 206),
+						), 620, 180, 280, 120),
+					), 920, 620, 260, 0),
+				), 1180, 640, 0, 0)),
+			),
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	protected function complex_grid_layout(): array
+	{
+		return array(
+			'meta' => array('title' => 'Complex Grid'),
+			'sections' => array(
+				array('tag' => 'section', 'tree' => array(
+					'tag' => 'div',
+					'cls' => 'complex-grid',
+					's' => array('disp' => 'grid', 'gtc' => 'repeat(4,1fr)', 'w' => 1200, 'h' => 640, 'gap' => '24px'),
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 1200, 'height' => 640),
+					'children' => array(
+						$this->card_node('Card A', 282, 200, 0, 0),
+						$this->card_node('Card B', 282, 200, 306, 0),
+						$this->card_node('Card C', 282, 200, 612, 0),
+						$this->card_node('Card D', 282, 200, 918, 0),
+						$this->card_node('Card E', 588, 200, 0, 224),
+						$this->card_node('Card F', 588, 200, 612, 224),
+					),
+				)),
+			),
+		);
+	}
+
+	/**
 	 * @param string                       $cls      CSS class.
 	 * @param array<int,array<string,mixed>> $children Children.
 	 * @param float                        $w        Width.

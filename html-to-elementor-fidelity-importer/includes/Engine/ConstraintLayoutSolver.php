@@ -110,16 +110,37 @@ final class ConstraintLayoutSolver implements EngineInterface
 		$lefts = array_map(fn($b) => $b['x'], $boxes);
 		$rights = array_map(fn($b) => $b['x'] + $b['width'], $boxes);
 		$tops = array_map(fn($b) => $b['y'], $boxes);
+		$bottoms = array_map(fn($b) => $b['y'] + $b['height'], $boxes);
+		$centers_x = array_map(fn($b) => $b['x'] + ($b['width'] / 2), $boxes);
+		$centers_y = array_map(fn($b) => $b['y'] + ($b['height'] / 2), $boxes);
+		$baseline = $bottoms;
+
+		$equal_width = Geometry::aligned($widths, 8.0);
+		$equal_height = Geometry::aligned($heights, 8.0);
+		$shared_left = Geometry::aligned($lefts, 6.0);
+		$shared_right = Geometry::aligned($rights, 6.0);
+		$shared_top = Geometry::aligned($tops, 6.0);
+		$shared_bottom = Geometry::aligned($bottoms, 6.0);
+		$shared_center_x = Geometry::aligned($centers_x, 8.0);
+		$shared_center_y = Geometry::aligned($centers_y, 8.0);
+		$shared_baseline = Geometry::aligned($baseline, 6.0);
 
 		return array(
 			'type' => 'row' === $direction ? 'horizontal_stack' : 'vertical_stack',
 			'direction' => $direction,
 			'gap' => round($gap, 0),
-			'equal_width' => Geometry::aligned($widths, 8.0),
-			'equal_height' => Geometry::aligned($heights, 8.0),
-			'shared_left' => Geometry::aligned($lefts, 6.0),
-			'shared_right' => Geometry::aligned($rights, 6.0),
-			'shared_top' => Geometry::aligned($tops, 6.0),
+			'equal_width' => $equal_width,
+			'equal_height' => $equal_height,
+			'shared_left' => $shared_left,
+			'shared_right' => $shared_right,
+			'shared_top' => $shared_top,
+			'shared_bottom' => $shared_bottom,
+			'shared_center_x' => $shared_center_x,
+			'shared_center_y' => $shared_center_y,
+			'shared_baseline' => $shared_baseline,
+			'auto_width' => !$equal_width && 'column' === $direction,
+			'auto_height' => !$equal_height && 'row' === $direction,
+			'stretch' => ('row' === $direction && !$equal_width) || ('column' === $direction && !$equal_height),
 			'fill' => $this->children_fill_parent($boxes),
 		);
 	}
