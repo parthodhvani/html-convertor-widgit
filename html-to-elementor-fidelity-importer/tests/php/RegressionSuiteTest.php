@@ -65,7 +65,8 @@ final class RegressionSuiteTest extends TestCase
 		$result = $gen->generate(RenderResult::from_array($layout), array('mode' => 'native'));
 
 		$this->assertGreaterThan(0, $result['validation']['constraint_coverage'] ?? 0);
-		$this->assertLessThanOrEqual(8, $result['quality']['max_nesting_depth']);
+		$this->assertLessThanOrEqual(4, $result['quality']['max_container_depth'] ?? $result['quality']['max_nesting_depth']);
+		$this->assertArrayHasKey('compression_ratio', $result['quality']);
 	}
 
 	/**

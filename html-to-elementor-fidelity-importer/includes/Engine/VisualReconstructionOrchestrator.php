@@ -171,6 +171,7 @@ final class VisualReconstructionOrchestrator
 				'average_confidence' => $this->recognition->average_confidence(),
 				'elementor_data' => $elementor_data,
 				'import_duration_ms' => (int) ($context['import_duration_ms'] ?? 0),
+				'container_compression' => $context['container_compression'] ?? array(),
 			)
 		);
 
@@ -212,6 +213,7 @@ final class VisualReconstructionOrchestrator
 				$this->tokens->name(),
 				$this->responsive->name(),
 				'layout_graph_emitter',
+				'container_tree_optimizer',
 				$this->geometry->name(),
 				$this->media->name(),
 				$this->css->name(),

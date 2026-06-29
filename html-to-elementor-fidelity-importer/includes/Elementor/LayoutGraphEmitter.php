@@ -65,6 +65,10 @@ final class LayoutGraphEmitter
 			}
 		}
 
+		if (!$this->should_emit_container($tree, true, false)) {
+			return 1 === count($elements) ? $elements[0] : null;
+		}
+
 		return $this->builder->emit_container($tree, $elements, true, false, 0.0);
 	}
 
@@ -116,7 +120,7 @@ final class LayoutGraphEmitter
 			return array();
 		}
 
-		if (!$this->should_emit_container($node, $is_section)) {
+		if (!$this->should_emit_container($node, $is_section, $parent_row)) {
 			return $out;
 		}
 
@@ -145,6 +149,15 @@ final class LayoutGraphEmitter
 			return $this->builder->emit_leaves($node);
 		}
 
+		$children = (array) ($node['children'] ?? array());
+		if (1 === count($children) && is_array($children[0]) && empty($node['text'])) {
+			$signals = VisualSignals::analyze($node);
+			if (!$signals['has_background'] && !$signals['has_border'] && !$signals['has_shadow']
+				&& !$signals['has_padding'] && '' === $role && empty($node['layoutConstraint'])) {
+				return $this->emit_node($children[0], $is_section, $parent_row, $parent_width);
+			}
+		}
+
 		return $this->emit_children($node, $is_section, $parent_row, $parent_width);
 	}
 
@@ -153,8 +166,9 @@ final class LayoutGraphEmitter
 	 *
 	 * @param array<string,mixed> $node       Node.
 	 * @param bool                $is_section Section root.
+	 * @param bool                $parent_row Parent lays out children in a row.
 	 */
-	private function should_emit_container(array $node, bool $is_section): bool
+	private function should_emit_container(array $node, bool $is_section, bool $parent_row): bool
 	{
 		if ($is_section) {
 			return true;
@@ -176,28 +190,71 @@ final class LayoutGraphEmitter
 			return true;
 		}
 
-		if (!empty($node['layoutConstraint'])) {
-			return true;
-		}
-
 		if (VisualSignals::is_layered($node)) {
 			return true;
 		}
 
 		$signals = VisualSignals::analyze($node);
-		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding']) {
 			return true;
 		}
 
 		$children = (array) ($node['children'] ?? array());
-		if (count($children) >= 2) {
+		if ($this->all_atomic_leaves($children)) {
+			if ($parent_row) {
+				return $this->column_stack_in_row($node, $children);
+			}
+
+			return false;
+		}
+
+		if (!empty($node['layoutConstraint']) && count($children) >= 2) {
 			return true;
 		}
 
-		if ($signals['has_padding']) {
-			return true;
+		return count($children) >= 2;
+	}
+
+	/**
+	 * Vertical stacks inside a row need a column container; horizontal groups hoist.
+	 *
+	 * @param array<string,mixed>            $node     Node.
+	 * @param array<int,array<string,mixed>> $children Child nodes.
+	 */
+	private function column_stack_in_row(array $node, array $children): bool
+	{
+		if (count($children) < 2) {
+			return false;
 		}
 
-		return false;
+		$constraint = $node['layoutConstraint'] ?? array();
+		if (!empty($constraint['direction'])) {
+			return 'column' === (string) $constraint['direction'];
+		}
+
+		$flex = strtolower((string) ($node['s']['fd'] ?? 'column'));
+		if (false !== strpos($flex, 'row')) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children Child nodes.
+	 */
+	private function all_atomic_leaves(array $children): bool
+	{
+		if (empty($children)) {
+			return false;
+		}
+
+		foreach ($children as $child) {
+			if (!is_array($child) || empty($child['atomic'])) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 }

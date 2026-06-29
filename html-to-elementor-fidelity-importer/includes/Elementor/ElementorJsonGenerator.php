@@ -91,6 +91,13 @@ final class ElementorJsonGenerator
 			$elements[] = $this->section_html_fallback($section);
 		}
 
+		$optimizer = new ContainerTreeOptimizer();
+		$elements = $optimizer->optimize($elements);
+		$compression = array_merge(
+			$optimizer->stats(),
+			$optimizer->depth_metrics($elements)
+		);
+
 		$stats = $this->converter->stats();
 		$tokens = $prepared['tokens'];
 
@@ -105,8 +112,9 @@ final class ElementorJsonGenerator
 			'widget_breakdown' => $stats['widget_breakdown'],
 			'components' => $stats['roles'],
 			'engines' => $this->last_engines,
-			'max_nesting_depth' => (int) ($stats['max_depth'] ?? 0),
+			'max_nesting_depth' => (int) ($compression['max_container_depth'] ?? 0),
 			'html_fallback_reasons' => $stats['html_fallback_reasons'] ?? array(),
+			'container_compression' => $compression,
 		);
 
 		$validated = $this->orchestrator->validate(
@@ -116,6 +124,7 @@ final class ElementorJsonGenerator
 				'sections' => $sections,
 				'screenshots' => $result->screenshots(),
 				'engines' => $this->last_engines,
+				'container_compression' => $compression,
 				'wrappers_eliminated' => (int) ($this->last_engines['wrappers_eliminated'] ?? 0),
 				'compare' => $opts['compare'] ?? null,
 				'threshold' => (int) ($opts['confidence'] ?? 95),

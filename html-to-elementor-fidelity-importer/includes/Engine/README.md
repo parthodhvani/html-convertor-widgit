@@ -27,6 +27,8 @@ ResponsiveLayoutEngine
     ↓
 LayoutGraphEmitter
     ↓
+ContainerTreeOptimizer (compress redundant containers)
+    ↓
 GeometryComparator
     ↓
 PixelRepairEngine (closed-loop)
