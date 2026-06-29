@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace HtmlToElementor\Elementor;
 
+use HtmlToElementor\Engine\AccordionRecognizer;
 use HtmlToElementor\Engine\CssMappingEngine;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
 
@@ -28,6 +29,7 @@ final class LayoutTreeConverter
 
     private CssMapper $css;
     private WidgetClassifier $classifier;
+    private AccordionRecognizer $accordion;
     private ?SemanticComponentRecognizer $recognition = null;
     private ?CssMappingEngine $css_engine = null;
 
@@ -42,6 +44,7 @@ final class LayoutTreeConverter
     {
         $this->css = $css ?? new CssMapper();
         $this->classifier = $classifier ?? new WidgetClassifier();
+        $this->accordion = new AccordionRecognizer();
         $this->reset_stats();
     }
 
@@ -104,6 +107,11 @@ final class LayoutTreeConverter
             }
         }
 
+        $accordion = $this->build_accordion($tree);
+        if (null !== $accordion) {
+            return $this->wrap_section($tree, array($accordion));
+        }
+
         if ($this->needs_fallback($tree)) {
             return $this->wrap_section($tree, array($this->html_widget($tree)));
         }
@@ -135,6 +143,11 @@ final class LayoutTreeConverter
 
         if ($this->needs_fallback($node)) {
             return array($this->html_widget($node));
+        }
+
+        $accordion = $this->build_accordion($node);
+        if (null !== $accordion) {
+            return array($accordion);
         }
 
         $children = array();
@@ -390,6 +403,43 @@ final class LayoutTreeConverter
             'spacer',
             array('space' => array('unit' => 'px', 'size' => round($height, 0))),
             $node
+        );
+    }
+
+    /**
+     * Reconstruct an accordion / FAQ block as a single native Elementor
+     * `accordion` widget, collapsing the wrapper/item markup entirely.
+     *
+     * @param array<string,mixed> $node Source node.
+     * @return array<string,mixed>|null Null when the node is not an accordion.
+     */
+    private function build_accordion(array $node): ?array
+    {
+        $detected = $this->accordion->detect($node);
+        if (null === $detected || count($detected['items']) < 2) {
+            return null;
+        }
+
+        $tabs = array();
+        foreach ($detected['items'] as $item) {
+            $tabs[] = array(
+                '_id' => ElementId::generate(),
+                'tab_title' => (string) $item['title'],
+                'tab_content' => (string) $item['content'],
+            );
+        }
+
+        $this->stats['widgets']++;
+        $this->stats['native_widgets']++;
+        $this->stats['widget_breakdown']['accordion'] = ($this->stats['widget_breakdown']['accordion'] ?? 0) + 1;
+        $this->stats['roles']['faq'] = ($this->stats['roles']['faq'] ?? 0) + 1;
+
+        return array(
+            'id' => ElementId::generate(),
+            'elType' => 'widget',
+            'widgetType' => 'accordion',
+            'settings' => array_merge(array('tabs' => $tabs), $this->identity($node)),
+            'elements' => array(),
         );
     }
 
