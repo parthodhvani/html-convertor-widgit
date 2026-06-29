@@ -191,6 +191,74 @@ function browserPageSegmenter() {
     return parts.join(' > ');
   }
 
+  function xpath(el) {
+    const parts = [];
+    let cur = el;
+    while (cur && cur.nodeType === 1) {
+      let index = 1;
+      let sib = cur.previousElementSibling;
+      while (sib) {
+        if (sib.tagName === cur.tagName) index += 1;
+        sib = sib.previousElementSibling;
+      }
+      parts.unshift(`${cur.tagName.toLowerCase()}[${index}]`);
+      cur = cur.parentElement;
+      if (cur === document.documentElement) {
+        parts.unshift('html[1]');
+        break;
+      }
+    }
+    return '/' + parts.join('/');
+  }
+
+  function pseudoStyle(el, pseudo) {
+    try {
+      const ps = window.getComputedStyle(el, pseudo);
+      const content = ps.content || '';
+      const hasContent = content && content !== 'none' && content !== 'normal' && content !== '""';
+      if (!hasContent && ps.display === 'none') {
+        return null;
+      }
+      return {
+        content,
+        display: ps.display,
+        color: ps.color,
+        background: ps.backgroundColor,
+        position: ps.position,
+        inset: {
+          top: ps.top,
+          right: ps.right,
+          bottom: ps.bottom,
+          left: ps.left,
+        },
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function extractCssVars(styleValues, cs) {
+    const found = new Set();
+    const probe = (v) => {
+      if (!v || typeof v !== 'string') return;
+      const m = v.match(/var\(\s*(--[a-zA-Z0-9\-_]+)/g);
+      if (!m) return;
+      m.forEach((token) => {
+        const name = token.replace(/var\(\s*/, '').trim();
+        if (name.startsWith('--')) found.add(name);
+      });
+    };
+    Object.keys(styleValues).forEach((k) => probe(styleValues[k]));
+    const vars = {};
+    found.forEach((name) => {
+      const resolved = cs.getPropertyValue(name);
+      if (resolved && resolved.trim()) {
+        vars[name] = resolved.trim();
+      }
+    });
+    return vars;
+  }
+
   function buildTree(el, depth) {
     if (depth > MAX_DEPTH || counter.n > MAX_NODES) return null;
     if (!isVisible(el)) return null;
@@ -203,16 +271,50 @@ function browserPageSegmenter() {
 
     const cs = window.getComputedStyle(el);
     const rect = el.getBoundingClientRect();
+    const styles = styleSet(cs);
+    const parent = el.parentElement;
+    const role = el.getAttribute('role') || '';
+    const before = pseudoStyle(el, '::before');
+    const after = pseudoStyle(el, '::after');
+    const vars = extractCssVars(styles, cs);
+
     const node = {
       tag,
       uid,
       id: el.id || '',
       cls: typeof el.className === 'string' ? el.className.trim() : '',
       text: directText(el),
-      s: styleSet(cs),
+      s: styles,
       bbox: { x: num(rect.x), y: num(rect.y), width: num(rect.width), height: num(rect.height) },
       domPath: domPath(el),
-      ariaRole: el.getAttribute('role') || '',
+      xpath: xpath(el),
+      ariaRole: role,
+      ariaLabel: el.getAttribute('aria-label') || '',
+      ariaLabelledby: el.getAttribute('aria-labelledby') || '',
+      ariaDescribedby: el.getAttribute('aria-describedby') || '',
+      a11yName: el.getAttribute('aria-label') || directText(el) || el.getAttribute('title') || '',
+      uniqueKey: `${tag}:${uid}:${el.id || ''}`,
+      parentUid: parent && parent.hasAttribute('data-h2e-uid') ? parent.getAttribute('data-h2e-uid') : '',
+      siblingIndex: parent ? Array.prototype.indexOf.call(parent.children, el) : 0,
+      siblingCount: parent ? parent.children.length : 0,
+      childCount: el.children.length,
+      visibleText: directText(el),
+      pseudo: { before, after },
+      states: {
+        hover: el.matches(':hover'),
+        focus: el.matches(':focus'),
+        active: el.matches(':active'),
+      },
+      stacking: {
+        zIndex: cs.zIndex,
+        position: cs.position,
+        opacity: cs.opacity,
+        transform: cs.transform,
+        filter: cs.filter,
+        mixBlendMode: cs.mixBlendMode,
+        isolation: cs.isolation,
+      },
+      cssVars: vars,
     };
 
     if (tag === 'img') {

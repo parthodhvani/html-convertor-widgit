@@ -53,6 +53,7 @@ final class ImportQualityReport
 			// Confidence and fallbacks.
 			'average_confidence' => round((float) ($meta['average_confidence'] ?? 0), 1),
 			'html_fallback_reasons' => $meta['fallback_reasons'] ?? array(),
+			'remaining_html_fallback_reasons' => $meta['fallback_reasons'] ?? array(),
 			// Operational.
 			'import_duration_ms' => (int) ($meta['import_duration_ms'] ?? 0),
 			'repair_iterations' => (int) ($validation['iterations'] ?? 0),

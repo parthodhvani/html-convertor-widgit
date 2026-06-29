@@ -94,6 +94,13 @@ final class LayoutGraphEngine implements EngineInterface
 	{
 		$tag = strtolower((string) ($node['tag'] ?? ''));
 		$cls = strtolower((string) ($node['cls'] ?? '') . ' ' . (string) ($node['id'] ?? ''));
+		$children = (array) ($node['children'] ?? array());
+		$layout = (string) ($node['layoutType'] ?? '');
+
+		$geometric = $this->infer_role_from_geometry($node, $children, $layout);
+		if ('' !== $geometric) {
+			return $geometric;
+		}
 
 		if ('nav' === $tag || preg_match('/\b(nav|navbar|menu)\b/', $cls)) {
 			return 'navigation';
@@ -138,6 +145,41 @@ final class LayoutGraphEngine implements EngineInterface
 			return 'content_group';
 		}
 
+		return '';
+	}
+
+	/**
+	 * @param array<string,mixed>            $node
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function infer_role_from_geometry(array $node, array $children, string $layout): string
+	{
+		$count = count($children);
+		$box = Geometry::bbox($node);
+		$wide = $box['width'] >= 900;
+		$tall = $box['height'] >= 360;
+
+		if ($wide && $tall && $count >= 2 && $this->has_large_heading($node)) {
+			return 'hero';
+		}
+		if (in_array($layout, array('row', 'grid'), true) && $count >= 3 && $this->cards_like_children($children)) {
+			return 'feature_grid';
+		}
+		if ('row' === $layout && $count >= 4 && $this->mostly_images($children)) {
+			return 'logo_cloud';
+		}
+		if ('row' === $layout && $count >= 2 && $this->contains_nav_signals($children)) {
+			return 'navigation';
+		}
+		if (in_array($layout, array('row', 'grid'), true) && $count >= 2 && $this->contains_price_signals($children)) {
+			return 'pricing';
+		}
+		if ('stack' === $layout && $count >= 3 && $this->contains_toggle_signals($children)) {
+			return 'faq';
+		}
+		if ($count >= 3 && $this->contains_stat_signals($children)) {
+			return 'statistics';
+		}
 		return '';
 	}
 
@@ -227,6 +269,115 @@ final class LayoutGraphEngine implements EngineInterface
 			}
 		}
 		return count($widths) >= 2;
+	}
+
+	/**
+	 * @param array<string,mixed> $node
+	 */
+	private function has_large_heading(array $node): bool
+	{
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			if (preg_match('/^h[1-2]$/', $tag)) {
+				$fs = (string) ($child['s']['fs'] ?? '');
+				if ((float) $fs >= 34) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function cards_like_children(array $children): bool
+	{
+		$cards = 0;
+		foreach ($children as $child) {
+			$s = (array) ($child['s'] ?? array());
+			if (!empty($s['bg']) || !empty($s['bdw']) || !empty($s['sh']) || !empty($s['br'])) {
+				++$cards;
+			}
+		}
+		return $cards >= max(2, (int) floor(count($children) * 0.5));
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function mostly_images(array $children): bool
+	{
+		$images = 0;
+		foreach ($children as $child) {
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			if ('img' === $tag || !empty($child['src'])) {
+				++$images;
+			}
+		}
+		return $images >= max(2, (int) floor(count($children) * 0.6));
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function contains_nav_signals(array $children): bool
+	{
+		foreach ($children as $child) {
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			if (in_array($tag, array('ul', 'ol', 'nav'), true)) {
+				return true;
+			}
+			$text = strtolower(trim((string) ($child['text'] ?? '')));
+			if (preg_match('/\b(home|about|contact|services|blog)\b/', $text)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function contains_price_signals(array $children): bool
+	{
+		foreach ($children as $child) {
+			$text = strtolower((string) ($child['text'] ?? ''));
+			if (preg_match('/(\$|€|£)\s?\d+|\/mo|per month|monat/', $text)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function contains_toggle_signals(array $children): bool
+	{
+		foreach ($children as $child) {
+			$text = strtolower((string) ($child['text'] ?? ''));
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			if (preg_match('/\?$|faq|question|answer/', $text) || preg_match('/accordion|toggle/', $cls)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $children
+	 */
+	private function contains_stat_signals(array $children): bool
+	{
+		$hits = 0;
+		foreach ($children as $child) {
+			$text = (string) ($child['text'] ?? '');
+			if (preg_match('/\d+(\+|%|k|m)?/i', $text)) {
+				++$hits;
+			}
+		}
+		return $hits >= 2;
 	}
 
 	/**

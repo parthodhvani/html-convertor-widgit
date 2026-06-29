@@ -70,7 +70,7 @@ final class WhitespaceAnalyzer implements EngineInterface
 	{
 		$children = (array) ($node['children'] ?? array());
 		if (count($children) >= 2) {
-			$whitespace = $this->measure_sibling_whitespace($children);
+			$whitespace = $this->measure_sibling_whitespace($children, $node);
 			$node['whitespace'] = $whitespace;
 
 			if ($whitespace['gap'] > 0) {
@@ -102,7 +102,7 @@ final class WhitespaceAnalyzer implements EngineInterface
 	 * @param array<int,array<string,mixed>> $children Siblings.
 	 * @return array<string,mixed>
 	 */
-	private function measure_sibling_whitespace(array $children): array
+	private function measure_sibling_whitespace(array $children, array $parent): array
 	{
 		$boxes = array_map(array(Geometry::class, 'bbox'), $children);
 		$constraint = $children[0]['layoutConstraint'] ?? array();
@@ -118,7 +118,7 @@ final class WhitespaceAnalyzer implements EngineInterface
 			}
 		}
 
-		$parent_box = Geometry::bbox($children[0]);
+		$parent_box = Geometry::bbox($parent);
 		$min_x = min(array_map(fn($b) => $b['x'], $boxes));
 		$min_y = min(array_map(fn($b) => $b['y'], $boxes));
 		$max_r = max(array_map(fn($b) => $b['x'] + $b['width'], $boxes));

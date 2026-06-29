@@ -31,6 +31,12 @@ final class RegressionSuiteTest extends TestCase
 			'tailwind' => array($self->tailwind_layout()),
 			'html5up' => array($self->html5up_layout()),
 			'nested_flex' => array($self->nested_flex_layout()),
+			'bootstrapmade' => array($self->bootstrapmade_layout()),
+			'agency' => array($self->agency_layout()),
+			'business' => array($self->business_layout()),
+			'portfolio' => array($self->portfolio_layout()),
+			'docs' => array($self->docs_layout()),
+			'complex_grid' => array($self->complex_grid_layout()),
 		);
 	}
 
