@@ -14,8 +14,11 @@ use HtmlToElementor\Engine\ComponentRecognitionEngine;
 use HtmlToElementor\Engine\AlignmentEngine;
 use HtmlToElementor\Engine\ConstraintLayoutSolver;
 use HtmlToElementor\Engine\Geometry;
+use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\PixelRepairEngine;
+use HtmlToElementor\Engine\SemanticComponentGraph;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
+use HtmlToElementor\Engine\VisualLeafClassifier;
 use HtmlToElementor\Engine\VisualTreeBuilder;
 use HtmlToElementor\Engine\WhitespaceAnalyzer;
 use HtmlToElementor\Engine\DesignTokenExtractor;
@@ -56,28 +59,126 @@ final class EngineTest extends TestCase
 		$this->assertSame(1, $engine->eliminated_count());
 	}
 
-	public function test_layout_graph_detects_hero_and_navigation(): void
+	public function test_layout_graph_detects_row_and_stack(): void
 	{
 		$engine = new LayoutGraphEngine();
 		$sections = array(
-			array('tree' => array('tag' => 'section', 'cls' => 'page-hero', 's' => array(), 'children' => array())),
-			array('tree' => array('tag' => 'nav', 'cls' => 'nav-links', 's' => array(), 'children' => array())),
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'flex', 'fd' => 'row'),
+					'children' => array(
+						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
+						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 320, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
+					),
+				),
+			),
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'block'),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 's' => array(), 'children' => array()),
+						array('tag' => 'p', 'atomic' => true, 's' => array(), 'children' => array()),
+					),
+				),
+			),
 		);
 		$out = $engine->build($sections);
-		$this->assertSame('hero', $out[0]['tree']['layoutRole']);
-		$this->assertSame('navigation', $out[1]['tree']['layoutRole']);
+		$this->assertSame('row', $out[0]['tree']['layoutType']);
+		$this->assertContains($out[1]['tree']['layoutType'] ?? '', array('stack', 'row'));
 	}
 
-	public function test_component_recognition_prefers_native_hero_over_html_fallback(): void
+	public function test_semantic_graph_detects_layered_block_and_horizontal_bar(): void
+	{
+		$solver = new ConstraintLayoutSolver();
+		$graph = new SemanticComponentGraph();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'section',
+					's' => array('pos' => 'relative', 'h' => 380),
+					'children' => array(
+						array('tag' => 'img', 'src' => 'https://example.com/bg.jpg', 'atomic' => true, 's' => array('w' => 1440, 'h' => 380)),
+						array('tag' => 'div', 's' => array('pos' => 'absolute'), 'children' => array()),
+					),
+				),
+			),
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'flex', 'fd' => 'row', 'w' => 1200, 'h' => 64),
+					'children' => array(
+						array('tag' => 'span', 'text' => 'Brand', 'atomic' => true, 's' => array()),
+						array('tag' => 'a', 'text' => 'Home', 'atomic' => true, 's' => array()),
+					),
+				),
+			),
+		);
+		$sections = $solver->solve($sections);
+		$out = $graph->build($sections);
+		$this->assertSame('layered_block', $out[0]['tree']['layoutRole']);
+		$this->assertSame('horizontal_bar', $out[1]['tree']['layoutRole']);
+	}
+
+	public function test_component_recognition_prefers_native_layered_block_over_html_fallback(): void
 	{
 		$engine = new SemanticComponentRecognizer();
-		$hero = array(
+		$layered = array(
 			'tag' => 'section',
-			'cls' => 'page-hero',
-			'layoutRole' => 'hero',
+			'layoutRole' => 'layered_block',
+			'layeredLayout' => array('background' => null, 'content' => array(), 'in_flow' => array()),
 			'children' => array(array('tag' => 'div', 's' => array('pos' => 'absolute'))),
 		);
-		$this->assertFalse($engine->container_needs_fallback($hero));
+		$this->assertFalse($engine->container_needs_fallback($layered));
+	}
+
+	public function test_visual_leaf_classifier_uses_typography_not_tags(): void
+	{
+		$classifier = new VisualLeafClassifier();
+		$result = $classifier->classify(array(
+			'tag' => 'div',
+			'text' => 'Big Title',
+			'atomic' => true,
+			's' => array('fs' => '48px', 'fw' => '800', 'color' => 'rgb(0,0,0)'),
+		));
+		$this->assertSame('widget', $result['kind'] ?? '');
+		$this->assertSame('heading', $result['type'] ?? '');
+	}
+
+	public function test_layered_layout_solver_builds_container(): void
+	{
+		$solver = new LayeredLayoutSolver(new \HtmlToElementor\Elementor\CssMapper());
+		$node = array(
+			's' => array('h' => 380),
+			'layeredLayout' => array(
+				'background' => array('src' => 'https://example.com/hero.jpg', 's' => array()),
+				'overlay' => null,
+				'content' => array(
+					array(
+						'tag' => 'div',
+						'children' => array(
+							array('tag' => 'h1', 'text' => 'Hello', 'atomic' => true, 's' => array('fs' => '48px')),
+						),
+					),
+				),
+				'in_flow' => array(),
+			),
+		);
+		$converter = new \HtmlToElementor\Elementor\LayoutTreeConverter();
+		$container = $solver->to_container(
+			$node,
+			function (array $n) use ($converter): array {
+				$el = $converter->convert_section($n);
+				return null !== $el ? array($el) : array();
+			},
+			static function (string $r): void {
+				unset($r);
+			}
+		);
+		$this->assertNotNull($container);
+		$this->assertSame('container', $container['elType']);
+		$this->assertArrayHasKey('background_image', $container['settings']);
 	}
 
 	public function test_constraint_solver_detects_horizontal_stack(): void

@@ -14,8 +14,9 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Layout Graph Engine — infers sections, rows, columns, stacks, heroes, nav,
- * cards and other visual regions using geometry, spacing and gestalt cues.
+ * Layout Graph Engine — infers structural layout types (row, stack, grid)
+ * from geometry and computed display properties. Semantic roles are assigned
+ * later by SemanticComponentGraph.
  */
 final class LayoutGraphEngine implements EngineInterface
 {
@@ -65,15 +66,10 @@ final class LayoutGraphEngine implements EngineInterface
 	 */
 	private function annotate(array &$node): void
 	{
-		$role = $this->infer_role($node);
-		if ('' !== $role) {
-			$node['layoutRole'] = $role;
-			$this->detected[$role] = ($this->detected[$role] ?? 0) + 1;
-		}
-
 		$layout = $this->infer_layout_type($node);
 		if ('' !== $layout) {
 			$node['layoutType'] = $layout;
+			$this->detected[$layout] = ($this->detected[$layout] ?? 0) + 1;
 		}
 
 		foreach ((array) ($node['children'] ?? array()) as $i => $child) {
@@ -83,62 +79,6 @@ final class LayoutGraphEngine implements EngineInterface
 			$this->annotate($child);
 			$node['children'][$i] = $child;
 		}
-	}
-
-	/**
-	 * Infer a semantic component role from visual + DOM cues.
-	 *
-	 * @param array<string,mixed> $node Tree node.
-	 */
-	private function infer_role(array $node): string
-	{
-		$tag = strtolower((string) ($node['tag'] ?? ''));
-		$cls = strtolower((string) ($node['cls'] ?? '') . ' ' . (string) ($node['id'] ?? ''));
-
-		if ('nav' === $tag || preg_match('/\b(nav|navbar|menu)\b/', $cls)) {
-			return 'navigation';
-		}
-		if ('footer' === $tag || preg_match('/\bfooter\b/', $cls)) {
-			return 'footer';
-		}
-		if ('header' === $tag) {
-			return 'header';
-		}
-		if (preg_match('/\b(page-hero|hero|banner|masthead|jumbotron)\b/', $cls)) {
-			return 'hero';
-		}
-		if (preg_match('/\b(cta|call-to-action|erstberatung)\b/', $cls)) {
-			return 'cta';
-		}
-		if (preg_match('/\b(card|box|eb-box)\b/', $cls)) {
-			return 'card';
-		}
-		if (preg_match('/\b(form|kontakt-form)\b/', $cls) || 'form' === $tag) {
-			return 'form';
-		}
-		if (preg_match('/\b(gallery|carousel)\b/', $cls)) {
-			return 'gallery';
-		}
-		if (preg_match('/\b(pricing|price-table)\b/', $cls)) {
-			return 'pricing';
-		}
-		if (preg_match('/\b(testimonial|review)\b/', $cls)) {
-			return 'testimonial';
-		}
-		if (preg_match('/\b(faq|accordion)\b/', $cls)) {
-			return 'faq';
-		}
-		if (preg_match('/\b(map|anfahrt|map-placeholder)\b/', $cls)) {
-			return 'media_block';
-		}
-		if (preg_match('/\b(sidebar|aside)\b/', $cls) || 'aside' === $tag) {
-			return 'sidebar';
-		}
-		if (preg_match('/\b(info-block|feature|service)\b/', $cls)) {
-			return 'content_group';
-		}
-
-		return '';
 	}
 
 	/**

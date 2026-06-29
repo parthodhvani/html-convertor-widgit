@@ -1,0 +1,108 @@
+<?php
+/**
+ * Reconstructs layered (absolute-positioned) layouts generically.
+ *
+ * @package HtmlToElementor
+ */
+
+declare(strict_types=1);
+
+namespace HtmlToElementor\Engine;
+
+use HtmlToElementor\Elementor\CssMapper;
+use HtmlToElementor\Elementor\ElementId;
+
+if (!defined('ABSPATH')) {
+	exit;
+}
+
+/**
+ * Layered Layout Solver — converts any layered visual group (hero, banner, card
+ * with overlay) into a single Elementor container using geometry, not class names.
+ */
+final class LayeredLayoutSolver
+{
+
+	public function __construct(private CssMapper $css)
+	{
+	}
+
+	/**
+	 * Build an Elementor container from a layered node.
+	 *
+	 * @param array<string,mixed>             $node            Source node.
+	 * @param callable                          $convert_content fn(node): array<elements>.
+	 * @param callable                          $on_container    fn(role): void stats callback.
+	 * @return array<string,mixed>|null
+	 */
+	public function to_container(array $node, callable $convert_content, callable $on_container): ?array
+	{
+		$layers = $node['layeredLayout'] ?? null;
+		if (!is_array($layers)) {
+			if (!VisualSignals::is_layered($node)) {
+				return null;
+			}
+			$graph = new SemanticComponentGraph();
+			$copy = $node;
+			$graph->build(array(array('tree' => &$copy)));
+			$layers = $copy['layeredLayout'] ?? null;
+		}
+		if (!is_array($layers)) {
+			return null;
+		}
+
+		$content_elements = array();
+		foreach ((array) ($layers['content'] ?? array()) as $content_node) {
+			foreach ($convert_content($content_node) as $el) {
+				$content_elements[] = $el;
+			}
+		}
+		foreach ((array) ($layers['in_flow'] ?? array()) as $flow_node) {
+			foreach ($convert_content($flow_node) as $el) {
+				$content_elements[] = $el;
+			}
+		}
+
+		$box = Geometry::bbox($node);
+		$settings = array_merge(
+			array(
+				'content_width' => 'full',
+				'flex_direction' => 'column',
+				'min_height' => array(
+					'unit' => 'px',
+					'size' => max(120, (float) ($box['height'] ?: ($node['s']['h'] ?? 0))),
+				),
+			),
+			$this->css->background($node),
+			$this->css->sizing($node)
+		);
+
+		$bg = $layers['background'] ?? null;
+		if (is_array($bg)) {
+			$src = (string) ($bg['src'] ?? '');
+			if ('' !== $src) {
+				$settings['background_background'] = 'classic';
+				$settings['background_image'] = array('url' => $src, 'id' => '');
+				$settings['background_position'] = 'center center';
+				$settings['background_size'] = 'cover';
+			} elseif (!empty($bg['s']['bgImg'])) {
+				$settings['_h2e_layer_bg'] = (string) $bg['s']['bgImg'];
+			}
+		}
+
+		$overlay = $layers['overlay'] ?? null;
+		if (is_array($overlay) && !empty($overlay['s']['bgImg'])) {
+			$settings['_h2e_layer_overlay'] = (string) $overlay['s']['bgImg'];
+		}
+
+		$on_container('layered_block');
+
+		return array(
+			'id' => ElementId::generate(),
+			'elType' => 'container',
+			'settings' => $settings,
+			'elements' => array_values($content_elements),
+			'isInner' => false,
+		);
+	}
+}

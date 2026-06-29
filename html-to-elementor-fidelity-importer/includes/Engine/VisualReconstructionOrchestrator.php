@@ -30,6 +30,7 @@ final class VisualReconstructionOrchestrator
 	private VisualTreeBuilder $visual_tree;
 	private LayoutGraphEngine $layout_graph;
 	private ConstraintLayoutSolver $constraint_solver;
+	private SemanticComponentGraph $semantic_graph;
 	private WhitespaceAnalyzer $whitespace;
 	private AlignmentEngine $alignment;
 	private WrapperEliminationEngine $wrapper_elimination;
@@ -56,6 +57,7 @@ final class VisualReconstructionOrchestrator
 		$this->visual_tree = new VisualTreeBuilder();
 		$this->layout_graph = new LayoutGraphEngine();
 		$this->constraint_solver = new ConstraintLayoutSolver();
+		$this->semantic_graph = new SemanticComponentGraph();
 		$this->whitespace = new WhitespaceAnalyzer();
 		$this->alignment = new AlignmentEngine();
 		$this->wrapper_elimination = new WrapperEliminationEngine();
@@ -92,6 +94,7 @@ final class VisualReconstructionOrchestrator
 		$sections = $this->visual_tree->build($sections);
 		$sections = $this->layout_graph->build($sections);
 		$sections = $this->constraint_solver->solve($sections);
+		$sections = $this->semantic_graph->build($sections);
 		$sections = $this->whitespace->analyze($sections);
 		$sections = $this->alignment->apply($sections);
 		$sections = $this->wrapper_elimination->process_sections($sections);
@@ -200,6 +203,7 @@ final class VisualReconstructionOrchestrator
 				$this->visual_tree->name(),
 				$this->layout_graph->name(),
 				$this->constraint_solver->name(),
+				$this->semantic_graph->name(),
 				$this->whitespace->name(),
 				$this->alignment->name(),
 				$this->wrapper_elimination->name(),
@@ -215,7 +219,10 @@ final class VisualReconstructionOrchestrator
 			),
 			'wrappers_eliminated' => $this->wrapper_elimination->eliminated_count(),
 			'visual_restructured' => $this->visual_tree->restructured_count(),
-			'layout_components' => $this->layout_graph->detected_components(),
+			'layout_components' => array_merge(
+				$this->layout_graph->detected_components(),
+				$this->semantic_graph->detected_components()
+			),
 			'measured_gaps' => $this->whitespace->measured_gaps(),
 		);
 	}
