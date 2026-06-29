@@ -96,7 +96,7 @@ final class ElementorJsonGenerator
 
 		$report = array(
 			'mode' => 'native',
-			'engine_version' => 3,
+			'engine_version' => 4,
 			'sections' => count($sections),
 			'containers' => (int) $stats['containers'],
 			'widgets' => (int) $stats['widgets'],

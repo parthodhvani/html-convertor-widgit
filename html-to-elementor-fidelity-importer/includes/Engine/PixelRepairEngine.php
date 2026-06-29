@@ -45,6 +45,9 @@ final class PixelRepairEngine implements EngineInterface
 		$repairs = array();
 		$iteration = 0;
 		$sections = $context['sections'] ?? array();
+		$comparator = new GeometryComparator();
+		$best_geometry = (int) (($context['validation']['geometry_similarity'] ?? 0));
+		$threshold = (int) ($context['validation']['threshold'] ?? $context['threshold'] ?? 95);
 
 		while ($iteration < $this->max_iterations) {
 			$round_changed = false;
@@ -52,13 +55,25 @@ final class PixelRepairEngine implements EngineInterface
 			$elementor_data = $this->apply_layout_constraints($elementor_data, $sections, $round_changed, $repairs);
 			$elementor_data = $this->promote_simple_html($elementor_data, $round_changed, $repairs);
 			$elementor_data = $this->fix_container_flex($elementor_data, $round_changed, $repairs);
+			$elementor_data = $this->strip_container_margins($elementor_data, $round_changed, $repairs);
 			$elementor_data = $this->apply_gap_from_source($elementor_data, $sections, $round_changed, $repairs);
+			$elementor_data = $this->apply_padding_from_whitespace($elementor_data, $sections, $round_changed, $repairs);
 
 			if (!$round_changed) {
 				break;
 			}
 			$changed = true;
 			++$iteration;
+
+			$geo = $comparator->compare($sections, $elementor_data);
+			$geometry_score = (int) ($geo['geometry_similarity'] ?? 0);
+			if ($geometry_score <= $best_geometry) {
+				break;
+			}
+			$best_geometry = $geometry_score;
+			if ($geometry_score >= $threshold) {
+				break;
+			}
 		}
 
 		return array(
@@ -66,6 +81,7 @@ final class PixelRepairEngine implements EngineInterface
 			'iterations' => $iteration,
 			'changed' => $changed,
 			'repairs' => $repairs,
+			'geometry_similarity' => $best_geometry,
 		);
 	}
 
@@ -272,6 +288,106 @@ final class PixelRepairEngine implements EngineInterface
 				$repairs[] = 'inferred_gap';
 			}
 			$elements[$i]['elements'] = $this->set_gap_recursive((array) ($el['elements'] ?? array()), $gap, $changed, $repairs);
+		}
+		return $elements;
+	}
+
+	/**
+	 * Remove margin controls from containers — spacing belongs in gap/padding.
+	 *
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @param bool                           $changed  Changed flag.
+	 * @param array<int,string>              $repairs  Repair log.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function strip_container_margins(array $elements, bool &$changed, array &$repairs): array
+	{
+		foreach ($elements as $i => $el) {
+			if ('container' === ($el['elType'] ?? '') && isset($el['settings']['margin'])) {
+				unset($elements[$i]['settings']['margin']);
+				$changed = true;
+				$repairs[] = 'strip_margin';
+			}
+			$elements[$i]['elements'] = $this->strip_container_margins(
+				(array) ($el['elements'] ?? array()),
+				$changed,
+				$repairs
+			);
+		}
+		return $elements;
+	}
+
+	/**
+	 * Apply measured padding from whitespace analyzer.
+	 *
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 * @param bool                           $changed  Changed flag.
+	 * @param array<int,string>              $repairs  Repair log.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function apply_padding_from_whitespace(array $elements, array $sections, bool &$changed, array &$repairs): array
+	{
+		$padding_map = array();
+		foreach ($sections as $section) {
+			$this->walk_padding($section['tree'] ?? null, $padding_map);
+		}
+		return $this->set_padding_recursive($elements, $padding_map, $changed, $repairs);
+	}
+
+	/**
+	 * @param array<string,mixed>|null            $node Node.
+	 * @param array<string,array<string,mixed>>   $map  Padding map (by ref).
+	 */
+	private function walk_padding($node, array &$map): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		$ws = $node['whitespace'] ?? array();
+		if (!empty($ws['padding']) && is_array($ws['padding'])) {
+			$cls = (string) ($node['cls'] ?? '');
+			if ('' !== $cls) {
+				$map[$cls] = $ws['padding'];
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->walk_padding($child, $map);
+		}
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>>    $elements Elements.
+	 * @param array<string,array<string,mixed>> $map      Padding map.
+	 * @param bool                              $changed  Changed flag.
+	 * @param array<int,string>                 $repairs  Repair log.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function set_padding_recursive(array $elements, array $map, bool &$changed, array &$repairs): array
+	{
+		foreach ($elements as $i => $el) {
+			if ('container' === ($el['elType'] ?? '')) {
+				$cls = (string) ($el['settings']['_css_classes'] ?? '');
+				if ('' !== $cls && isset($map[$cls]) && empty($el['settings']['padding'])) {
+					$p = $map[$cls];
+					$elements[$i]['settings']['padding'] = array(
+						'unit' => 'px',
+						'top' => (string) round((float) ($p['top'] ?? 0)),
+						'right' => (string) round((float) ($p['right'] ?? 0)),
+						'bottom' => (string) round((float) ($p['bottom'] ?? 0)),
+						'left' => (string) round((float) ($p['left'] ?? 0)),
+						'isLinked' => false,
+					);
+					$changed = true;
+					$repairs[] = 'padding:' . $cls;
+				}
+			}
+			$elements[$i]['elements'] = $this->set_padding_recursive(
+				(array) ($el['elements'] ?? array()),
+				$map,
+				$changed,
+				$repairs
+			);
 		}
 		return $elements;
 	}

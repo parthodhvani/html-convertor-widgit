@@ -35,12 +35,17 @@ final class ImportQualityReport
 		$data = (array) ($meta['elementor_data'] ?? array());
 
 		return array(
-			// Primary visual metrics (priority order).
+			// Primary visual metrics (v4 geometry-first).
 			'visual_fidelity_score' => (int) ($validation['fidelity'] ?? 0),
+			'geometry_similarity' => (int) ($validation['geometry_similarity'] ?? 0),
+			'bbox_delta' => (float) ($validation['bbox_delta'] ?? 0),
+			'position_rmse' => (float) ($validation['position_rmse'] ?? 0),
+			'size_rmse' => (float) ($validation['size_rmse'] ?? 0),
 			'layout_similarity' => (int) ($validation['layout_similarity'] ?? $validation['layout'] ?? 0),
 			'spacing_similarity' => (int) ($validation['spacing_similarity'] ?? $validation['spacing'] ?? 0),
 			'typography_similarity' => (int) ($validation['typography_similarity'] ?? $validation['typography'] ?? 0),
 			'responsive_similarity' => (int) ($validation['responsive_similarity'] ?? 0),
+			'pixel_similarity' => (int) ($validation['pixel_similarity'] ?? $validation['screenshot'] ?? 0),
 			// Secondary widget metrics.
 			'native_widget_ratio' => round($native / $total * 100, 1),
 			'html_widget_ratio' => round($html / $total * 100, 1),

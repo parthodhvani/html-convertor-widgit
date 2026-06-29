@@ -14,6 +14,7 @@ use HtmlToElementor\Engine\ComponentRecognitionEngine;
 use HtmlToElementor\Engine\AlignmentEngine;
 use HtmlToElementor\Engine\ConstraintLayoutSolver;
 use HtmlToElementor\Engine\Geometry;
+use HtmlToElementor\Engine\GeometryComparator;
 use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\PixelRepairEngine;
 use HtmlToElementor\Engine\SemanticComponentGraph;
@@ -384,6 +385,87 @@ final class EngineTest extends TestCase
 		$this->assertTrue($result['changed']);
 	}
 
+	public function test_geometry_comparator_produces_rmse_metrics(): void
+	{
+		$comparator = new GeometryComparator();
+		$sections = array(
+			array(
+				'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 200),
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'hero',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 200),
+					'layoutConstraint' => array('direction' => 'column', 'gap' => 24),
+					'children' => array(
+						array(
+							'tag' => 'h1',
+							'text' => 'Title',
+							'atomic' => true,
+							'bbox' => array('x' => 0, 'y' => 0, 'width' => 400, 'height' => 48),
+							's' => array('fs' => '48px'),
+						),
+					),
+				),
+			),
+		);
+		$elementor = array(
+			array(
+				'elType' => 'container',
+				'settings' => array('_css_classes' => 'hero', 'flex_direction' => 'column', 'flex_gap' => array('size' => 24)),
+				'elements' => array(
+					array('elType' => 'widget', 'widgetType' => 'heading', 'settings' => array(), 'elements' => array()),
+				),
+				'isInner' => false,
+			),
+		);
+		$result = $comparator->compare($sections, $elementor);
+		$this->assertArrayHasKey('geometry_similarity', $result);
+		$this->assertArrayHasKey('bbox_delta', $result);
+		$this->assertArrayHasKey('position_rmse', $result);
+		$this->assertGreaterThan(0, $result['geometry_similarity']);
+	}
+
+	public function test_layout_graph_emitter_hoists_transparent_wrapper(): void
+	{
+		$converter = new \HtmlToElementor\Elementor\LayoutTreeConverter();
+		$tree = array(
+			'tag' => 'section',
+			'cls' => 'section',
+			's' => array('disp' => 'block'),
+			'layoutConstraint' => array('direction' => 'column'),
+			'children' => array(
+				array(
+					'tag' => 'div',
+					's' => array('disp' => 'block'),
+					'children' => array(
+						array('tag' => 'p', 'text' => 'Hello', 'atomic' => true, 's' => array('fs' => '16px')),
+					),
+				),
+			),
+		);
+		$result = $converter->convert_section($tree);
+		$this->assertNotNull($result);
+		$this->assertSame('container', $result['elType']);
+		$widgets = $this->collect_widgets($result);
+		$this->assertContains('text-editor', $widgets);
+	}
+
+	/**
+	 * @param array<string,mixed> $el Element.
+	 * @return array<int,string>
+	 */
+	private function collect_widgets(array $el): array
+	{
+		$types = array();
+		if ('widget' === ($el['elType'] ?? '')) {
+			$types[] = (string) ($el['widgetType'] ?? '');
+		}
+		foreach ((array) ($el['elements'] ?? array()) as $child) {
+			$types = array_merge($types, $this->collect_widgets($child));
+		}
+		return $types;
+	}
+
 	public function test_orchestrator_prepare_enriches_sections(): void
 	{
 		$layout = array(
@@ -405,7 +487,7 @@ final class EngineTest extends TestCase
 		$orch = new VisualReconstructionOrchestrator();
 		$prepared = $orch->prepare(RenderResult::from_array($layout));
 		$this->assertArrayHasKey('engines', $prepared);
-		$this->assertSame(3, $prepared['engines']['version']);
+		$this->assertSame(4, $prepared['engines']['version']);
 		$this->assertNotEmpty($prepared['tokens']);
 	}
 }

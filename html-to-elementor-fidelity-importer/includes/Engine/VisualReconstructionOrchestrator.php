@@ -16,12 +16,8 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Visual Reconstruction Orchestrator v3 — geometry-first pipeline:
- *
- *   Chromium → Visual Extraction → Visual Tree → Layout Graph
- *   → Constraint Solver → Whitespace → Alignment → Wrapper Elimination
- *   → Semantic Recognition → Tokens → Responsive → Elementor JSON
- *   → Visual Validation → Pixel Repair → Quality Report
+ * Visual Reconstruction Orchestrator v4 — geometry-first pipeline with
+ * LayoutGraphEmitter and GeometryComparator validation loop.
  */
 final class VisualReconstructionOrchestrator
 {
@@ -42,6 +38,7 @@ final class VisualReconstructionOrchestrator
 	private CssMappingEngine $css;
 	private AnimationEngine $animation;
 	private VisualValidationEngine $validation;
+	private GeometryComparator $geometry;
 	private PixelRepairEngine $repair;
 	private ImportQualityReport $quality;
 
@@ -69,6 +66,7 @@ final class VisualReconstructionOrchestrator
 		$this->css = new CssMappingEngine();
 		$this->animation = new AnimationEngine();
 		$this->validation = new VisualValidationEngine($threshold, $max_repair);
+		$this->geometry = new GeometryComparator();
 		$this->repair = new PixelRepairEngine($max_repair);
 		$this->quality = new ImportQualityReport();
 	}
@@ -152,6 +150,9 @@ final class VisualReconstructionOrchestrator
 			$validation = $this->validation->score($elementor_data, $context);
 			$validation['iterations'] = $repair_result['iterations'];
 			$validation['repairs'] = $repair_result['repairs'];
+			if (isset($repair_result['geometry_similarity'])) {
+				$validation['geometry_similarity'] = $repair_result['geometry_similarity'];
+			}
 		}
 
 		$validation['threshold'] = (int) ($context['threshold'] ?? 95);
@@ -197,7 +198,7 @@ final class VisualReconstructionOrchestrator
 	private function engine_metadata(): array
 	{
 		return array(
-			'version' => 3,
+			'version' => 4,
 			'pipeline' => array(
 				$this->extraction->name(),
 				$this->visual_tree->name(),
@@ -209,8 +210,9 @@ final class VisualReconstructionOrchestrator
 				$this->wrapper_elimination->name(),
 				$this->recognition->name(),
 				$this->tokens->name(),
-				$this->widget_mapper->name(),
 				$this->responsive->name(),
+				'layout_graph_emitter',
+				$this->geometry->name(),
 				$this->media->name(),
 				$this->css->name(),
 				$this->animation->name(),

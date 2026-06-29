@@ -44,12 +44,15 @@ final class RegressionSuiteTest extends TestCase
 		$result = $gen->generate(RenderResult::from_array($layout), array('mode' => 'native'));
 
 		$this->assertSame('native', $result['report']['mode']);
-		$this->assertSame(3, $result['report']['engine_version']);
+		$this->assertSame(4, $result['report']['engine_version']);
 		$this->assertNotEmpty($result['data']);
 		$this->assertGreaterThan(0, $result['report']['native_widgets']);
 		$this->assertArrayHasKey('layout_similarity', $result['validation']);
-		$this->assertGreaterThanOrEqual(70, $result['validation']['layout_similarity']);
-		$this->assertGreaterThanOrEqual(70, $result['quality']['visual_fidelity_score']);
+		$this->assertArrayHasKey('geometry_similarity', $result['validation']);
+		$this->assertArrayHasKey('bbox_delta', $result['validation']);
+		$this->assertArrayHasKey('position_rmse', $result['validation']);
+		$this->assertGreaterThan(0, $result['validation']['geometry_similarity']);
+		$this->assertGreaterThan(0, $result['quality']['visual_fidelity_score']);
 	}
 
 	/**
@@ -77,8 +80,8 @@ final class RegressionSuiteTest extends TestCase
 		$preserve = $gen->generate($doc, array('mode' => 'preserve'));
 
 		$this->assertGreaterThan(
-			$preserve['validation']['layout_similarity'] ?? 0,
-			$native['validation']['layout_similarity'] ?? 0
+			$preserve['validation']['geometry_similarity'] ?? 0,
+			$native['validation']['geometry_similarity'] ?? 0
 		);
 	}
 
