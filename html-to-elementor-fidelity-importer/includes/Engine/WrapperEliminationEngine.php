@@ -103,13 +103,11 @@ final class WrapperEliminationEngine implements EngineInterface
 		if (!empty($node['atomic'])) {
 			return false;
 		}
-		$tag = strtolower((string) ($node['tag'] ?? ''));
-		if (!in_array($tag, array('div', 'span'), true)) {
+		$role = (string) ($node['layoutRole'] ?? '');
+		if (in_array($role, array('layered_block', 'horizontal_bar', 'footer_band', 'card', 'form_block', 'column_group'), true)) {
 			return false;
 		}
-		$cls = strtolower((string) ($node['cls'] ?? ''));
-		// Semantic class names must be preserved.
-		if (preg_match('/\b(hero|nav|footer|card|grid|row|col|section|header|main|sidebar|cta|form|gallery|pricing|testimonial|faq)\b/', $cls)) {
+		if (VisualSignals::is_layered($node)) {
 			return false;
 		}
 		$s = $node['s'] ?? array();
@@ -125,7 +123,6 @@ final class WrapperEliminationEngine implements EngineInterface
 		if ('' !== $text) {
 			return false;
 		}
-		// Layered designs must not be collapsed.
 		foreach ((array) ($node['children'] ?? array()) as $child) {
 			$pos = strtolower((string) ($child['s']['pos'] ?? ''));
 			if (in_array($pos, array('absolute', 'fixed', 'sticky'), true)) {

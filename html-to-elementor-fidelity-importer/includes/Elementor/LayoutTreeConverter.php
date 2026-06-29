@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace HtmlToElementor\Elementor;
 
 use HtmlToElementor\Engine\CssMappingEngine;
+use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
 
 if (!defined('ABSPATH')) {
@@ -30,6 +31,7 @@ final class LayoutTreeConverter
     private WidgetClassifier $classifier;
     private ?SemanticComponentRecognizer $recognition = null;
     private ?CssMappingEngine $css_engine = null;
+    private ?LayeredLayoutSolver $layered_solver = null;
 
     /**
      * Running statistics for the conversion report.
@@ -91,16 +93,22 @@ final class LayoutTreeConverter
     {
         $role = (string) ($tree['layoutRole'] ?? '');
 
-        if ('hero' === $role) {
-            $hero = $this->reconstruct_hero($tree);
-            if (null !== $hero) {
-                return $hero;
+        if ('layered_block' === $role) {
+            $layered = $this->layered_solver()->to_container(
+                $tree,
+                fn(array $n): array => $this->convert_node($n, false),
+                function (string $r): void {
+                    $this->stats['roles'][$r] = ($this->stats['roles'][$r] ?? 0) + 1;
+                }
+            );
+            if (null !== $layered) {
+                return $layered;
             }
         }
-        if ('navigation' === $role) {
-            $nav = $this->reconstruct_navigation($tree);
-            if (null !== $nav) {
-                return $nav;
+        if ('horizontal_bar' === $role) {
+            $bar = $this->reconstruct_horizontal_bar($tree);
+            if (null !== $bar) {
+                return $bar;
             }
         }
 
@@ -470,108 +478,36 @@ final class LayoutTreeConverter
     }
 
     /**
-     * Reconstruct a hero section natively: background image, overlay, content.
+     * Reconstruct a wide shallow row (navigation, toolbar) from geometry.
      *
-     * @param array<string,mixed> $node Hero section node.
+     * @param array<string,mixed> $node Bar node.
      * @return array<string,mixed>|null
      */
-    private function reconstruct_hero(array $node): ?array
+    private function reconstruct_horizontal_bar(array $node): ?array
     {
-        $children = (array) ($node['children'] ?? array());
-        $bg_image = null;
-        $overlay = null;
-        $content_children = array();
-
-        foreach ($children as $child) {
-            $tag = strtolower((string) ($child['tag'] ?? ''));
-            $pos = strtolower((string) ($child['s']['pos'] ?? ''));
-            $cls = strtolower((string) ($child['cls'] ?? ''));
-
-            if ('img' === $tag) {
-                $bg_image = $child;
-                continue;
-            }
-            if (false !== strpos($cls, 'overlay') || ('absolute' === $pos && empty($child['text']) && empty($child['children']))) {
-                $overlay = $child;
-                continue;
-            }
-            if ('absolute' === $pos || false !== strpos($cls, 'hero-content') || false !== strpos($cls, 'content')) {
-                foreach ($this->convert_node($child, false) as $el) {
-                    $content_children[] = $el;
-                }
-                continue;
-            }
-            foreach ($this->convert_node($child, false) as $el) {
-                $content_children[] = $el;
-            }
-        }
-
-        if (empty($content_children) && empty($bg_image)) {
-            return null;
-        }
-
-        $settings = array_merge(
-            array('content_width' => 'full', 'flex_direction' => 'column', 'min_height' => array('unit' => 'px', 'size' => (float) ($node['s']['h'] ?? 380))),
-            $this->css->background($node),
-            $this->css->sizing($node),
-            $this->identity($node)
-        );
-
-        if (null !== $bg_image) {
-            $src = (string) ($bg_image['src'] ?? '');
-            if ('' !== $src) {
-                $settings['background_background'] = 'classic';
-                $settings['background_image'] = array('url' => $src, 'id' => '');
-                $settings['background_position'] = 'center center';
-                $settings['background_size'] = 'cover';
-            }
-        }
-        if (null !== $overlay && !empty($overlay['s']['bgImg'])) {
-            $settings['_h2e_hero_overlay'] = (string) $overlay['s']['bgImg'];
-        }
-
-        $this->stats['containers']++;
-        $this->stats['roles']['hero'] = ($this->stats['roles']['hero'] ?? 0) + 1;
-
-        return array(
-            'id' => ElementId::generate(),
-            'elType' => 'container',
-            'settings' => $settings,
-            'elements' => array_values($content_children),
-            'isInner' => false,
-        );
-    }
-
-    /**
-     * Reconstruct navigation as nested containers + native widgets.
-     *
-     * @param array<string,mixed> $node Nav node.
-     * @return array<string,mixed>|null
-     */
-    private function reconstruct_navigation(array $node): ?array
-    {
-        $widgets = array();
-        foreach ($this->flatten_nav_widgets($node) as $w) {
-            $widgets[] = $w;
-        }
+        $widgets = $this->flatten_atomic_widgets($node);
         if (empty($widgets)) {
             return null;
         }
+
+        $constraint = $node['layoutConstraint'] ?? array();
+        $alignment = $node['alignment'] ?? array();
 
         $settings = array_merge(
             array(
                 'content_width' => 'full',
                 'flex_direction' => 'row',
-                'flex_justify_content' => 'space-between',
-                'flex_align_items' => 'center',
+                'flex_justify_content' => (string) ($alignment['justify'] ?? $node['s']['jc'] ?? 'space-between'),
+                'flex_align_items' => (string) ($alignment['align_items'] ?? $node['s']['ai'] ?? 'center'),
             ),
             $this->css->background($node),
             $this->css->spacing($node, true),
+            $this->geometry_settings($node),
             $this->identity($node)
         );
 
         $this->stats['containers']++;
-        $this->stats['roles']['nav'] = ($this->stats['roles']['nav'] ?? 0) + 1;
+        $this->stats['roles']['horizontal_bar'] = ($this->stats['roles']['horizontal_bar'] ?? 0) + 1;
 
         return array(
             'id' => ElementId::generate(),
@@ -583,43 +519,32 @@ final class LayoutTreeConverter
     }
 
     /**
-     * Flatten nav tree into a row of native widgets.
+     * Collect leaf widgets in document order without HTML tag assumptions.
      *
-     * @param array<string,mixed> $node Nav node.
+     * @param array<string,mixed> $node Tree node.
      * @return array<int,array<string,mixed>>
      */
-    private function flatten_nav_widgets(array $node): array
+    private function flatten_atomic_widgets(array $node): array
     {
         $out = array();
         if (!empty($node['atomic'])) {
-            $leaf = $this->convert_leaf($node);
-            return $leaf;
+            foreach ($this->convert_leaf($node) as $w) {
+                $out[] = $w;
+            }
+            return $out;
         }
         foreach ((array) ($node['children'] ?? array()) as $child) {
             if (!is_array($child)) {
                 continue;
             }
-            $tag = strtolower((string) ($child['tag'] ?? ''));
-            if (in_array($tag, array('ul', 'ol'), true)) {
-                foreach ((array) ($child['children'] ?? array()) as $li) {
-                    if (!is_array($li)) {
-                        continue;
-                    }
-                    foreach ($this->convert_leaf($li) as $w) {
-                        $out[] = $w;
-                    }
-                }
-                continue;
-            }
-            if (!empty($child['children'])) {
-                $out = array_merge($out, $this->flatten_nav_widgets($child));
-                continue;
-            }
-            foreach ($this->convert_leaf($child) as $w) {
-                $out[] = $w;
-            }
+            $out = array_merge($out, $this->flatten_atomic_widgets($child));
         }
         return $out;
+    }
+
+    private function layered_solver(): LayeredLayoutSolver
+    {
+        return $this->layered_solver ??= new LayeredLayoutSolver($this->css);
     }
 
     private function style_for_widget(string $type, array $node): array

@@ -126,8 +126,7 @@ final class VisualTreeBuilder implements EngineInterface
 		if (!empty($node['atomic'])) {
 			return false;
 		}
-		$cls = strtolower((string) ($node['cls'] ?? ''));
-		if (preg_match('/\b(hero|nav|card|grid|row|section|header|footer|cta|form)\b/', $cls)) {
+		if (VisualSignals::is_layered($node)) {
 			return false;
 		}
 		$s = $node['s'] ?? array();

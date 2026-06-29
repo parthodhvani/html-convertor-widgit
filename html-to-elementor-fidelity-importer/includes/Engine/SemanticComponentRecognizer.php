@@ -9,20 +9,18 @@ declare(strict_types=1);
 
 namespace HtmlToElementor\Engine;
 
-use HtmlToElementor\Elementor\WidgetClassifier;
-
 if (!defined('ABSPATH')) {
 	exit;
 }
 
 /**
- * Semantic Component Recognizer — classifies blocks using geometry, typography,
- * spacing, visual appearance and context. Never relies on HTML tags alone.
+ * Semantic Component Recognizer — classifies leaves via VisualLeafClassifier and
+ * containers via geometry-derived layout roles. No HTML class or tag heuristics.
  */
 final class SemanticComponentRecognizer implements EngineInterface
 {
 
-	private ComponentRecognitionEngine $inner;
+	private VisualLeafClassifier $leaf;
 	private int $threshold;
 
 	/** @var array<string,int> */
@@ -32,9 +30,23 @@ final class SemanticComponentRecognizer implements EngineInterface
 	/** @var array<int,array{reason:string,role:string,confidence:int}> */
 	private array $fallback_reasons = array();
 
-	public function __construct(?WidgetClassifier $classifier = null, int $threshold = 95)
+	/** @var array<int,string> */
+	private const NATIVE_CONTAINER_ROLES = array(
+		'layered_block',
+		'horizontal_bar',
+		'footer_band',
+		'row_group',
+		'column_group',
+		'cta_block',
+		'stack',
+		'section',
+		'card',
+		'media_block',
+	);
+
+	public function __construct(?VisualLeafClassifier $leaf = null, int $threshold = 95)
 	{
-		$this->inner = new ComponentRecognitionEngine($classifier, $threshold);
+		$this->leaf = $leaf ?? new VisualLeafClassifier();
 		$this->threshold = $threshold;
 	}
 
@@ -49,7 +61,6 @@ final class SemanticComponentRecognizer implements EngineInterface
 	public function set_threshold(int $threshold): void
 	{
 		$this->threshold = max(0, min(100, $threshold));
-		$this->inner->set_threshold($this->threshold);
 	}
 
 	/**
@@ -77,23 +88,43 @@ final class SemanticComponentRecognizer implements EngineInterface
 	 */
 	public function classify(array $node): array
 	{
-		$result = $this->inner->classify($node);
-		$geometry_boost = $this->geometry_confidence($node);
-		$result['confidence'] = min(100, (int) ($result['confidence'] ?? 50) + $geometry_boost);
-		$result['role'] = (string) ($result['role'] ?? $node['layoutRole'] ?? '');
+		$role = (string) ($node['layoutRole'] ?? '');
+		$leaf = $this->leaf->classify($node);
 
-		$this->confidence_sum[] = (float) $result['confidence'];
-		++$this->confidence_count;
+		if (null !== $leaf) {
+			$confidence = min(100, (int) ($leaf['confidence'] ?? 50) + $this->geometry_boost($node));
+			$this->record_confidence($confidence);
 
-		if ('fallback' === ($result['kind'] ?? '') && ($result['confidence'] ?? 0) < $this->threshold) {
-			$this->fallback_reasons[] = array(
-				'reason' => $this->fallback_reason($node),
-				'role' => (string) ($result['role'] ?? ''),
-				'confidence' => (int) ($result['confidence'] ?? 0),
-			);
+			if ('fallback' === ($leaf['kind'] ?? '')) {
+				if ($confidence < $this->threshold) {
+					$this->record_fallback($node, $role, $confidence);
+				}
+				return array(
+					'kind' => 'fallback',
+					'confidence' => $confidence,
+					'role' => $role,
+				);
+			}
+
+			if ('widget' === ($leaf['kind'] ?? '')) {
+				return array(
+					'kind' => 'widget',
+					'type' => (string) ($leaf['type'] ?? ''),
+					'settings' => $leaf['settings'] ?? array(),
+					'confidence' => $confidence,
+					'role' => $role,
+				);
+			}
 		}
 
-		return $result;
+		$confidence = min(100, $this->container_confidence($node, $role));
+		$this->record_confidence($confidence);
+
+		return array(
+			'kind' => 'container',
+			'confidence' => $confidence,
+			'role' => $role,
+		);
 	}
 
 	/**
@@ -101,26 +132,49 @@ final class SemanticComponentRecognizer implements EngineInterface
 	 */
 	public function container_needs_fallback(array $node): bool
 	{
-		if (!$this->inner->container_needs_fallback($node)) {
+		$role = (string) ($node['layoutRole'] ?? '');
+
+		if (in_array($role, self::NATIVE_CONTAINER_ROLES, true)) {
 			return false;
 		}
-		$result = $this->inner->classify($node);
-		$confidence = min(100, (int) ($result['confidence'] ?? 50) + $this->geometry_confidence($node));
-		if ($confidence >= $this->threshold) {
+
+		if ('form_block' === $role) {
+			$this->record_fallback($node, $role, 45);
+			return true;
+		}
+
+		if (VisualSignals::is_layered($node)) {
+			if ('layered_block' === $role || $this->layered_confidence($node) >= $this->threshold) {
+				return false;
+			}
+			$this->record_fallback($node, $role, $this->layered_confidence($node));
+			return true;
+		}
+
+		if ($this->looks_carousel($node)) {
+			$this->record_fallback($node, $role, 30);
+			return true;
+		}
+
+		if ('row' === ($node['layoutType'] ?? '') && count((array) ($node['children'] ?? array())) >= 2) {
 			return false;
 		}
-		$this->fallback_reasons[] = array(
-			'reason' => $this->fallback_reason($node),
-			'role' => (string) ($node['layoutRole'] ?? ''),
-			'confidence' => $confidence,
-		);
-		return true;
+		if ('grid' === ($node['layoutType'] ?? '') && count((array) ($node['children'] ?? array())) >= 2) {
+			return false;
+		}
+
+		$result = $this->classify($node);
+		if ('fallback' === ($result['kind'] ?? '') && ($result['confidence'] ?? 0) < $this->threshold) {
+			return true;
+		}
+
+		return $this->has_unmappable_inputs($node);
 	}
 
 	/**
 	 * @param array<string,mixed> $node Tree node.
 	 */
-	private function geometry_confidence(array $node): int
+	private function geometry_boost(array $node): int
 	{
 		$boost = 0;
 		$box = Geometry::bbox($node);
@@ -145,33 +199,125 @@ final class SemanticComponentRecognizer implements EngineInterface
 
 	/**
 	 * @param array<string,mixed> $node Tree node.
+	 * @param string              $role   Layout role.
 	 */
-	private function fallback_reason(array $node): string
+	private function container_confidence(array $node, string $role): int
 	{
-		$tag = strtolower((string) ($node['tag'] ?? ''));
-		if ('form' === $tag) {
-			return 'complex_form_fields';
+		$score = 60;
+		if ('' !== $role) {
+			$score += 15;
 		}
-		if (preg_match('/swiper|slick|carousel/i', (string) ($node['cls'] ?? ''))) {
-			return 'third_party_slider';
+		if (!empty($node['layoutType'])) {
+			$score += 10;
 		}
-		if ($this->has_absolute_children($node)) {
-			return 'layered_absolute_layout';
+		if (count((array) ($node['children'] ?? array())) >= 2) {
+			$score += 10;
 		}
-		return 'low_confidence_no_native_mapping';
+		$s = $node['s'] ?? array();
+		if (!empty($s['bg']) || !empty($s['bgImg'])) {
+			$score += 5;
+		}
+		return min(100, $score);
 	}
 
 	/**
 	 * @param array<string,mixed> $node Tree node.
 	 */
-	private function has_absolute_children(array $node): bool
+	private function layered_confidence(array $node): int
 	{
-		foreach ((array) ($node['children'] ?? array()) as $child) {
-			$pos = strtolower((string) ($child['s']['pos'] ?? ''));
-			if (in_array($pos, array('absolute', 'fixed'), true)) {
-				return true;
+		$signals = VisualSignals::analyze($node);
+		$score = 70;
+		if ($signals['is_layered']) {
+			$score += 10;
+		}
+		if (null !== $signals['image_child']) {
+			$score += 10;
+		}
+		if (!empty($node['layeredLayout'])) {
+			$score += 10;
+		}
+		return min(100, $score);
+	}
+
+	/**
+	 * Detect carousel-like geometry: overflow hidden + many equal-width siblings.
+	 *
+	 * @param array<string,mixed> $node Tree node.
+	 */
+	private function looks_carousel(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		$ov = strtolower((string) ($s['ov'] ?? ''));
+		if (false === strpos($ov, 'hidden')) {
+			return false;
+		}
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 4) {
+			return false;
+		}
+		$widths = array();
+		foreach ($children as $child) {
+			$w = Geometry::bbox($child)['width'];
+			if ($w > 40) {
+				$widths[] = $w;
 			}
 		}
-		return false;
+		if (count($widths) < 4) {
+			return false;
+		}
+		$avg = array_sum($widths) / count($widths);
+		$similar = 0;
+		foreach ($widths as $w) {
+			if (abs($w - $avg) / max(1, $avg) <= 0.15) {
+				++$similar;
+			}
+		}
+		return $similar >= 4;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Tree node.
+	 */
+	private function has_unmappable_inputs(array $node): bool
+	{
+		return VisualSignals::count_input_like((array) ($node['children'] ?? array())) >= 3;
+	}
+
+	/**
+	 * @param array<string,mixed> $node       Tree node.
+	 * @param string              $role       Layout role.
+	 * @param int                 $confidence Confidence score.
+	 */
+	private function record_fallback(array $node, string $role, int $confidence): void
+	{
+		$this->fallback_reasons[] = array(
+			'reason' => $this->fallback_reason($node, $role),
+			'role' => $role,
+			'confidence' => $confidence,
+		);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Tree node.
+	 * @param string              $role Layout role.
+	 */
+	private function fallback_reason(array $node, string $role): string
+	{
+		if ('form_block' === $role || $this->has_unmappable_inputs($node)) {
+			return 'complex_form_fields';
+		}
+		if ($this->looks_carousel($node)) {
+			return 'third_party_slider';
+		}
+		if (VisualSignals::is_layered($node) && 'layered_block' !== $role) {
+			return 'layered_absolute_layout';
+		}
+		return 'low_confidence_no_native_mapping';
+	}
+
+	private function record_confidence(int $confidence): void
+	{
+		$this->confidence_sum[] = (float) $confidence;
+		++$this->confidence_count;
 	}
 }
