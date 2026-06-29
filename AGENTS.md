@@ -30,6 +30,13 @@ document. The PHP side converts that layout into native Elementor JSON.
   created during environment setup and is recreated by the update script; if a future
   `npm install` re-downloads Chromium it must be able to write there. Do not assume the cache
   lives under `$HOME`.
+- **Run the Chromium CLI from inside `chromium-service/`.** Puppeteer reads `.puppeteerrc.cjs`
+  (which pins the browser cache path) from the *current working directory*, so
+  `node cli.js --input ../tests/fixtures/<page>.html --out /tmp/layout.json` works, but invoking
+  `node chromium-service/cli.js` from the plugin root fails with "Could not find Chrome".
+- **Closed `<details>` answers are not extracted.** The extractor only captures visible nodes, so
+  collapsed disclosure/accordion bodies (`display:none`) are dropped; use `<details open>` fixtures
+  when verifying FAQ/accordion reconstruction end to end.
 - A real, in-CMS end-to-end import (admin UI / REST `/wp-json/h2e/v1` / `wp h2e ...`) requires a
   full WordPress + Elementor + MySQL stack, which is **not** provisioned in this repo. The CLI +
   harness flow above is the supported way to exercise the conversion engine without WordPress.
