@@ -1,4 +1,4 @@
-# Visual Reconstruction Engine v3
+# Visual Reconstruction Engine v4
 
 Geometry-first pipeline. The rendered page is the source of truth; DOM is metadata only.
 
@@ -7,7 +7,7 @@ Geometry-first pipeline. The rendered page is the source of truth; DOM is metada
 ```
 Chromium Render
     ↓
-VisualExtractionEngine
+VisualExtractionEngine (section-local bbox normalization)
     ↓
 VisualTreeBuilder
     ↓
@@ -15,34 +15,34 @@ LayoutGraphEngine
     ↓
 ConstraintLayoutSolver
     ↓
+SemanticComponentGraph
+    ↓
 WhitespaceAnalyzer
     ↓
 AlignmentEngine
     ↓
 WrapperEliminationEngine
     ↓
-SemanticComponentRecognizer
-    ↓
-DesignTokenExtractor
-    ↓
 ResponsiveLayoutEngine
     ↓
-ElementorJsonGenerator (LayoutTreeConverter)
+LayoutGraphEmitter
     ↓
-VisualValidationEngine
+ContainerTreeOptimizer (compress redundant containers)
     ↓
-PixelRepairEngine
+GeometryComparator
+    ↓
+PixelRepairEngine (closed-loop)
     ↓
 ImportQualityReport
 ```
 
-## Priority metrics (v3)
+## Priority metrics (v4)
 
-1. Visual layout accuracy (`layout_similarity`)
-2. Spacing accuracy (`spacing_similarity`)
-3. Typography similarity
-4. Responsive similarity
-5. Native widget ratio (secondary)
+1. Geometry similarity (`geometry_similarity`, `bbox_delta`, `position_rmse`)
+2. Visual layout accuracy (`layout_similarity`)
+3. Spacing accuracy (`spacing_similarity`)
+4. Typography / responsive / pixel (secondary)
+5. Native widget ratio (tertiary)
 
 ## Key engines
 

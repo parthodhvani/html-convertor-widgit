@@ -1,6 +1,6 @@
 <?php
 /**
- * Validates visual fidelity using geometry-first metrics.
+ * Validates visual fidelity using geometry-first metrics (v4).
  *
  * @package HtmlToElementor
  */
@@ -14,17 +14,18 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Visual Validation Engine — scores layout, spacing, typography and screenshot
- * similarity. Repair is delegated to {@see PixelRepairEngine}.
+ * Visual Validation Engine — geometry comparison is the primary fidelity source.
  */
 final class VisualValidationEngine implements EngineInterface
 {
 
 	private int $threshold;
+	private GeometryComparator $geometry;
 
 	public function __construct(int $threshold = 95, int $max_iterations = 3)
 	{
 		$this->threshold = $threshold;
+		$this->geometry = new GeometryComparator();
 	}
 
 	public function name(): string
@@ -33,7 +34,7 @@ final class VisualValidationEngine implements EngineInterface
 	}
 
 	/**
-	 * Compute fidelity scores prioritising layout accuracy over widget count.
+	 * Compute fidelity scores from geometry comparison.
 	 *
 	 * @param array<int,array<string,mixed>> $elementor_data Elements.
 	 * @param array<string,mixed>            $context        Context.
@@ -44,32 +45,41 @@ final class VisualValidationEngine implements EngineInterface
 		$sections = $context['sections'] ?? array();
 		$report = $context['report'] ?? array();
 
-		$layout = $this->layout_similarity($elementor_data, $sections);
-		$spacing = $this->spacing_similarity($sections);
+		$geo = $this->geometry->compare($sections, $elementor_data);
+
 		$typography = $this->typography_similarity($sections);
 		$responsive = $this->responsive_similarity($sections);
 		$screenshot = $this->screenshot_score($context);
+		$compare = (array) ($context['compare'] ?? array());
+		$ocr = isset($compare['ocr']) ? (int) round((float) $compare['ocr'] * 100) : (isset($compare['ocr_similarity']) ? (int) round((float) $compare['ocr_similarity']) : 0);
+		$phash = isset($compare['phash']) ? (int) round((float) $compare['phash'] * 100) : (isset($compare['perceptual_hash_similarity']) ? (int) round((float) $compare['perceptual_hash_similarity']) : 0);
 
-		// Visual fidelity prioritises layout > spacing > typography > screenshot.
+		$layout = (int) ($geo['layout_similarity'] ?? 0);
+		$spacing = (int) ($geo['spacing_similarity'] ?? 0);
+		$geometry_similarity = (int) ($geo['geometry_similarity'] ?? 0);
+
 		$fidelity = (int) round(
-			$layout * 0.35
-			+ $spacing * 0.25
-			+ $typography * 0.15
-			+ $responsive * 0.10
-			+ $screenshot * 0.15
+			$geometry_similarity * 0.40
+			+ $layout * 0.25
+			+ $spacing * 0.20
+			+ $typography * 0.10
+			+ $responsive * 0.03
+			+ $screenshot * 0.02
 		);
 
 		$native = (int) ($report['native_widgets'] ?? 0);
 		$html = (int) ($report['html_widgets'] ?? 0);
 		$total = max(1, $native + $html);
 
-		return array(
+		return array_merge($geo, array(
 			'fidelity' => min(100, max(0, $fidelity)),
 			'layout_similarity' => $layout,
 			'spacing_similarity' => $spacing,
 			'typography_similarity' => $typography,
 			'responsive_similarity' => $responsive,
 			'screenshot' => $screenshot,
+			'ocr_similarity' => max(0, min(100, $ocr)),
+			'perceptual_hash_similarity' => max(0, min(100, $phash)),
 			'layout' => $layout,
 			'typography' => $typography,
 			'spacing' => $spacing,
@@ -79,58 +89,8 @@ final class VisualValidationEngine implements EngineInterface
 			'native_widget_pct' => (int) round($native / $total * 100),
 			'compare' => $context['compare'] ?? null,
 			'constraint_coverage' => $this->constraint_coverage($sections),
-			'alignment_coverage' => $this->alignment_coverage($sections),
-		);
-	}
-
-	/**
-	 * @param array<int,array<string,mixed>> $data     Elements.
-	 * @param array<int,array<string,mixed>> $sections Sections.
-	 */
-	private function layout_similarity(array $data, array $sections): int
-	{
-		$source_constraints = 0;
-		$source_rows = 0;
-		foreach ($sections as $section) {
-			$this->count_layout_signals($section['tree'] ?? null, $source_constraints, $source_rows);
-		}
-
-		$containers = $this->count_containers($data);
-		$section_count = max(1, count($sections));
-		$depth = $this->max_depth($data);
-
-		$structure = 70;
-		if ($source_constraints > 0) {
-			$structure += min(20, $source_constraints * 2);
-		}
-		if ($containers >= $section_count && $containers <= $section_count * 10) {
-			$structure += 10;
-		}
-		if ($depth <= 6) {
-			$structure += min(10, (6 - $depth) * 2);
-		} elseif ($depth > 10) {
-			$structure -= min(20, ($depth - 10) * 3);
-		}
-
-		return min(100, max(40, $structure));
-	}
-
-	/**
-	 * @param array<int,array<string,mixed>> $sections Sections.
-	 */
-	private function spacing_similarity(array $sections): int
-	{
-		$gap_nodes = 0;
-		$whitespace_nodes = 0;
-		$total = 0;
-		foreach ($sections as $section) {
-			$this->count_spacing_signals($section['tree'] ?? null, $gap_nodes, $whitespace_nodes, $total);
-		}
-		if ($total <= 0) {
-			return 75;
-		}
-		$ratio = ($gap_nodes + $whitespace_nodes) / max(1, $total);
-		return (int) min(100, 55 + $ratio * 45);
+			'alignment_coverage' => (int) ($geo['alignment_score'] ?? 0),
+		));
 	}
 
 	/**
@@ -171,13 +131,13 @@ final class VisualValidationEngine implements EngineInterface
 	private function screenshot_score(array $context): int
 	{
 		$compare = $context['compare'] ?? null;
-		if (is_array($compare) && isset($compare['ssim'])) {
-			return (int) round((float) $compare['ssim'] * 100);
+		if (is_array($compare)) {
+			$ssim = isset($compare['ssim']) ? (float) $compare['ssim'] * 100 : (float) ($compare['score'] ?? 75);
+			$phash = isset($compare['phash']) ? (float) $compare['phash'] * 100 : (isset($compare['perceptual_hash_similarity']) ? (float) $compare['perceptual_hash_similarity'] : $ssim);
+			$ocr = isset($compare['ocr']) ? (float) $compare['ocr'] * 100 : (isset($compare['ocr_similarity']) ? (float) $compare['ocr_similarity'] : $ssim);
+			return (int) round(($ssim * 0.6) + ($phash * 0.25) + ($ocr * 0.15));
 		}
-		if (is_array($compare) && isset($compare['score'])) {
-			return (int) round((float) $compare['score']);
-		}
-		return 75;
+		return 0;
 	}
 
 	/**
@@ -194,60 +154,6 @@ final class VisualValidationEngine implements EngineInterface
 	}
 
 	/**
-	 * @param array<int,array<string,mixed>> $sections Sections.
-	 */
-	private function alignment_coverage(array $sections): int
-	{
-		$with = 0;
-		$total = 0;
-		foreach ($sections as $section) {
-			$this->count_alignments($section['tree'] ?? null, $with, $total);
-		}
-		return $total > 0 ? (int) round($with / $total * 100) : 0;
-	}
-
-	/**
-	 * @param array<string,mixed>|null $node Node.
-	 */
-	private function count_layout_signals($node, int &$constraints, int &$rows): void
-	{
-		if (!is_array($node)) {
-			return;
-		}
-		if (!empty($node['layoutConstraint'])) {
-			++$constraints;
-			if ('row' === ($node['layoutConstraint']['direction'] ?? '')) {
-				++$rows;
-			}
-		}
-		foreach ((array) ($node['children'] ?? array()) as $child) {
-			$this->count_layout_signals($child, $constraints, $rows);
-		}
-	}
-
-	/**
-	 * @param array<string,mixed>|null $node Node.
-	 */
-	private function count_spacing_signals($node, int &$gaps, int &$whitespace, int &$total): void
-	{
-		if (!is_array($node)) {
-			return;
-		}
-		if (!empty($node['children'])) {
-			++$total;
-			if (!empty($node['layoutConstraint']['gap'])) {
-				++$gaps;
-			}
-			if (!empty($node['whitespace']['gap'])) {
-				++$whitespace;
-			}
-		}
-		foreach ((array) ($node['children'] ?? array()) as $child) {
-			$this->count_spacing_signals($child, $gaps, $whitespace, $total);
-		}
-	}
-
-	/**
 	 * @param array<string,mixed>|null $node Node.
 	 */
 	private function count_typography($node, int &$typed, int &$total): void
@@ -255,7 +161,7 @@ final class VisualValidationEngine implements EngineInterface
 		if (!is_array($node)) {
 			return;
 		}
-		if (!empty($node['atomic']) || preg_match('/^h[1-6]$/', (string) ($node['tag'] ?? ''))) {
+		if (!empty($node['atomic'])) {
 			++$total;
 			$s = $node['s'] ?? array();
 			if (!empty($s['fs'])) {
@@ -303,55 +209,5 @@ final class VisualValidationEngine implements EngineInterface
 		foreach ((array) ($node['children'] ?? array()) as $child) {
 			$this->count_constraints($child, $with, $total);
 		}
-	}
-
-	/**
-	 * @param array<string,mixed>|null $node Node.
-	 */
-	private function count_alignments($node, int &$with, int &$total): void
-	{
-		if (!is_array($node)) {
-			return;
-		}
-		if (!empty($node['children'])) {
-			++$total;
-			if (!empty($node['alignment'])) {
-				++$with;
-			}
-		}
-		foreach ((array) ($node['children'] ?? array()) as $child) {
-			$this->count_alignments($child, $with, $total);
-		}
-	}
-
-	/**
-	 * @param array<int,array<string,mixed>> $elements Elements.
-	 */
-	private function count_containers(array $elements): int
-	{
-		$n = 0;
-		foreach ($elements as $el) {
-			if ('container' === ($el['elType'] ?? '')) {
-				++$n;
-			}
-			$n += $this->count_containers((array) ($el['elements'] ?? array()));
-		}
-		return $n;
-	}
-
-	/**
-	 * @param array<int,array<string,mixed>> $elements Elements.
-	 * @param int                            $depth    Current depth.
-	 */
-	private function max_depth(array $elements, int $depth = 1): int
-	{
-		$max = $depth;
-		foreach ($elements as $el) {
-			$kids = (array) ($el['elements'] ?? array());
-			if (!empty($kids)) {
-				$max = max($max, $this->max_depth($kids, $depth + 1));
-			}
-		}
-		return $max;
 	}
 }

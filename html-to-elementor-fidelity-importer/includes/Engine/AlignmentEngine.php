@@ -92,11 +92,11 @@ final class AlignmentEngine implements EngineInterface
 		);
 
 		if ('row' === $direction) {
-			$align['justify'] = $align['shared_center_x'] ? 'center' : ($align['shared_left'] ? 'flex-start' : 'space-between');
-			$align['align_items'] = $align['shared_center_y'] ? 'center' : 'stretch';
+			$align['justify'] = $align['shared_center_x'] ? 'center' : ($align['shared_left'] ? 'flex-start' : ($align['shared_right'] ? 'flex-end' : 'space-between'));
+			$align['align_items'] = $align['shared_center_y'] ? 'center' : ($align['shared_baseline'] ? 'baseline' : 'stretch');
 		} else {
-			$align['justify'] = $align['shared_center_x'] ? 'center' : 'flex-start';
-			$align['align_items'] = $align['shared_left'] ? 'flex-start' : ($align['shared_center_x'] ? 'center' : 'stretch');
+			$align['justify'] = $align['shared_top'] ? 'flex-start' : ($align['shared_center_y'] ? 'center' : 'space-between');
+			$align['align_items'] = $align['shared_left'] ? 'flex-start' : ($align['shared_center_x'] ? 'center' : ($align['shared_right'] ? 'flex-end' : 'stretch'));
 		}
 
 		// Parent text-align hint.

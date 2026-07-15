@@ -59,29 +59,29 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'title_color'),
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, true)
+				$this->mapper->spacing($node, false)
 			),
 			'text-editor' => array_merge(
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'text_color'),
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, true)
+				$this->mapper->spacing($node, false)
 			),
 			'button' => $this->map_button($node),
 			'image' => array_merge(
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, true),
+				$this->mapper->spacing($node, false),
 				$this->mapper->border($node),
 				$this->mapper->box_shadow($node)
 			),
-			default => $this->mapper->spacing($node, true),
+			default => $this->mapper->spacing($node, false),
 		};
 
 		return $this->apply_token_references($settings);
 	}
 
 	/**
-	 * Map container-level styles.
+	 * Map container-level styles using constraint-based spacing only (no margins).
 	 *
 	 * @param array<string,mixed> $node       Tree node.
 	 * @param bool                $is_section Top-level section flag.
@@ -95,10 +95,55 @@ final class CssMappingEngine implements EngineInterface
 			$this->mapper->border($node),
 			$this->mapper->box_shadow($node),
 			$this->mapper->sizing($node),
-			$this->mapper->spacing($node, !$is_section)
+			$this->map_constraint_spacing($node, $is_section)
 		);
 
 		return $this->apply_token_references($settings);
+	}
+
+	/**
+	 * Padding and gap from geometry constraints — never margins.
+	 *
+	 * @param array<string,mixed> $node       Tree node.
+	 * @param bool                $is_section Top-level section flag.
+	 * @return array<string,mixed>
+	 */
+	private function map_constraint_spacing(array $node, bool $is_section): array
+	{
+		$out = array();
+		$whitespace = $node['whitespace'] ?? array();
+		$constraint = $node['layoutConstraint'] ?? array();
+
+		// Padding from measured whitespace or computed padding (not margin).
+		$padding = $this->mapper->spacing($node, false);
+		unset($padding['margin']);
+		$out = array_merge($out, $padding);
+
+		if (!empty($whitespace['padding']) && is_array($whitespace['padding'])) {
+			$p = $whitespace['padding'];
+			$out['padding'] = array(
+				'unit' => 'px',
+				'top' => (string) round((float) ($p['top'] ?? 0)),
+				'right' => (string) round((float) ($p['right'] ?? 0)),
+				'bottom' => (string) round((float) ($p['bottom'] ?? 0)),
+				'left' => (string) round((float) ($p['left'] ?? 0)),
+				'isLinked' => false,
+			);
+		}
+
+		$gap = (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0);
+		if ($gap > 0) {
+			$g = (string) round($gap);
+			$out['flex_gap'] = array(
+				'column' => $g,
+				'row' => $g,
+				'isLinked' => true,
+				'unit' => 'px',
+				'size' => round($gap),
+			);
+		}
+
+		return $out;
 	}
 
 	/**

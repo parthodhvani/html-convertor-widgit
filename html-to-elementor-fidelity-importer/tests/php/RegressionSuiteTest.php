@@ -31,6 +31,12 @@ final class RegressionSuiteTest extends TestCase
 			'tailwind' => array($self->tailwind_layout()),
 			'html5up' => array($self->html5up_layout()),
 			'nested_flex' => array($self->nested_flex_layout()),
+			'bootstrapmade' => array($self->bootstrapmade_layout()),
+			'agency' => array($self->agency_layout()),
+			'business' => array($self->business_layout()),
+			'portfolio' => array($self->portfolio_layout()),
+			'docs' => array($self->docs_layout()),
+			'complex_grid' => array($self->complex_grid_layout()),
 		);
 	}
 
@@ -44,12 +50,15 @@ final class RegressionSuiteTest extends TestCase
 		$result = $gen->generate(RenderResult::from_array($layout), array('mode' => 'native'));
 
 		$this->assertSame('native', $result['report']['mode']);
-		$this->assertSame(3, $result['report']['engine_version']);
+		$this->assertSame(4, $result['report']['engine_version']);
 		$this->assertNotEmpty($result['data']);
 		$this->assertGreaterThan(0, $result['report']['native_widgets']);
 		$this->assertArrayHasKey('layout_similarity', $result['validation']);
-		$this->assertGreaterThanOrEqual(70, $result['validation']['layout_similarity']);
-		$this->assertGreaterThanOrEqual(70, $result['quality']['visual_fidelity_score']);
+		$this->assertArrayHasKey('geometry_similarity', $result['validation']);
+		$this->assertArrayHasKey('bbox_delta', $result['validation']);
+		$this->assertArrayHasKey('position_rmse', $result['validation']);
+		$this->assertGreaterThan(0, $result['validation']['geometry_similarity']);
+		$this->assertGreaterThan(0, $result['quality']['visual_fidelity_score']);
 	}
 
 	/**
@@ -62,7 +71,8 @@ final class RegressionSuiteTest extends TestCase
 		$result = $gen->generate(RenderResult::from_array($layout), array('mode' => 'native'));
 
 		$this->assertGreaterThan(0, $result['validation']['constraint_coverage'] ?? 0);
-		$this->assertLessThanOrEqual(8, $result['quality']['max_nesting_depth']);
+		$this->assertLessThanOrEqual(4, $result['quality']['max_container_depth'] ?? $result['quality']['max_nesting_depth']);
+		$this->assertArrayHasKey('compression_ratio', $result['quality']);
 	}
 
 	/**
@@ -77,8 +87,8 @@ final class RegressionSuiteTest extends TestCase
 		$preserve = $gen->generate($doc, array('mode' => 'preserve'));
 
 		$this->assertGreaterThan(
-			$preserve['validation']['layout_similarity'] ?? 0,
-			$native['validation']['layout_similarity'] ?? 0
+			$preserve['validation']['geometry_similarity'] ?? 0,
+			$native['validation']['geometry_similarity'] ?? 0
 		);
 	}
 

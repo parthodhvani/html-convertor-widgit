@@ -44,7 +44,8 @@ final class VisualExtractionEngine implements EngineInterface
 		foreach ($result->sections() as $section) {
 			$tree = $section['tree'] ?? null;
 			if (is_array($tree)) {
-				$this->enrich_node($tree, null, 0);
+				$section_origin = $this->section_origin($section);
+				$this->enrich_node($tree, null, 0, $section_origin);
 				$section['tree'] = $tree;
 				$section['visual'] = $this->section_visual($section);
 			}
@@ -60,22 +61,52 @@ final class VisualExtractionEngine implements EngineInterface
 	/**
 	 * Recursively attach visual metadata to a tree node.
 	 *
-	 * @param array<string,mixed>      $node   Node (by ref).
-	 * @param array<string,mixed>|null $parent Parent node.
-	 * @param int                      $depth  Tree depth.
+	 * @param array<string,mixed>      $node           Node (by ref).
+	 * @param array<string,mixed>|null $parent         Parent node.
+	 * @param int                      $depth          Tree depth.
+	 * @param array{x:float,y:float}   $section_origin Section-local origin.
 	 */
-	private function enrich_node(array &$node, ?array $parent, int $depth): void
+	private function enrich_node(array &$node, ?array $parent, int $depth, array $section_origin): void
 	{
 		$s = $node['s'] ?? array();
+		$bbox = $node['bbox'] ?? $this->bbox_from_styles($s);
+		$pseudo = (array) ($node['pseudo'] ?? array());
+		$states = (array) ($node['states'] ?? array());
+		$stacking = array_merge($this->stacking_context($s), (array) ($node['stacking'] ?? array()));
 
+		$node['bbox'] = $bbox;
 		$node['visual'] = array(
-			'bbox' => $node['bbox'] ?? $this->bbox_from_styles($s),
+			'bbox' => $bbox,
 			'depth' => $depth,
-			'stacking' => $this->stacking_context($s),
+			'stacking' => $stacking,
 			'visible' => !$this->is_hidden($s),
 			'role' => $node['role'] ?? $node['ariaRole'] ?? '',
 			'dom_path' => $node['domPath'] ?? '',
 			'xpath' => $node['xpath'] ?? '',
+			'uid' => (string) ($node['uid'] ?? ''),
+			'unique_key' => (string) ($node['uniqueKey'] ?? ''),
+			'states' => array(
+				'hover' => (bool) ($states['hover'] ?? false),
+				'focus' => (bool) ($states['focus'] ?? false),
+				'active' => (bool) ($states['active'] ?? false),
+			),
+			'pseudo' => array(
+				'before' => (array) ($pseudo['before'] ?? array()),
+				'after' => (array) ($pseudo['after'] ?? array()),
+			),
+			'accessibility' => array(
+				'role' => (string) ($node['ariaRole'] ?? ''),
+				'label' => (string) ($node['ariaLabel'] ?? ''),
+				'labelledby' => (string) ($node['ariaLabelledby'] ?? ''),
+				'describedby' => (string) ($node['ariaDescribedby'] ?? ''),
+				'name' => (string) ($node['a11yName'] ?? $node['text'] ?? ''),
+			),
+			'css_variables' => (array) ($node['cssVars'] ?? array()),
+			'parent_uid' => (string) ($node['parentUid'] ?? ''),
+			'sibling_index' => (int) ($node['siblingIndex'] ?? 0),
+			'sibling_count' => (int) ($node['siblingCount'] ?? 0),
+			'child_count' => (int) ($node['childCount'] ?? 0),
+			'visible_text' => (string) ($node['visibleText'] ?? $node['text'] ?? ''),
 		);
 
 		if (null !== $parent) {
@@ -87,9 +118,42 @@ final class VisualExtractionEngine implements EngineInterface
 			if (!is_array($child)) {
 				continue;
 			}
-			$this->enrich_node($child, $node, $depth + 1);
+			$this->enrich_node($child, $node, $depth + 1, $section_origin);
 			$node['children'][$i] = $child;
 		}
+	}
+
+	/**
+	 * Section-local coordinate origin for bbox normalization.
+	 *
+	 * @param array<string,mixed> $section Section.
+	 * @return array{x:float,y:float}
+	 */
+	private function section_origin(array $section): array
+	{
+		$bbox = $section['bbox'] ?? array();
+		return array(
+			'x' => (float) ($bbox['x'] ?? 0),
+			'y' => (float) ($bbox['y'] ?? 0),
+		);
+	}
+
+	/**
+	 * Normalize a node bbox to section-local coordinates.
+	 *
+	 * @param array<string,mixed>    $node           Node.
+	 * @param array{x:float,y:float} $section_origin Origin.
+	 * @return array{x:float,y:float,width:float,height:float}
+	 */
+	private function normalize_bbox(array $node, array $section_origin): array
+	{
+		$raw = $node['bbox'] ?? $this->bbox_from_styles($node['s'] ?? array());
+		return array(
+			'x' => max(0.0, (float) ($raw['x'] ?? 0) - $section_origin['x']),
+			'y' => max(0.0, (float) ($raw['y'] ?? 0) - $section_origin['y']),
+			'width' => (float) ($raw['width'] ?? 0),
+			'height' => (float) ($raw['height'] ?? 0),
+		);
 	}
 
 	/**
@@ -158,6 +222,8 @@ final class VisualExtractionEngine implements EngineInterface
 			'bbox' => $section['bbox'] ?? array(),
 			'semantic' => (bool) ($section['semantic'] ?? false),
 			'tag' => (string) ($section['tag'] ?? ''),
+			'dom_path' => (string) ($section['domPath'] ?? ''),
+			'xpath' => (string) ($section['xpath'] ?? ''),
 		);
 	}
 }

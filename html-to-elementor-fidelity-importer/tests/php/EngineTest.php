@@ -14,8 +14,12 @@ use HtmlToElementor\Engine\ComponentRecognitionEngine;
 use HtmlToElementor\Engine\AlignmentEngine;
 use HtmlToElementor\Engine\ConstraintLayoutSolver;
 use HtmlToElementor\Engine\Geometry;
+use HtmlToElementor\Engine\GeometryComparator;
+use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\PixelRepairEngine;
+use HtmlToElementor\Engine\SemanticComponentGraph;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
+use HtmlToElementor\Engine\VisualLeafClassifier;
 use HtmlToElementor\Engine\VisualTreeBuilder;
 use HtmlToElementor\Engine\WhitespaceAnalyzer;
 use HtmlToElementor\Engine\DesignTokenExtractor;
@@ -56,28 +60,126 @@ final class EngineTest extends TestCase
 		$this->assertSame(1, $engine->eliminated_count());
 	}
 
-	public function test_layout_graph_detects_hero_and_navigation(): void
+	public function test_layout_graph_detects_row_and_stack(): void
 	{
 		$engine = new LayoutGraphEngine();
 		$sections = array(
-			array('tree' => array('tag' => 'section', 'cls' => 'page-hero', 's' => array(), 'children' => array())),
-			array('tree' => array('tag' => 'nav', 'cls' => 'nav-links', 's' => array(), 'children' => array())),
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'flex', 'fd' => 'row'),
+					'children' => array(
+						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
+						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 320, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
+					),
+				),
+			),
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'block'),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 's' => array(), 'children' => array()),
+						array('tag' => 'p', 'atomic' => true, 's' => array(), 'children' => array()),
+					),
+				),
+			),
 		);
 		$out = $engine->build($sections);
-		$this->assertSame('hero', $out[0]['tree']['layoutRole']);
-		$this->assertSame('navigation', $out[1]['tree']['layoutRole']);
+		$this->assertSame('row', $out[0]['tree']['layoutType']);
+		$this->assertContains($out[1]['tree']['layoutType'] ?? '', array('stack', 'row'));
 	}
 
-	public function test_component_recognition_prefers_native_hero_over_html_fallback(): void
+	public function test_semantic_graph_detects_layered_block_and_horizontal_bar(): void
+	{
+		$solver = new ConstraintLayoutSolver();
+		$graph = new SemanticComponentGraph();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'section',
+					's' => array('pos' => 'relative', 'h' => 380),
+					'children' => array(
+						array('tag' => 'img', 'src' => 'https://example.com/bg.jpg', 'atomic' => true, 's' => array('w' => 1440, 'h' => 380)),
+						array('tag' => 'div', 's' => array('pos' => 'absolute'), 'children' => array()),
+					),
+				),
+			),
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					's' => array('disp' => 'flex', 'fd' => 'row', 'w' => 1200, 'h' => 64),
+					'children' => array(
+						array('tag' => 'span', 'text' => 'Brand', 'atomic' => true, 's' => array()),
+						array('tag' => 'a', 'text' => 'Home', 'atomic' => true, 's' => array()),
+					),
+				),
+			),
+		);
+		$sections = $solver->solve($sections);
+		$out = $graph->build($sections);
+		$this->assertSame('layered_block', $out[0]['tree']['layoutRole']);
+		$this->assertSame('horizontal_bar', $out[1]['tree']['layoutRole']);
+	}
+
+	public function test_component_recognition_prefers_native_layered_block_over_html_fallback(): void
 	{
 		$engine = new SemanticComponentRecognizer();
-		$hero = array(
+		$layered = array(
 			'tag' => 'section',
-			'cls' => 'page-hero',
-			'layoutRole' => 'hero',
+			'layoutRole' => 'layered_block',
+			'layeredLayout' => array('background' => null, 'content' => array(), 'in_flow' => array()),
 			'children' => array(array('tag' => 'div', 's' => array('pos' => 'absolute'))),
 		);
-		$this->assertFalse($engine->container_needs_fallback($hero));
+		$this->assertFalse($engine->container_needs_fallback($layered));
+	}
+
+	public function test_visual_leaf_classifier_uses_typography_not_tags(): void
+	{
+		$classifier = new VisualLeafClassifier();
+		$result = $classifier->classify(array(
+			'tag' => 'div',
+			'text' => 'Big Title',
+			'atomic' => true,
+			's' => array('fs' => '48px', 'fw' => '800', 'color' => 'rgb(0,0,0)'),
+		));
+		$this->assertSame('widget', $result['kind'] ?? '');
+		$this->assertSame('heading', $result['type'] ?? '');
+	}
+
+	public function test_layered_layout_solver_builds_container(): void
+	{
+		$solver = new LayeredLayoutSolver(new \HtmlToElementor\Elementor\CssMapper());
+		$node = array(
+			's' => array('h' => 380),
+			'layeredLayout' => array(
+				'background' => array('src' => 'https://example.com/hero.jpg', 's' => array()),
+				'overlay' => null,
+				'content' => array(
+					array(
+						'tag' => 'div',
+						'children' => array(
+							array('tag' => 'h1', 'text' => 'Hello', 'atomic' => true, 's' => array('fs' => '48px')),
+						),
+					),
+				),
+				'in_flow' => array(),
+			),
+		);
+		$converter = new \HtmlToElementor\Elementor\LayoutTreeConverter();
+		$container = $solver->to_container(
+			$node,
+			function (array $n) use ($converter): array {
+				$el = $converter->convert_section($n);
+				return null !== $el ? array($el) : array();
+			},
+			static function (string $r): void {
+				unset($r);
+			}
+		);
+		$this->assertNotNull($container);
+		$this->assertSame('container', $container['elType']);
+		$this->assertArrayHasKey('background_image', $container['settings']);
 	}
 
 	public function test_constraint_solver_detects_horizontal_stack(): void
@@ -93,6 +195,47 @@ final class EngineTest extends TestCase
 						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
 						array('tag' => 'div', 's' => array('w' => 300, 'h' => 200), 'bbox' => array('x' => 320, 'y' => 0, 'width' => 300, 'height' => 200), 'children' => array()),
 					),
+				),
+			),
+		);
+		$out = $solver->solve($sections);
+		$constraint = $out[0]['tree']['layoutConstraint'] ?? array();
+		$this->assertSame('row', $constraint['direction'] ?? '');
+		$this->assertGreaterThan(0, $constraint['gap'] ?? 0);
+	}
+
+	public function test_whitespace_analyzer_measures_gap_from_bbox(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 400),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 40), 's' => array()),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 64, 'width' => 600, 'height' => 40), 's' => array()),
+					),
+					'layoutConstraint' => array('direction' => 'column', 'gap' => 24),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$this->assertGreaterThan(0, $out[0]['tree']['whitespace']['gap'] ?? 0);
+	}
+
+	public function test_alignment_engine_detects_shared_left(): void
+	{
+		$engine = new AlignmentEngine();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'children' => array(
+						array('tag' => 'h2', 'atomic' => true, 'bbox' => array('x' => 48, 'y' => 0, 'width' => 200, 'height' => 32), 's' => array()),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 48, 'y' => 48, 'width' => 400, 'height' => 20), 's' => array()),
+					),
+					'layoutConstraint' => array('direction' => 'column'),
 				),
 			),
 		);
@@ -283,6 +426,87 @@ final class EngineTest extends TestCase
 		$this->assertTrue($result['changed']);
 	}
 
+	public function test_geometry_comparator_produces_rmse_metrics(): void
+	{
+		$comparator = new GeometryComparator();
+		$sections = array(
+			array(
+				'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 200),
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'hero',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 200),
+					'layoutConstraint' => array('direction' => 'column', 'gap' => 24),
+					'children' => array(
+						array(
+							'tag' => 'h1',
+							'text' => 'Title',
+							'atomic' => true,
+							'bbox' => array('x' => 0, 'y' => 0, 'width' => 400, 'height' => 48),
+							's' => array('fs' => '48px'),
+						),
+					),
+				),
+			),
+		);
+		$elementor = array(
+			array(
+				'elType' => 'container',
+				'settings' => array('_css_classes' => 'hero', 'flex_direction' => 'column', 'flex_gap' => array('size' => 24)),
+				'elements' => array(
+					array('elType' => 'widget', 'widgetType' => 'heading', 'settings' => array(), 'elements' => array()),
+				),
+				'isInner' => false,
+			),
+		);
+		$result = $comparator->compare($sections, $elementor);
+		$this->assertArrayHasKey('geometry_similarity', $result);
+		$this->assertArrayHasKey('bbox_delta', $result);
+		$this->assertArrayHasKey('position_rmse', $result);
+		$this->assertGreaterThan(0, $result['geometry_similarity']);
+	}
+
+	public function test_layout_graph_emitter_hoists_transparent_wrapper(): void
+	{
+		$converter = new \HtmlToElementor\Elementor\LayoutTreeConverter();
+		$tree = array(
+			'tag' => 'section',
+			'cls' => 'section',
+			's' => array('disp' => 'block'),
+			'layoutConstraint' => array('direction' => 'column'),
+			'children' => array(
+				array(
+					'tag' => 'div',
+					's' => array('disp' => 'block'),
+					'children' => array(
+						array('tag' => 'p', 'text' => 'Hello', 'atomic' => true, 's' => array('fs' => '16px')),
+					),
+				),
+			),
+		);
+		$result = $converter->convert_section($tree);
+		$this->assertNotNull($result);
+		$this->assertSame('container', $result['elType']);
+		$widgets = $this->collect_widgets($result);
+		$this->assertContains('text-editor', $widgets);
+	}
+
+	/**
+	 * @param array<string,mixed> $el Element.
+	 * @return array<int,string>
+	 */
+	private function collect_widgets(array $el): array
+	{
+		$types = array();
+		if ('widget' === ($el['elType'] ?? '')) {
+			$types[] = (string) ($el['widgetType'] ?? '');
+		}
+		foreach ((array) ($el['elements'] ?? array()) as $child) {
+			$types = array_merge($types, $this->collect_widgets($child));
+		}
+		return $types;
+	}
+
 	public function test_orchestrator_prepare_enriches_sections(): void
 	{
 		$layout = array(
@@ -304,7 +528,57 @@ final class EngineTest extends TestCase
 		$orch = new VisualReconstructionOrchestrator();
 		$prepared = $orch->prepare(RenderResult::from_array($layout));
 		$this->assertArrayHasKey('engines', $prepared);
-		$this->assertSame(3, $prepared['engines']['version']);
+		$this->assertSame(4, $prepared['engines']['version']);
 		$this->assertNotEmpty($prepared['tokens']);
+	}
+
+	public function test_visual_extraction_carries_accessibility_and_xpath_metadata(): void
+	{
+		$engine = new VisualExtractionEngine();
+		$layout = array(
+			'meta' => array('title' => 'Extraction Meta'),
+			'sections' => array(
+				array(
+					'tree' => array(
+						'tag' => 'button',
+						'text' => 'Contact',
+						'ariaRole' => 'button',
+						'ariaLabel' => 'Contact us',
+						'xpath' => '/html[1]/body[1]/button[1]',
+						'domPath' => 'body > button',
+						'states' => array('hover' => true),
+						'pseudo' => array('before' => array('content' => '"→"')),
+						'children' => array(),
+					),
+				),
+			),
+		);
+		$out = $engine->enrich(RenderResult::from_array($layout))->to_array();
+		$visual = $out['sections'][0]['tree']['visual'] ?? array();
+		$this->assertSame('/html[1]/body[1]/button[1]', $visual['xpath'] ?? '');
+		$this->assertSame('Contact us', $visual['accessibility']['label'] ?? '');
+		$this->assertTrue($visual['states']['hover'] ?? false);
+	}
+
+	public function test_whitespace_analyzer_uses_parent_bbox_for_padding(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 100, 'y' => 200, 'width' => 500, 'height' => 300),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 120, 'y' => 220, 'width' => 300, 'height' => 24), 's' => array()),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 120, 'y' => 264, 'width' => 300, 'height' => 24), 's' => array()),
+					),
+					'layoutConstraint' => array('direction' => 'column'),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$padding = $out[0]['tree']['whitespace']['padding'] ?? array();
+		$this->assertSame(20.0, (float) ($padding['top'] ?? 0));
+		$this->assertSame(20.0, (float) ($padding['left'] ?? 0));
 	}
 }

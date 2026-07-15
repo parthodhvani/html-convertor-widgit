@@ -165,9 +165,10 @@ final class GeneratorTest extends TestCase
 		);
 		$this->assertTrue($classifier->container_needs_fallback($layered));
 
-		// v2 recognition engine reconstructs heroes natively.
-		$recognition = new \HtmlToElementor\Engine\ComponentRecognitionEngine();
-		$layered['layoutRole'] = 'hero';
+		// v3 recognition engine reconstructs layered blocks natively.
+		$recognition = new \HtmlToElementor\Engine\SemanticComponentRecognizer();
+		$layered['layoutRole'] = 'layered_block';
+		$layered['layeredLayout'] = array('background' => null, 'content' => array(), 'in_flow' => array());
 		$this->assertFalse($recognition->container_needs_fallback($layered));
 	}
 }

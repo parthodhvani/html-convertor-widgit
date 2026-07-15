@@ -126,12 +126,15 @@ final class VisualTreeBuilder implements EngineInterface
 		if (!empty($node['atomic'])) {
 			return false;
 		}
-		$cls = strtolower((string) ($node['cls'] ?? ''));
-		if (preg_match('/\b(hero|nav|card|grid|row|section|header|footer|cta|form)\b/', $cls)) {
+		if (VisualSignals::is_layered($node)) {
 			return false;
 		}
 		$s = $node['s'] ?? array();
-		if (!empty($s['bg']) || !empty($s['bgImg']) || !empty($s['bdw'])) {
+		if (!empty($s['bg']) || !empty($s['bgImg']) || !empty($s['bdw']) || !empty($s['sh']) || !empty($s['filter']) || !empty($s['tf'])) {
+			return false;
+		}
+		$pseudo = (array) ($node['pseudo'] ?? array());
+		if (!empty($pseudo['before']) || !empty($pseudo['after'])) {
 			return false;
 		}
 		$pad = (float) ($s['pt'] ?? 0) + (float) ($s['pb'] ?? 0) + (float) ($s['pl'] ?? 0) + (float) ($s['pr'] ?? 0);
@@ -163,17 +166,70 @@ final class VisualTreeBuilder implements EngineInterface
 			}
 		}
 
-		if ($row_score > $col_score && $row_score >= 1) {
+		$shared_bg = $this->shared_background($siblings);
+		$shared_typography = $this->shared_typography($siblings);
+		$similar_height = $this->shared_size_axis($boxes, 'height');
+		$similar_width = $this->shared_size_axis($boxes, 'width');
+
+		if (($row_score > $col_score && $row_score >= 1) || ($similar_height && $shared_bg)) {
+			usort($siblings, function (array $a, array $b): int {
+				return Geometry::bbox($a)['x'] <=> Geometry::bbox($b)['x'];
+			});
 			foreach ($siblings as $i => $sib) {
 				$siblings[$i]['visualSiblingLayout'] = 'row';
 			}
-		} elseif ($col_score >= 1) {
+		} elseif ($col_score >= 1 || ($similar_width && $shared_typography)) {
+			usort($siblings, function (array $a, array $b): int {
+				return Geometry::bbox($a)['y'] <=> Geometry::bbox($b)['y'];
+			});
 			foreach ($siblings as $i => $sib) {
 				$siblings[$i]['visualSiblingLayout'] = 'column';
 			}
 		}
 
 		return $siblings;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $siblings
+	 */
+	private function shared_background(array $siblings): bool
+	{
+		$colors = array();
+		foreach ($siblings as $sibling) {
+			$bg = strtolower(trim((string) ($sibling['s']['bg'] ?? '')));
+			if ('' !== $bg) {
+				$colors[] = $bg;
+			}
+		}
+		return count($colors) >= 2 && count(array_unique($colors)) <= 2;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $siblings
+	 */
+	private function shared_typography(array $siblings): bool
+	{
+		$fonts = array();
+		foreach ($siblings as $sibling) {
+			$fs = strtolower(trim((string) ($sibling['s']['fs'] ?? '')));
+			if ('' !== $fs) {
+				$fonts[] = $fs;
+			}
+		}
+		return count($fonts) >= 2 && count(array_unique($fonts)) <= 2;
+	}
+
+	/**
+	 * @param array<int,array{x:float,y:float,width:float,height:float}> $boxes
+	 */
+	private function shared_size_axis(array $boxes, string $axis): bool
+	{
+		$vals = array();
+		foreach ($boxes as $box) {
+			$vals[] = (float) ($box[$axis] ?? 0);
+		}
+		return Geometry::aligned($vals, 10.0);
 	}
 
 	/**
