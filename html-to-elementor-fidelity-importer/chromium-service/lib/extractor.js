@@ -58,6 +58,10 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
   fs.mkdirSync(outDir, { recursive: true });
 
   const browser = await puppeteer.launch({
+    console.log('Launching Chrome from:', '/usr/bin/google-chrome');
+    console.log('Puppeteer version:', require('puppeteer/package.json').version);
+    executablePath: '/usr/bin/google-chrome',
+
     headless: 'new',
     args: [
       '--no-sandbox',
