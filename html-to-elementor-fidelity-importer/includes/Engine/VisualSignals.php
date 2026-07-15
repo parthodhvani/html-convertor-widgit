@@ -175,15 +175,27 @@ final class VisualSignals
 		$s = $node['s'] ?? array();
 		$box = Geometry::bbox($node);
 		$text = trim((string) ($node['text'] ?? ''));
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		$role = strtolower((string) ($node['ariaRole'] ?? ''));
+
+		if ('button' === $role || 'button' === $tag) {
+			return '' !== $text || preg_match('/\b(btn|button)\b/', $cls);
+		}
+
+		if ('' === $text && '' !== (string) ($node['html'] ?? '')) {
+			$text = trim(wp_strip_all_tags((string) $node['html']));
+		}
 		if ('' === $text) {
 			return false;
 		}
-		$h = $box['height'] ?: (float) ($s['h'] ?? 0);
-		$w = $box['width'] ?: (float) ($s['w'] ?? 0);
-		$role = strtolower((string) ($node['ariaRole'] ?? ''));
-		if ('button' === $role) {
+
+		if (preg_match('/\b(btn|button|cta)\b/', $cls)) {
 			return true;
 		}
+
+		$h = $box['height'] ?: (float) ($s['h'] ?? 0);
+		$w = $box['width'] ?: (float) ($s['w'] ?? 0);
 		$has_bg = self::has_background($s);
 		$has_pad = self::padding_sum($s) >= 6;
 		return $has_bg && $has_pad && $h >= 28 && $h <= 72 && $w >= 60 && $w <= 400;

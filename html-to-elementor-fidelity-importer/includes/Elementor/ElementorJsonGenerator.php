@@ -19,12 +19,11 @@ if (!defined('ABSPATH')) {
 /**
  * The Elementor JSON generator.
  *
- * Default ("native") mode runs the Visual Reconstruction Engine v2 pipeline:
+ * Always runs native-widget reconstruction (Visual Reconstruction Engine):
  * visual tree → layout graph → component recognition → native Elementor
  * containers/widgets, with iterative validation and repair.
  *
- * Legacy ("preserve") mode wraps each section's original HTML in a single HTML
- * widget for maximum raw fidelity.
+ * Legacy "preserve" (raw HTML passthrough) mode has been permanently removed.
  */
 final class ElementorJsonGenerator
 {
@@ -47,17 +46,12 @@ final class ElementorJsonGenerator
 	 * Generate Elementor data plus a structured report and design tokens.
 	 *
 	 * @param RenderResult        $result Layout document.
-	 * @param array<string,mixed> $opts   { mode: "native"|"preserve", confidence }.
+	 * @param array<string,mixed> $opts   { confidence }. Mode is always native widgets.
 	 * @return array{data:array<int,array<string,mixed>>,report:array<string,mixed>,tokens:array<string,mixed>,assets:array<string,mixed>,validation?:array<string,mixed>,quality?:array<string,mixed>}
 	 */
 	public function generate(RenderResult $result, array $opts = array()): array
 	{
-		$mode = (string) ($opts['mode'] ?? 'native');
-
-		if ('preserve' === $mode) {
-			return $this->generate_preserve($result);
-		}
-
+		// Always native-widget-first; "preserve" mode was intentionally removed.
 		return $this->generate_native($result, $opts);
 	}
 
@@ -102,7 +96,7 @@ final class ElementorJsonGenerator
 		$tokens = $prepared['tokens'];
 
 		$report = array(
-			'mode' => 'native',
+			'mode' => 'widgets',
 			'engine_version' => 4,
 			'sections' => count($sections),
 			'containers' => (int) $stats['containers'],
@@ -141,40 +135,6 @@ final class ElementorJsonGenerator
 			'assets' => array_merge($result->assets(), array('media' => $prepared['media'])),
 			'validation' => $validated['validation'],
 			'quality' => $validated['quality'],
-		);
-	}
-
-	/**
-	 * Legacy preservation mode.
-	 *
-	 * @param RenderResult $result Layout document.
-	 * @return array{data:array<int,array<string,mixed>>,report:array<string,mixed>,tokens:array<string,mixed>,assets:array<string,mixed>}
-	 */
-	private function generate_preserve(RenderResult $result): array
-	{
-		$elements = array();
-		$sections = $result->sections();
-
-		foreach ($sections as $section) {
-			$elements[] = $this->section_html_fallback($section);
-		}
-
-		$report = array(
-			'mode' => 'preserve',
-			'sections' => count($sections),
-			'containers' => count($elements),
-			'widgets' => count($elements),
-			'native_widgets' => 0,
-			'html_widgets' => count($elements),
-			'widget_breakdown' => array('html' => count($elements)),
-			'components' => array(),
-		);
-
-		return array(
-			'data' => $elements,
-			'report' => $report,
-			'tokens' => $this->tokens->extract($sections),
-			'assets' => $result->assets(),
 		);
 	}
 

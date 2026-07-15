@@ -196,7 +196,7 @@ final class GeometryComparator implements EngineInterface
 
 		$y = 0.0;
 		foreach ($elements as $el) {
-			$h = $this->simulate_element($el, $frames, 0.0, $y, $viewport, true);
+			$h = $this->simulate_element($el, $frames, 0.0, $y, $viewport, true, 0.0, 0.0);
 			$y += max(1.0, $h);
 		}
 
@@ -210,27 +210,62 @@ final class GeometryComparator implements EngineInterface
 	 * @param float                            $y        Y.
 	 * @param float                            $parent_w Parent width.
 	 * @param bool                             $is_root  Root flag.
+	 * @param float                            $origin_x Section origin X to subtract from stored bboxes.
+	 * @param float                            $origin_y Section origin Y to subtract from stored bboxes.
 	 */
-	private function simulate_element(array $el, array &$frames, float $x, float $y, float $parent_w, bool $is_root): float
-	{
+	private function simulate_element(
+		array $el,
+		array &$frames,
+		float $x,
+		float $y,
+		float $parent_w,
+		bool $is_root,
+		float $origin_x = 0.0,
+		float $origin_y = 0.0
+	): float {
 		$settings = $el['settings'] ?? array();
 		$cls = (string) ($settings['_css_classes'] ?? '');
 		$type = (string) ($el['elType'] ?? '');
+		$raw_bbox = isset($settings['_h2e_bbox']) && is_array($settings['_h2e_bbox'])
+			? $settings['_h2e_bbox']
+			: null;
+
+		// Align stored source bboxes to section-local coords (same as extract_source_frames).
+		if ($is_root && $raw_bbox) {
+			$origin_x = (float) ($raw_bbox['x'] ?? 0);
+			$origin_y = (float) ($raw_bbox['y'] ?? 0);
+		}
+
+		$bbox = null;
+		if ($raw_bbox) {
+			$bbox = array(
+				'x' => (float) ($raw_bbox['x'] ?? 0) - $origin_x,
+				'y' => (float) ($raw_bbox['y'] ?? 0) - $origin_y,
+				'width' => (float) ($raw_bbox['width'] ?? 0),
+				'height' => (float) ($raw_bbox['height'] ?? 0),
+			);
+		}
 
 		if ('widget' === $type) {
-			$h = $this->estimate_widget_height($el);
+			$wx = $bbox ? (float) $bbox['x'] : $x;
+			$wy = $bbox ? (float) $bbox['y'] : $y;
+			$ww = $bbox ? (float) $bbox['width'] : $parent_w;
+			$wh = $bbox ? (float) $bbox['height'] : 0.0;
+			if ($wh <= 0) {
+				$wh = $this->estimate_widget_height($el);
+			}
 			$frames[] = array(
 				'key' => 'w:' . $cls . ':' . ($el['widgetType'] ?? '') . ':' . count($frames),
 				'cls' => $cls,
 				'type' => 'leaf',
-				'x' => $x,
-				'y' => $y,
-				'width' => $parent_w,
-				'height' => $h,
+				'x' => $wx,
+				'y' => $wy,
+				'width' => $ww > 0 ? $ww : $parent_w,
+				'height' => $wh,
 				'gap' => 0.0,
 				'direction' => '',
 			);
-			return $h;
+			return $wh;
 		}
 
 		$direction = (string) ($settings['flex_direction'] ?? 'column');
@@ -238,25 +273,31 @@ final class GeometryComparator implements EngineInterface
 		$min_h = (float) ($settings['min_height']['size'] ?? 0);
 		$kids = (array) ($el['elements'] ?? array());
 
+		$cx = $bbox ? (float) $bbox['x'] : $x;
+		$cy = $bbox ? (float) $bbox['y'] : $y;
+		$cw = $bbox ? (float) $bbox['width'] : $parent_w;
+		$ch = $bbox ? (float) $bbox['height'] : 0.0;
+
 		$frames[] = array(
 			'key' => 'c:' . $cls . ':' . count($frames),
 			'cls' => $cls,
 			'type' => 'container',
-			'x' => $x,
-			'y' => $y,
-			'width' => $parent_w,
-			'height' => max($min_h, 1.0),
+			'x' => $cx,
+			'y' => $cy,
+			'width' => $cw > 0 ? $cw : $parent_w,
+			'height' => max($min_h, $ch, 1.0),
 			'gap' => $gap,
 			'direction' => $direction,
 		);
 
-		$cursor_x = $x;
-		$cursor_y = $y;
+		$cursor_x = $cx;
+		$cursor_y = $cy;
 		$max_extent = 0.0;
+		$sim_parent_w = $cw > 0 ? $cw : $parent_w;
 
 		foreach ($kids as $child) {
-			$child_w = $this->child_width($child, $parent_w, $direction);
-			$child_h = $this->simulate_element($child, $frames, $cursor_x, $cursor_y, $child_w, false);
+			$child_w = $this->child_width($child, $sim_parent_w, $direction);
+			$child_h = $this->simulate_element($child, $frames, $cursor_x, $cursor_y, $child_w, false, $origin_x, $origin_y);
 			if ('row' === $direction) {
 				$cursor_x += $child_w + $gap;
 				$max_extent = max($max_extent, $child_h);
@@ -266,6 +307,9 @@ final class GeometryComparator implements EngineInterface
 			}
 		}
 
+		if ($ch > 0) {
+			return max($min_h, $ch);
+		}
 		if ('row' === $direction) {
 			return max($min_h, $max_extent, 1.0);
 		}

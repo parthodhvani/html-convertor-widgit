@@ -33,11 +33,12 @@ function browserPageSegmenter() {
   ];
 
   const ATOMIC = new Set([
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'img', 'ul', 'ol', 'hr', 'br',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'img', 'hr', 'br',
     'video', 'audio', 'picture', 'source', 'blockquote', 'pre', 'code',
     'table', 'form', 'svg', 'canvas', 'iframe', 'object', 'embed',
     'input', 'select', 'textarea', 'label', 'button', 'figcaption',
   ]);
+  // Note: ul/ol are NOT atomic — nav lists need li>a children for Elementor.
   const SKIP = new Set(['script', 'style', 'noscript', 'template', 'link', 'meta']);
   const INLINE = new Set(['b', 'strong', 'i', 'em', 'span', 'small', 'u', 'mark', 'code', 'br', 'sub', 'sup', 'abbr', 'time', 'a', 'svg']);
 
@@ -92,6 +93,9 @@ function browserPageSegmenter() {
   function anchorIsContainer(el) {
     const kids = Array.from(el.children);
     if (kids.length === 0) return false;
+    // Logo / brand anchors with multiple styled spans should stay containers.
+    if (kids.length >= 2) return true;
+    if (/logo|brand/.test(typeof el.className === 'string' ? el.className : '')) return true;
     return kids.some((c) => !INLINE.has(c.tagName.toLowerCase()));
   }
 

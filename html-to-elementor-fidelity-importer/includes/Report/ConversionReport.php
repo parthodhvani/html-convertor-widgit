@@ -60,7 +60,7 @@ final class ConversionReport
 		return array(
 			'job' => $this->meta['job'] ?? null,
 			'title' => $this->meta['title'] ?? null,
-			'mode' => $this->generator_report['mode'] ?? 'native',
+			'mode' => $this->generator_report['mode'] ?? 'widgets',
 			'engine_version' => $this->generator_report['engine_version'] ?? 1,
 			'containers' => (int) ($this->generator_report['containers'] ?? 0),
 			// Backwards-compatible keys consumed by the admin UI.

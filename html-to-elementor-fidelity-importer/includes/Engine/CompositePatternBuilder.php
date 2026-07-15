@@ -196,10 +196,16 @@ final class CompositePatternBuilder implements EngineInterface
 	private function try_form(array $node, string $role, string $cls): ?array
 	{
 		$tag = strtolower((string) ($node['tag'] ?? ''));
-		$is_form = 'form' === $tag || 'form_block' === $role || preg_match('/\b(form|newsletter)\b/', $cls);
-		if (!$is_form && VisualSignals::count_input_like((array) ($node['children'] ?? array())) < 2) {
+		// Never collapse landmark sections into a Form widget.
+		if (in_array($tag, array('header', 'footer', 'nav', 'section', 'main', 'aside'), true)) {
 			return null;
 		}
+		if (preg_match('/\b(site-footer|site-header|footer-grid|footer-bottom)\b/', $cls)) {
+			return null;
+		}
+
+		$is_form = 'form' === $tag || 'form_block' === $role
+			|| (bool) preg_match('/\b(form|newsletter-form)\b/', $cls);
 		if (!$is_form) {
 			return null;
 		}
@@ -494,12 +500,12 @@ final class CompositePatternBuilder implements EngineInterface
 			if (!is_array($child)) {
 				return false;
 			}
-			$text = trim((string) ($child['text'] ?? ''));
-			if ('' !== $text) {
+			// Any nested heading / paragraph / priced content means this is not a social row.
+			if ($this->has_substantial_copy($child)) {
 				return false;
 			}
-			$tag = strtolower((string) ($child['tag'] ?? ''));
-			if (in_array($tag, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'), true)) {
+			$text = trim((string) ($child['text'] ?? ''));
+			if ('' !== $text) {
 				return false;
 			}
 			$html = (string) ($child['html'] ?? '') . ' ' . (string) ($child['cls'] ?? '');
@@ -508,6 +514,27 @@ final class CompositePatternBuilder implements EngineInterface
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function has_substantial_copy(array $node): bool
+	{
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		if (in_array($tag, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'blockquote'), true)) {
+			return '' !== trim((string) ($node['text'] ?? ''));
+		}
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		if (preg_match('/\b(card|service|feature|testimonial|blog|price)\b/', $cls)) {
+			return true;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (is_array($child) && $this->has_substantial_copy($child)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -566,8 +593,8 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_cta(array $node, string $role, string $cls): ?array
 	{
-		$hinted = in_array($role, array('cta_block', 'cta'), true) || (bool) preg_match('/\b(cta-banner|cta|call-to-action)\b/', $cls);
-		if (!$hinted) {
+		// Only explicit CTA banners — never general content columns that end with a button.
+		if (!preg_match('/\b(cta-banner|call-to-action)\b/', $cls) && 'cta' !== $role) {
 			return null;
 		}
 
@@ -590,14 +617,20 @@ final class CompositePatternBuilder implements EngineInterface
 				$title = $text;
 				return;
 			}
-			if (VisualSignals::looks_button($n) || 'a' === $tag || 'button' === $tag) {
+			$cls_n = strtolower((string) ($n['cls'] ?? ''));
+			if (VisualSignals::looks_button($n) || preg_match('/\b(btn|button)\b/', $cls_n) || 'button' === $tag) {
 				if ('' === $button) {
 					$button = $text;
 					$link = (string) ($n['href'] ?? '');
 				}
 				return;
 			}
-			if (('p' === $tag || VisualSignals::looks_heading($n) === false) && strlen($text) > 20 && '' === $description) {
+			if ('a' === $tag && preg_match('/\b(btn|button|cta)\b/', $cls_n) && '' === $button) {
+				$button = $text;
+				$link = (string) ($n['href'] ?? '');
+				return;
+			}
+			if (('p' === $tag || !VisualSignals::looks_heading($n)) && strlen($text) > 20 && '' === $description) {
 				$description = $text;
 			}
 		});

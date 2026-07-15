@@ -7,9 +7,13 @@ visual sections and generates valid Elementor container data.
 
 > Primary objective: **Visual fidelity + native, editable Elementor structure.**
 
+Conversion is always **native-widget-first** (`widgets` path). Legacy `preserve`
+(raw HTML passthrough) mode has been permanently removed; `widget_confidence`
+controls how aggressively nodes become specific widgets vs. plain containers.
+
 ## Visual reconstruction engine
 
-By default (`conversion_mode = native`) the importer rebuilds each page as **nested
+The importer rebuilds each page as **nested
 Elementor containers and native widgets**, not HTML blocks:
 
 * **Full computed-CSS extraction** (Chromium): typography, spacing, background, border,
@@ -39,9 +43,6 @@ Elementor containers and native widgets**, not HTML blocks:
   forms, canvas and tables. Typical pages convert to **>95% native widgets**.
 * **Visual validation**: `chromium-service/compare.js` scores similarity between the original
   and generated screenshots.
-
-Set `conversion_mode = preserve` to fall back to the original "one HTML widget per section"
-behaviour.
 
 ## Pipeline
 
@@ -143,8 +144,8 @@ node chromium-service/cli.js --input page.html --out layout.json --config config
 ## WP-CLI
 
 ```bash
-wp h2e import /path/to/page.html --title="Landing" --mode=preserve
-wp h2e batch  /path/to/site-export --mode=preserve
+wp h2e import /path/to/page.html --title="Landing"
+wp h2e batch  /path/to/site-export
 ```
 
 ## Troubleshooting

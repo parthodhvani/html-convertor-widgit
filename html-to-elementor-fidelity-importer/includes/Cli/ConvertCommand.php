@@ -12,6 +12,7 @@ namespace HtmlToElementor\Cli;
 use HtmlToElementor\Batch\BatchConverter;
 use HtmlToElementor\Services\ConversionPipeline;
 use HtmlToElementor\Services\UploadHandler;
+use HtmlToElementor\Support\Logger;
 
 if (!defined('ABSPATH')) {
 	exit;
@@ -19,6 +20,8 @@ if (!defined('ABSPATH')) {
 
 /**
  * `wp h2e ...` commands.
+ *
+ * Conversion is always native-widget-first. Legacy --mode=preserve has been removed.
  */
 final class ConvertCommand
 {
@@ -34,9 +37,6 @@ final class ConvertCommand
 	 * [--title=<title>]
 	 * : Page title. Defaults to the rendered <title>.
 	 *
-	 * [--mode=<mode>]
-	 * : Conversion mode: "preserve" (default) or "widgets".
-	 *
 	 * [--status=<status>]
 	 * : Post status. Default: draft.
 	 *
@@ -45,7 +45,7 @@ final class ConvertCommand
 	 *
 	 * ## EXAMPLES
 	 *
-	 *     wp h2e import /var/www/sample.html --title="Landing" --mode=preserve
+	 *     wp h2e import /var/www/sample.html --title="Landing"
 	 *
 	 * @param array<int,string>    $args       Positional args.
 	 * @param array<string,string> $assoc_args Flags.
@@ -78,11 +78,8 @@ final class ConvertCommand
 				copy($path, $entry);
 			}
 
+			// --mode is ignored if present; conversion is always widgets-only.
 			$overrides = array();
-			if (isset($assoc_args['mode'])) {
-				$overrides['conversion_mode'] = $assoc_args['mode'];
-			}
-
 			$pipeline = new ConversionPipeline();
 
 			if (isset($assoc_args['no-import'])) {
@@ -106,6 +103,7 @@ final class ConvertCommand
 			\WP_CLI::log(wp_json_encode($result['report'], JSON_PRETTY_PRINT));
 			\WP_CLI::success('Imported as page #' . $result['post_id']);
 		} catch (\Throwable $e) {
+			Logger::error('CLI import failed', array('error' => $e->getMessage()));
 			\WP_CLI::error($e->getMessage());
 		}
 	}
@@ -118,9 +116,6 @@ final class ConvertCommand
 	 * <dir>
 	 * : Directory to scan recursively for HTML files.
 	 *
-	 * [--mode=<mode>]
-	 * : Conversion mode: "preserve" (default) or "widgets".
-	 *
 	 * @param array<int,string>    $args       Positional args.
 	 * @param array<string,string> $assoc_args Flags.
 	 */
@@ -131,12 +126,8 @@ final class ConvertCommand
 			\WP_CLI::error('Directory not found: ' . $dir);
 		}
 
-		$overrides = array();
-		if (isset($assoc_args['mode'])) {
-			$overrides['conversion_mode'] = $assoc_args['mode'];
-		}
-
-		$results = (new BatchConverter())->run($dir, $overrides);
+		// --mode is ignored if present; conversion is always widgets-only.
+		$results = (new BatchConverter())->run($dir, array());
 		foreach ($results as $r) {
 			if ($r['success']) {
 				\WP_CLI::log(sprintf('OK   %s -> #%d', $r['file'], $r['post_id']));

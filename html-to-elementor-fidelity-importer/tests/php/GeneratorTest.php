@@ -87,7 +87,7 @@ final class GeneratorTest extends TestCase
 		$gen = new ElementorJsonGenerator();
 		$result = $gen->generate(RenderResult::from_array($this->layout()), array('mode' => 'native'));
 
-		$this->assertSame('native', $result['report']['mode']);
+		$this->assertSame('widgets', $result['report']['mode']);
 		$this->assertCount(2, $result['data']); // two top-level sections.
 
 		// No HTML widgets for this clean markup.

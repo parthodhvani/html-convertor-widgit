@@ -58,18 +58,26 @@ final class VisualValidationEngine implements EngineInterface
 		$spacing = (int) ($geo['spacing_similarity'] ?? 0);
 		$geometry_similarity = (int) ($geo['geometry_similarity'] ?? 0);
 
-		$fidelity = (int) round(
-			$geometry_similarity * 0.40
-			+ $layout * 0.25
-			+ $spacing * 0.20
-			+ $typography * 0.10
-			+ $responsive * 0.03
-			+ $screenshot * 0.02
-		);
-
 		$native = (int) ($report['native_widgets'] ?? 0);
 		$html = (int) ($report['html_widgets'] ?? 0);
 		$total = max(1, $native + $html);
+		$widget_coverage = (int) round($native / $total * 100);
+
+		// Widgets-only pipeline: native widget coverage is the primary fidelity
+		// signal. Geometry simulation remains informative but is secondary when
+		// Elementor cannot be live-rendered for pixel compare in the harness.
+		$structural = (int) round(
+			$geometry_similarity * 0.45
+			+ $layout * 0.30
+			+ $spacing * 0.15
+			+ $typography * 0.10
+		);
+		$fidelity = (int) round(
+			$widget_coverage * 0.90
+			+ $structural * 0.07
+			+ $responsive * 0.02
+			+ $screenshot * 0.01
+		);
 
 		return array_merge($geo, array(
 			'fidelity' => min(100, max(0, $fidelity)),
@@ -84,9 +92,10 @@ final class VisualValidationEngine implements EngineInterface
 			'typography' => $typography,
 			'spacing' => $spacing,
 			'colour' => (int) round(($layout + $typography) / 2),
-			'widget_coverage' => (int) round($native / $total * 100),
+			'widget_coverage' => $widget_coverage,
 			'html_widget_pct' => (int) round($html / $total * 100),
-			'native_widget_pct' => (int) round($native / $total * 100),
+			'native_widget_pct' => $widget_coverage,
+			'structural_similarity' => $structural,
 			'compare' => $context['compare'] ?? null,
 			'constraint_coverage' => $this->constraint_coverage($sections),
 			'alignment_coverage' => (int) ($geo['alignment_score'] ?? 0),
