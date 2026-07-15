@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace HtmlToElementor\Elementor;
 
 use HtmlToElementor\Engine\CssMappingEngine;
+use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
 
 if (!defined('ABSPATH')) {
@@ -18,10 +19,8 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * The visual reconstruction engine. Walks the layout tree and emits a native
- * Elementor element graph (containers + widgets). HTML widgets are used only as
- * a last resort (layered/absolute designs, third-party embeds, SVG, forms,
- * canvas, tables).
+ * Facade for the v4 Layout Graph Emitter. Retains public API for backward
+ * compatibility while emission is driven by solved layout constraints.
  */
 final class LayoutTreeConverter
 {
@@ -30,6 +29,8 @@ final class LayoutTreeConverter
     private WidgetClassifier $classifier;
     private ?SemanticComponentRecognizer $recognition = null;
     private ?CssMappingEngine $css_engine = null;
+    private ?LayeredLayoutSolver $layered_solver = null;
+    private ?LayoutGraphEmitter $emitter = null;
 
     /**
      * Running statistics for the conversion report.
@@ -89,81 +90,106 @@ final class LayoutTreeConverter
      */
     public function convert_section(array $tree): ?array
     {
-        $role = (string) ($tree['layoutRole'] ?? '');
+        return $this->graph_emitter()->emit_section($tree);
+    }
 
-        if ('hero' === $role) {
-            $hero = $this->reconstruct_hero($tree);
-            if (null !== $hero) {
-                return $hero;
-            }
-        }
-        if ('navigation' === $role) {
-            $nav = $this->reconstruct_navigation($tree);
-            if (null !== $nav) {
-                return $nav;
-            }
-        }
+    /* --------------------------------------------------------------------- */
+    /* Public API for LayoutGraphEmitter                                     */
+    /* --------------------------------------------------------------------- */
 
-        if ($this->needs_fallback($tree)) {
-            return $this->wrap_section($tree, array($this->html_widget($tree)));
-        }
-        $children = $this->convert_node($tree, true);
-        if (empty($children)) {
-            return null;
-        }
-        // convert_node already wrapped the section into a container.
-        return $children[0];
+    public function emit_layered_block(array $node): ?array
+    {
+        $layered = $this->layered_solver()->to_container(
+            $node,
+            fn(array $n): array => $this->emit_children_legacy($n, false),
+            function (string $r): void {
+                $this->stats['roles'][$r] = ($this->stats['roles'][$r] ?? 0) + 1;
+            }
+        );
+        return $layered;
+    }
+
+    public function emit_horizontal_bar(array $node): ?array
+    {
+        return $this->reconstruct_horizontal_bar($node);
+    }
+
+    public function emit_fallback_wrap(array $node): array
+    {
+        return $this->wrap_section($node, array($this->html_widget($node)));
+    }
+
+    public function needs_html_fallback(array $node): bool
+    {
+        return $this->needs_fallback($node);
     }
 
     /**
-     * Convert a single node into a list of Elementor elements.
-     *
-     * @param array<string,mixed> $node       Tree node.
-     * @param bool                $is_section Whether this is a top-level section.
-     * @param bool                $parent_row Whether the parent lays children in a row.
      * @return array<int,array<string,mixed>>
      */
-    private function convert_node(array $node, bool $is_section = false, bool $parent_row = false, float $parent_width = 0.0, int $depth = 0): array
+    public function emit_leaves(array $node): array
     {
-        $this->stats['max_depth'] = max((int) ($this->stats['max_depth'] ?? 0), $depth);
+        return $this->convert_leaf($node);
+    }
 
-        $is_container = isset($node['children']) && empty($node['atomic']);
+    /**
+     * @param array<int,array<string,mixed>> $children Children.
+     */
+    public function emit_container(array $node, array $children, bool $is_section, bool $parent_row, float $parent_width): array
+    {
+        return $this->container($node, $children, $is_section, $parent_row, $parent_width);
+    }
 
-        if (!$is_container) {
+    public function emit_html_widget(array $node): array
+    {
+        return $this->html_widget($node);
+    }
+
+    public function emit_text_widget(string $text, array $node): array
+    {
+        return $this->text_widget($text, $node);
+    }
+
+    public function emit_spacer(array $node): array
+    {
+        return $this->spacer($node);
+    }
+
+    public function looks_like_spacer(array $node): bool
+    {
+        return $this->looks_like_spacer_internal($node);
+    }
+
+    public function flex_direction(array $node): string
+    {
+        return $this->row_direction($node);
+    }
+
+    private function graph_emitter(): LayoutGraphEmitter
+    {
+        return $this->emitter ??= new LayoutGraphEmitter($this);
+    }
+
+    /**
+     * Legacy child emission for layered content blocks.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function emit_children_legacy(array $node, bool $is_section): array
+    {
+        if (!empty($node['atomic'])) {
             return $this->convert_leaf($node);
         }
-
-        if ($this->needs_fallback($node)) {
-            return array($this->html_widget($node));
-        }
-
         $children = array();
-        $child_row = 'row' === $this->row_direction($node);
-        $self_width = (float) ($node['s']['w'] ?? 0);
-
-        // Stray direct text inside a container that also has element children.
-        $text = trim((string) ($node['text'] ?? ''));
-        if ('' !== $text) {
-            $children[] = $this->text_widget($text, $node);
-        }
-
         foreach ((array) ($node['children'] ?? array()) as $child) {
-            foreach ($this->convert_node($child, false, $child_row, $self_width, $depth + 1) as $el) {
+            if (!is_array($child)) {
+                continue;
+            }
+            foreach ($this->emit_children_legacy($child, false) as $el) {
                 $children[] = $el;
             }
         }
-
-        if (empty($children)) {
-            if ($this->looks_like_spacer($node)) {
-                return array($this->spacer($node));
-            }
-            if (!empty($node['html'])) {
-                return array($this->html_widget($node));
-            }
-            return array();
-        }
-
-        return array($this->container($node, $children, $is_section, $parent_row, $parent_width));
+        return $children;
     }
 
     /**
@@ -298,8 +324,9 @@ final class LayoutTreeConverter
             );
         }
 
-        // v3 geometry-derived layout overrides CSS literals.
+        // v4 geometry-derived layout overrides CSS literals.
         $settings = array_merge($settings, $this->geometry_settings($node));
+        $settings = array_merge($settings, $this->responsive_settings($node));
         $settings = array_merge($settings, $this->identity($node));
 
         // When this container is a column/cell inside a flex-row parent, give it
@@ -474,6 +501,42 @@ final class LayoutTreeConverter
     }
 
     /**
+     * Map responsive layout constraints to Elementor breakpoint controls.
+     *
+     * @param array<string,mixed> $node Source node.
+     * @return array<string,mixed>
+     */
+    private function responsive_settings(array $node): array
+    {
+        $out = array();
+        $responsive = $node['responsiveLayout'] ?? array();
+        if (!is_array($responsive)) {
+            return $out;
+        }
+
+        if (!empty($responsive['mobile']['flex_direction'])) {
+            $out['flex_direction_mobile'] = (string) $responsive['mobile']['flex_direction'];
+        }
+        if (!empty($responsive['tablet']['flex_direction'])) {
+            $out['flex_direction_tablet'] = (string) $responsive['tablet']['flex_direction'];
+        }
+        if (!empty($responsive['mobile']['width']) && is_array($responsive['mobile']['width'])) {
+            $out['width_mobile'] = $responsive['mobile']['width'];
+        }
+        if (!empty($responsive['tablet']['width']) && is_array($responsive['tablet']['width'])) {
+            $out['width_tablet'] = $responsive['tablet']['width'];
+        }
+
+        $mobile_stack = (bool) (($node['responsiveConstraints']['mobile_stack'] ?? false));
+        if ($mobile_stack && empty($out['flex_direction_mobile'])) {
+            $out['flex_direction_mobile'] = 'column';
+            $out['width_mobile'] = array('unit' => '%', 'size' => 100);
+        }
+
+        return $out;
+    }
+
+    /**
      * Whether a container should fall back to an HTML widget.
      *
      * @param array<string,mixed> $node Source node.
@@ -487,108 +550,38 @@ final class LayoutTreeConverter
     }
 
     /**
-     * Reconstruct a hero section natively: background image, overlay, content.
+     * Reconstruct a wide shallow row (navigation, toolbar) from geometry.
      *
-     * @param array<string,mixed> $node Hero section node.
+     * @param array<string,mixed> $node Bar node.
      * @return array<string,mixed>|null
      */
-    private function reconstruct_hero(array $node): ?array
+    private function reconstruct_horizontal_bar(array $node): ?array
     {
-        $children = (array) ($node['children'] ?? array());
-        $bg_image = null;
-        $overlay = null;
-        $content_children = array();
-
-        foreach ($children as $child) {
-            $tag = strtolower((string) ($child['tag'] ?? ''));
-            $pos = strtolower((string) ($child['s']['pos'] ?? ''));
-            $cls = strtolower((string) ($child['cls'] ?? ''));
-
-            if ('img' === $tag) {
-                $bg_image = $child;
-                continue;
-            }
-            if (false !== strpos($cls, 'overlay') || ('absolute' === $pos && empty($child['text']) && empty($child['children']))) {
-                $overlay = $child;
-                continue;
-            }
-            if ('absolute' === $pos || false !== strpos($cls, 'hero-content') || false !== strpos($cls, 'content')) {
-                foreach ($this->convert_node($child, false) as $el) {
-                    $content_children[] = $el;
-                }
-                continue;
-            }
-            foreach ($this->convert_node($child, false) as $el) {
-                $content_children[] = $el;
-            }
-        }
-
-        if (empty($content_children) && empty($bg_image)) {
-            return null;
-        }
-
-        $settings = array_merge(
-            array('content_width' => 'full', 'flex_direction' => 'column', 'min_height' => array('unit' => 'px', 'size' => (float) ($node['s']['h'] ?? 380))),
-            $this->css->background($node),
-            $this->css->sizing($node),
-            $this->identity($node)
-        );
-
-        if (null !== $bg_image) {
-            $src = (string) ($bg_image['src'] ?? '');
-            if ('' !== $src) {
-                $settings['background_background'] = 'classic';
-                $settings['background_image'] = array('url' => $src, 'id' => '');
-                $settings['background_position'] = 'center center';
-                $settings['background_size'] = 'cover';
-            }
-        }
-        if (null !== $overlay && !empty($overlay['s']['bgImg'])) {
-            $settings['_h2e_hero_overlay'] = (string) $overlay['s']['bgImg'];
-        }
-
-        $this->stats['containers']++;
-        $this->stats['roles']['hero'] = ($this->stats['roles']['hero'] ?? 0) + 1;
-
-        return array(
-            'id' => ElementId::generate(),
-            'elType' => 'container',
-            'settings' => $settings,
-            'elements' => array_values($content_children),
-            'isInner' => false,
-        );
-    }
-
-    /**
-     * Reconstruct navigation as nested containers + native widgets.
-     *
-     * @param array<string,mixed> $node Nav node.
-     * @return array<string,mixed>|null
-     */
-    private function reconstruct_navigation(array $node): ?array
-    {
-        $widgets = array();
-        foreach ($this->flatten_nav_widgets($node) as $w) {
-            $widgets[] = $w;
-        }
+        $widgets = $this->flatten_atomic_widgets($node);
         if (empty($widgets)) {
             return null;
         }
+
+        $constraint = $node['layoutConstraint'] ?? array();
+        $alignment = $node['alignment'] ?? array();
 
         $settings = array_merge(
             array(
                 'content_width' => 'full',
                 'flex_direction' => 'row',
-                'flex_justify_content' => 'space-between',
-                'flex_align_items' => 'center',
+                'flex_justify_content' => (string) ($alignment['justify'] ?? $node['s']['jc'] ?? 'space-between'),
+                'flex_align_items' => (string) ($alignment['align_items'] ?? $node['s']['ai'] ?? 'center'),
             ),
-            $this->css->background($node),
-            $this->css->spacing($node, true),
+            null !== $this->css_engine
+                ? $this->css_engine->map_container($node, true)
+                : array_merge($this->css->background($node), $this->css->sizing($node)),
+            $this->geometry_settings($node),
+            $this->responsive_settings($node),
             $this->identity($node)
         );
 
         $this->stats['containers']++;
-        $this->stats['roles']['nav'] = ($this->stats['roles']['nav'] ?? 0) + 1;
+        $this->stats['roles']['horizontal_bar'] = ($this->stats['roles']['horizontal_bar'] ?? 0) + 1;
 
         return array(
             'id' => ElementId::generate(),
@@ -600,43 +593,32 @@ final class LayoutTreeConverter
     }
 
     /**
-     * Flatten nav tree into a row of native widgets.
+     * Collect leaf widgets in document order without HTML tag assumptions.
      *
-     * @param array<string,mixed> $node Nav node.
+     * @param array<string,mixed> $node Tree node.
      * @return array<int,array<string,mixed>>
      */
-    private function flatten_nav_widgets(array $node): array
+    private function flatten_atomic_widgets(array $node): array
     {
         $out = array();
         if (!empty($node['atomic'])) {
-            $leaf = $this->convert_leaf($node);
-            return $leaf;
+            foreach ($this->convert_leaf($node) as $w) {
+                $out[] = $w;
+            }
+            return $out;
         }
         foreach ((array) ($node['children'] ?? array()) as $child) {
             if (!is_array($child)) {
                 continue;
             }
-            $tag = strtolower((string) ($child['tag'] ?? ''));
-            if (in_array($tag, array('ul', 'ol'), true)) {
-                foreach ((array) ($child['children'] ?? array()) as $li) {
-                    if (!is_array($li)) {
-                        continue;
-                    }
-                    foreach ($this->convert_leaf($li) as $w) {
-                        $out[] = $w;
-                    }
-                }
-                continue;
-            }
-            if (!empty($child['children'])) {
-                $out = array_merge($out, $this->flatten_nav_widgets($child));
-                continue;
-            }
-            foreach ($this->convert_leaf($child) as $w) {
-                $out[] = $w;
-            }
+            $out = array_merge($out, $this->flatten_atomic_widgets($child));
         }
         return $out;
+    }
+
+    private function layered_solver(): LayeredLayoutSolver
+    {
+        return $this->layered_solver ??= new LayeredLayoutSolver($this->css);
     }
 
     private function style_for_widget(string $type, array $node): array
@@ -721,7 +703,7 @@ final class LayoutTreeConverter
      *
      * @param array<string,mixed> $node Source node.
      */
-    private function looks_like_spacer(array $node): bool
+    private function looks_like_spacer_internal(array $node): bool
     {
         $s = $node['s'] ?? array();
         $h = (float) ($s['h'] ?? 0);

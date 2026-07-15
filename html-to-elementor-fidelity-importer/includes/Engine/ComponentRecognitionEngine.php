@@ -98,8 +98,8 @@ final class ComponentRecognitionEngine implements EngineInterface
 	{
 		$role = (string) ($node['layoutRole'] ?? '');
 
-		// Heroes, nav and CTAs are reconstructed natively even with layered children.
-		if (in_array($role, array('hero', 'navigation', 'cta', 'footer', 'header'), true)) {
+		// Layered blocks, horizontal bars and structural groups are reconstructed natively.
+		if (in_array($role, array('layered_block', 'horizontal_bar', 'footer_band', 'cta_block', 'row_group', 'column_group'), true)) {
 			return false;
 		}
 
@@ -114,7 +114,7 @@ final class ComponentRecognitionEngine implements EngineInterface
 			return true;
 		}
 
-		return $this->classifier->container_needs_fallback($node) && 'hero' !== $role;
+		return $this->classifier->container_needs_fallback($node) && 'layered_block' !== $role;
 	}
 
 	/**
@@ -188,13 +188,13 @@ final class ComponentRecognitionEngine implements EngineInterface
 		if ('form' === $tag) {
 			$score = 55; // Forms are hard — lower confidence for native.
 		}
-		if ('hero' === $role) {
-			$score = 85; // Prefer native hero reconstruction.
+		if ('layered_block' === $role) {
+			$score = 85;
 		}
-		if ('navigation' === $role) {
+		if ('horizontal_bar' === $role) {
 			$score = 80;
 		}
-		if (preg_match('/swiper|slick|owl-carousel/i', (string) ($node['cls'] ?? ''))) {
+		if ($this->looks_carousel_geometry($node)) {
 			$score = 30;
 		}
 
@@ -210,15 +210,30 @@ final class ComponentRecognitionEngine implements EngineInterface
 	 */
 	private function try_native_override(array $node, string $role): ?array
 	{
-		if ('hero' === $role) {
-			return array('kind' => 'pattern', 'type' => 'hero', 'confidence' => 90, 'role' => 'hero');
+		if ('layered_block' === $role) {
+			return array('kind' => 'pattern', 'type' => 'layered_block', 'confidence' => 90, 'role' => 'layered_block');
 		}
-		if ('navigation' === $role) {
-			return array('kind' => 'pattern', 'type' => 'navigation', 'confidence' => 85, 'role' => 'navigation');
+		if ('horizontal_bar' === $role) {
+			return array('kind' => 'pattern', 'type' => 'horizontal_bar', 'confidence' => 85, 'role' => 'horizontal_bar');
 		}
-		if ('form' === $role && 'form' === strtolower((string) ($node['tag'] ?? ''))) {
-			return array('kind' => 'pattern', 'type' => 'form', 'confidence' => 70, 'role' => 'form');
+		if ('form_block' === $role) {
+			return array('kind' => 'pattern', 'type' => 'form_block', 'confidence' => 70, 'role' => 'form_block');
 		}
 		return null;
+	}
+
+	/**
+	 * Detect carousel-like geometry without class-name heuristics.
+	 *
+	 * @param array<string,mixed> $node Tree node.
+	 */
+	private function looks_carousel_geometry(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		$ov = strtolower((string) ($s['ov'] ?? ''));
+		if (false === strpos($ov, 'hidden')) {
+			return false;
+		}
+		return count((array) ($node['children'] ?? array())) >= 4;
 	}
 }

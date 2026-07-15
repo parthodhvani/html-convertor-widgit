@@ -14,8 +14,9 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Layout Graph Engine — infers sections, rows, columns, stacks, heroes, nav,
- * cards and other visual regions using geometry, spacing and gestalt cues.
+ * Layout Graph Engine — infers structural layout types (row, stack, grid)
+ * from geometry and computed display properties. Semantic roles are assigned
+ * later by SemanticComponentGraph.
  */
 final class LayoutGraphEngine implements EngineInterface
 {
@@ -65,15 +66,10 @@ final class LayoutGraphEngine implements EngineInterface
 	 */
 	private function annotate(array &$node): void
 	{
-		$role = $this->infer_role($node);
-		if ('' !== $role) {
-			$node['layoutRole'] = $role;
-			$this->detected[$role] = ($this->detected[$role] ?? 0) + 1;
-		}
-
 		$layout = $this->infer_layout_type($node);
 		if ('' !== $layout) {
 			$node['layoutType'] = $layout;
+			$this->detected[$layout] = ($this->detected[$layout] ?? 0) + 1;
 		}
 
 		foreach ((array) ($node['children'] ?? array()) as $i => $child) {

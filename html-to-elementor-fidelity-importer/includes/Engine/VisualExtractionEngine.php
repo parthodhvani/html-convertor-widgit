@@ -44,7 +44,8 @@ final class VisualExtractionEngine implements EngineInterface
 		foreach ($result->sections() as $section) {
 			$tree = $section['tree'] ?? null;
 			if (is_array($tree)) {
-				$this->enrich_node($tree, null, 0);
+				$section_origin = $this->section_origin($section);
+				$this->enrich_node($tree, null, 0, $section_origin);
 				$section['tree'] = $tree;
 				$section['visual'] = $this->section_visual($section);
 			}
@@ -60,11 +61,12 @@ final class VisualExtractionEngine implements EngineInterface
 	/**
 	 * Recursively attach visual metadata to a tree node.
 	 *
-	 * @param array<string,mixed>      $node   Node (by ref).
-	 * @param array<string,mixed>|null $parent Parent node.
-	 * @param int                      $depth  Tree depth.
+	 * @param array<string,mixed>      $node           Node (by ref).
+	 * @param array<string,mixed>|null $parent         Parent node.
+	 * @param int                      $depth          Tree depth.
+	 * @param array{x:float,y:float}   $section_origin Section-local origin.
 	 */
-	private function enrich_node(array &$node, ?array $parent, int $depth): void
+	private function enrich_node(array &$node, ?array $parent, int $depth, array $section_origin): void
 	{
 		$s = $node['s'] ?? array();
 		$bbox = $node['bbox'] ?? $this->bbox_from_styles($s);
@@ -72,6 +74,7 @@ final class VisualExtractionEngine implements EngineInterface
 		$states = (array) ($node['states'] ?? array());
 		$stacking = array_merge($this->stacking_context($s), (array) ($node['stacking'] ?? array()));
 
+		$node['bbox'] = $bbox;
 		$node['visual'] = array(
 			'bbox' => $bbox,
 			'depth' => $depth,
@@ -115,9 +118,42 @@ final class VisualExtractionEngine implements EngineInterface
 			if (!is_array($child)) {
 				continue;
 			}
-			$this->enrich_node($child, $node, $depth + 1);
+			$this->enrich_node($child, $node, $depth + 1, $section_origin);
 			$node['children'][$i] = $child;
 		}
+	}
+
+	/**
+	 * Section-local coordinate origin for bbox normalization.
+	 *
+	 * @param array<string,mixed> $section Section.
+	 * @return array{x:float,y:float}
+	 */
+	private function section_origin(array $section): array
+	{
+		$bbox = $section['bbox'] ?? array();
+		return array(
+			'x' => (float) ($bbox['x'] ?? 0),
+			'y' => (float) ($bbox['y'] ?? 0),
+		);
+	}
+
+	/**
+	 * Normalize a node bbox to section-local coordinates.
+	 *
+	 * @param array<string,mixed>    $node           Node.
+	 * @param array{x:float,y:float} $section_origin Origin.
+	 * @return array{x:float,y:float,width:float,height:float}
+	 */
+	private function normalize_bbox(array $node, array $section_origin): array
+	{
+		$raw = $node['bbox'] ?? $this->bbox_from_styles($node['s'] ?? array());
+		return array(
+			'x' => max(0.0, (float) ($raw['x'] ?? 0) - $section_origin['x']),
+			'y' => max(0.0, (float) ($raw['y'] ?? 0) - $section_origin['y']),
+			'width' => (float) ($raw['width'] ?? 0),
+			'height' => (float) ($raw['height'] ?? 0),
+		);
 	}
 
 	/**

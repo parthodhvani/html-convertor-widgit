@@ -16,12 +16,8 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Visual Reconstruction Orchestrator v3 — geometry-first pipeline:
- *
- *   Chromium → Visual Extraction → Visual Tree → Layout Graph
- *   → Constraint Solver → Whitespace → Alignment → Wrapper Elimination
- *   → Semantic Recognition → Tokens → Responsive → Elementor JSON
- *   → Visual Validation → Pixel Repair → Quality Report
+ * Visual Reconstruction Orchestrator v4 — geometry-first pipeline with
+ * LayoutGraphEmitter and GeometryComparator validation loop.
  */
 final class VisualReconstructionOrchestrator
 {
@@ -30,6 +26,7 @@ final class VisualReconstructionOrchestrator
 	private VisualTreeBuilder $visual_tree;
 	private LayoutGraphEngine $layout_graph;
 	private ConstraintLayoutSolver $constraint_solver;
+	private SemanticComponentGraph $semantic_graph;
 	private WhitespaceAnalyzer $whitespace;
 	private AlignmentEngine $alignment;
 	private WrapperEliminationEngine $wrapper_elimination;
@@ -41,6 +38,7 @@ final class VisualReconstructionOrchestrator
 	private CssMappingEngine $css;
 	private AnimationEngine $animation;
 	private VisualValidationEngine $validation;
+	private GeometryComparator $geometry;
 	private PixelRepairEngine $repair;
 	private ImportQualityReport $quality;
 
@@ -56,6 +54,7 @@ final class VisualReconstructionOrchestrator
 		$this->visual_tree = new VisualTreeBuilder();
 		$this->layout_graph = new LayoutGraphEngine();
 		$this->constraint_solver = new ConstraintLayoutSolver();
+		$this->semantic_graph = new SemanticComponentGraph();
 		$this->whitespace = new WhitespaceAnalyzer();
 		$this->alignment = new AlignmentEngine();
 		$this->wrapper_elimination = new WrapperEliminationEngine();
@@ -67,6 +66,7 @@ final class VisualReconstructionOrchestrator
 		$this->css = new CssMappingEngine();
 		$this->animation = new AnimationEngine();
 		$this->validation = new VisualValidationEngine($threshold, $max_repair);
+		$this->geometry = new GeometryComparator();
 		$this->repair = new PixelRepairEngine($max_repair);
 		$this->quality = new ImportQualityReport();
 	}
@@ -92,6 +92,7 @@ final class VisualReconstructionOrchestrator
 		$sections = $this->visual_tree->build($sections);
 		$sections = $this->layout_graph->build($sections);
 		$sections = $this->constraint_solver->solve($sections);
+		$sections = $this->semantic_graph->build($sections);
 		$sections = $this->whitespace->analyze($sections);
 		$sections = $this->alignment->apply($sections);
 		$sections = $this->wrapper_elimination->process_sections($sections);
@@ -149,6 +150,9 @@ final class VisualReconstructionOrchestrator
 			$validation = $this->validation->score($elementor_data, $context);
 			$validation['iterations'] = $repair_result['iterations'];
 			$validation['repairs'] = $repair_result['repairs'];
+			if (isset($repair_result['geometry_similarity'])) {
+				$validation['geometry_similarity'] = $repair_result['geometry_similarity'];
+			}
 		}
 
 		$validation['threshold'] = (int) ($context['threshold'] ?? 95);
@@ -167,6 +171,7 @@ final class VisualReconstructionOrchestrator
 				'average_confidence' => $this->recognition->average_confidence(),
 				'elementor_data' => $elementor_data,
 				'import_duration_ms' => (int) ($context['import_duration_ms'] ?? 0),
+				'container_compression' => $context['container_compression'] ?? array(),
 			)
 		);
 
@@ -194,19 +199,22 @@ final class VisualReconstructionOrchestrator
 	private function engine_metadata(): array
 	{
 		return array(
-			'version' => 3,
+			'version' => 4,
 			'pipeline' => array(
 				$this->extraction->name(),
 				$this->visual_tree->name(),
 				$this->layout_graph->name(),
 				$this->constraint_solver->name(),
+				$this->semantic_graph->name(),
 				$this->whitespace->name(),
 				$this->alignment->name(),
 				$this->wrapper_elimination->name(),
 				$this->recognition->name(),
 				$this->tokens->name(),
-				$this->widget_mapper->name(),
 				$this->responsive->name(),
+				'layout_graph_emitter',
+				'container_tree_optimizer',
+				$this->geometry->name(),
 				$this->media->name(),
 				$this->css->name(),
 				$this->animation->name(),
@@ -215,7 +223,10 @@ final class VisualReconstructionOrchestrator
 			),
 			'wrappers_eliminated' => $this->wrapper_elimination->eliminated_count(),
 			'visual_restructured' => $this->visual_tree->restructured_count(),
-			'layout_components' => $this->layout_graph->detected_components(),
+			'layout_components' => array_merge(
+				$this->layout_graph->detected_components(),
+				$this->semantic_graph->detected_components()
+			),
 			'measured_gaps' => $this->whitespace->measured_gaps(),
 		);
 	}
