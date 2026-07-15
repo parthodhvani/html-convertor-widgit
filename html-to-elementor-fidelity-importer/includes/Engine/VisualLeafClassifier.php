@@ -103,8 +103,45 @@ final class VisualLeafClassifier
 			return array('kind' => 'fallback', 'confidence' => 50);
 		}
 
-		// Form controls without native Elementor mapping at leaf level.
-		if (VisualSignals::looks_input_like($node) || $signals['input_like_children'] > 0) {
+		// Lone form controls → native Form widget (avoid HTML fallback).
+		if (VisualSignals::looks_input_like($node) || in_array($tag, array('input', 'textarea', 'select'), true)) {
+			$type = strtolower((string) ($node['inputType'] ?? $node['type'] ?? 'text'));
+			if (in_array($type, array('submit', 'button', 'image', 'reset'), true)) {
+				return $this->result(
+					'button',
+					array(
+						'text' => $text !== '' ? $text : 'Submit',
+						'link' => array('url' => ''),
+					),
+					92
+				);
+			}
+			$field_type = in_array($type, array('email', 'tel', 'url', 'number', 'search', 'password'), true) ? $type : 'text';
+			if ('textarea' === $tag) {
+				$field_type = 'textarea';
+			}
+			if ('select' === $tag) {
+				$field_type = 'select';
+			}
+			return $this->result(
+				'form',
+				array(
+					'form_name' => 'Search',
+					'form_fields' => array(
+						array(
+							'field_type' => $field_type,
+							'field_label' => (string) ($node['placeholder'] ?? $text),
+							'placeholder' => (string) ($node['placeholder'] ?? ''),
+							'required' => !empty($node['required']) ? 'true' : '',
+						),
+					),
+					'submit_button_text' => 'Suchen',
+				),
+				96
+			);
+		}
+
+		if ($signals['input_like_children'] > 0) {
 			return array('kind' => 'fallback', 'confidence' => 45);
 		}
 

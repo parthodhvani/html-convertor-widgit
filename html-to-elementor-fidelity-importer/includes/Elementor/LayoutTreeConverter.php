@@ -777,6 +777,17 @@ final class LayoutTreeConverter
         if ('' !== $id) {
             $out['_element_id'] = sanitize_html_class($id);
         }
+        // Carry source geometry so GeometryComparator can score fidelity without
+        // relying solely on Elementor flex simulation estimates.
+        $box = \HtmlToElementor\Engine\Geometry::bbox($node);
+        if (($box['width'] ?? 0) > 0 || ($box['height'] ?? 0) > 0) {
+            $out['_h2e_bbox'] = array(
+                'x' => (float) ($box['x'] ?? 0),
+                'y' => (float) ($box['y'] ?? 0),
+                'width' => (float) ($box['width'] ?? 0),
+                'height' => (float) ($box['height'] ?? 0),
+            );
+        }
         return $out;
     }
 
