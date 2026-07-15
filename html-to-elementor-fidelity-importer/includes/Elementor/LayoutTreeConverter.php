@@ -232,6 +232,29 @@ final class LayoutTreeConverter
             return $this->convert_leaf($node);
         }
         $children = array();
+        $text = trim((string) ($node['text'] ?? ''));
+        if ('' === $text && !empty($node['html'])) {
+            $text = trim(wp_strip_all_tags((string) $node['html']));
+        }
+        // Absolute badges / overlays often carry label text on the wrapper.
+        if ('' !== $text && empty($node['children'])) {
+            return $this->convert_leaf(array_merge($node, array('atomic' => true, 'text' => $text)));
+        }
+        if ('' !== $text) {
+            $cls = strtolower((string) ($node['cls'] ?? ''));
+            if (preg_match('/\b(badge|chip|pill|label|hero-badge)\b/', $cls) || VisualSignals::looks_button(array_merge($node, array('text' => $text)))) {
+                $children[] = $this->widget(
+                    'button',
+                    array(
+                        'text' => $text,
+                        'link' => array('url' => (string) ($node['href'] ?? ''), 'is_external' => '', 'nofollow' => ''),
+                    ),
+                    $node
+                );
+                return $children;
+            }
+            $children[] = $this->text_widget($text, $node);
+        }
         foreach ((array) ($node['children'] ?? array()) as $child) {
             if (!is_array($child)) {
                 continue;

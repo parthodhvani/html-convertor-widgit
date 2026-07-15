@@ -3,7 +3,9 @@
  * Standalone harness: turn a Node layout.json into Elementor data WITHOUT a full
  * WordPress install. Useful for local verification and CI of the JSON generator.
  *
- * Usage: php tests/harness.php <layout.json> [preserve|widgets]
+ * Usage: php tests/harness.php <layout.json> [widgets]
+ *
+ * Conversion is always native-widget-first. Legacy "preserve" mode was removed.
  *
  * @package HtmlToElementor
  */
@@ -52,10 +54,14 @@ use HtmlToElementor\Services\RenderResult;
 use HtmlToElementor\Elementor\ElementorJsonGenerator;
 
 $layout_path = $argv[1] ?? '';
-$mode = $argv[2] ?? 'preserve';
+// Optional second arg kept for CLI compatibility; conversion is always widgets-only.
+// Legacy "preserve" mode was permanently removed.
+if (isset($argv[2]) && 'preserve' === strtolower((string) $argv[2])) {
+	fwrite(STDERR, "Note: 'preserve' mode was permanently removed; running widgets-only.\n");
+}
 
 if ('' === $layout_path || !is_readable($layout_path)) {
-	fwrite(STDERR, "Usage: php tests/harness.php <layout.json> [preserve|widgets]\n");
+	fwrite(STDERR, "Usage: php tests/harness.php <layout.json> [widgets]\n");
 	exit(2);
 }
 
@@ -67,7 +73,7 @@ if (!is_array($layout)) {
 
 $result = RenderResult::from_array($layout);
 $generator = new ElementorJsonGenerator();
-$generated = $generator->generate($result, array('mode' => $mode, 'confidence' => 95));
+$generated = $generator->generate($result, array('confidence' => 95));
 
 // Validate the generated structure looks like Elementor data.
 $errors = array();
@@ -89,4 +95,4 @@ if ($errors) {
 	fwrite(STDERR, "\nVALIDATION ERRORS:\n - " . implode("\n - ", $errors) . "\n");
 	exit(1);
 }
-fwrite(STDERR, "\nOK: generated valid Elementor data.\n");
+fwrite(STDERR, "\nOK: generated valid Elementor data (widgets-only).\n");

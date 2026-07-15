@@ -79,19 +79,25 @@ final class LayeredLayoutSolver
 
 		$bg = $layers['background'] ?? null;
 		if (is_array($bg)) {
-			$src = (string) ($bg['src'] ?? '');
+			$src = $this->resolve_image_src($bg);
 			if ('' !== $src) {
 				$settings['background_background'] = 'classic';
 				$settings['background_image'] = array('url' => $src, 'id' => '');
 				$settings['background_position'] = 'center center';
 				$settings['background_size'] = 'cover';
-			} elseif (!empty($bg['s']['bgImg'])) {
+			} elseif (!empty($bg['s']['bgImg']) && !preg_match('/gradient\s*\(/i', (string) $bg['s']['bgImg'])) {
 				$settings['_h2e_layer_bg'] = (string) $bg['s']['bgImg'];
+			} else {
+				// Keep media frames (e.g. founder photo wrappers) as nested content
+				// when they are not a usable background URL.
+				foreach ($convert_content($bg) as $el) {
+					array_unshift($content_elements, $el);
+				}
 			}
 		}
 
 		$overlay = $layers['overlay'] ?? null;
-		if (is_array($overlay) && !empty($overlay['s']['bgImg'])) {
+		if (is_array($overlay) && !empty($overlay['s']['bgImg']) && !preg_match('/gradient\s*\(/i', (string) $overlay['s']['bgImg'])) {
 			$settings['_h2e_layer_overlay'] = (string) $overlay['s']['bgImg'];
 		}
 
@@ -104,5 +110,32 @@ final class LayeredLayoutSolver
 			'elements' => array_values($content_elements),
 			'isInner' => false,
 		);
+	}
+
+	/**
+	 * Resolve an image URL from a node or its descendants.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function resolve_image_src(array $node): string
+	{
+		$src = (string) ($node['src'] ?? '');
+		if ('' !== $src) {
+			return $src;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$found = $this->resolve_image_src($child);
+			if ('' !== $found) {
+				return $found;
+			}
+		}
+		$bg = (string) ($node['s']['bgImg'] ?? '');
+		if ('' !== $bg && !preg_match('/gradient\s*\(/i', $bg) && preg_match('/url\(["\']?([^"\')]+)["\']?\)/', $bg, $m)) {
+			return $m[1];
+		}
+		return '';
 	}
 }

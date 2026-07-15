@@ -43,7 +43,9 @@ final class Settings
 			'node_strip_env' => true,
 			'node_ld_library_path' => '', // Optional explicit LD_LIBRARY_PATH for Node.
 			// Conversion behaviour.
-			'conversion_mode' => 'native',   // "native" (containers + widgets) | "preserve" (raw HTML).
+			// "preserve" (raw HTML passthrough) mode has been permanently removed.
+			// Conversion is always native-widget-first; widget_confidence is the only dial
+			// for how aggressively a DOM node becomes a specific widget vs. a plain container.
 			'widget_confidence' => 95,         // Minimum % confidence to convert a node to a widget.
 			'breakpoints' => array(
 				'wide' => 1920,
@@ -89,7 +91,10 @@ final class Settings
 	public static function all(): array
 	{
 		$stored = get_option(self::OPTION_KEY, array());
-		return array_merge(self::defaults(), is_array($stored) ? $stored : array());
+		$merged = array_merge(self::defaults(), is_array($stored) ? $stored : array());
+		// Legacy key — permanently removed; ignore if still present in stored options.
+		unset($merged['conversion_mode']);
+		return $merged;
 	}
 
 	/**
@@ -112,6 +117,7 @@ final class Settings
 	 */
 	public static function update(array $values): void
 	{
+		unset($values['conversion_mode']); // Legacy; permanently removed.
 		update_option(self::OPTION_KEY, array_merge(self::all(), $values));
 	}
 }

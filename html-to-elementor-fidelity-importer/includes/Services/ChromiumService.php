@@ -250,7 +250,8 @@ final class ChromiumService
 			'waitUntil' => $settings['wait_until'] ?? 'networkidle0',
 			'timeout' => (int) ($settings['render_timeout_ms'] ?? 60000),
 			'captureScreenshots' => (bool) ($settings['capture_screenshots'] ?? true),
-			'conversionMode' => $settings['conversion_mode'] ?? 'preserve',
+			// Always widgets-only; "preserve" conversion mode was permanently removed.
+			'conversionMode' => 'widgets',
 			'widgetConfidence' => (int) ($settings['widget_confidence'] ?? 95),
 			'debug' => (bool) ($settings['debug'] ?? false),
 		);

@@ -127,13 +127,17 @@ final class SemanticComponentGraph implements EngineInterface
 			}
 		}
 
-		// Footer band — last section, full width, moderate height.
-		if (($context['is_last'] ?? false) && $h >= 40 && $h <= 250) {
+		// Footer band — last section OR explicit footer landmark.
+		if ('footer' === $tag || preg_match('/\b(site-footer|footer)\b/', $cls)) {
+			return 'footer_band';
+		}
+		if (($context['is_last'] ?? false) && $h >= 40 && $h <= 400) {
 			return 'footer_band';
 		}
 
-		// Form block — multiple input-like descendants or <form>/newsletter.
-		if ($signals['input_like_children'] >= 2 || 'form' === $tag || preg_match('/\b(form|newsletter-form)\b/', $cls)) {
+		// Form block — never on landmarks; require form tag/class or many fields.
+		if (!in_array($tag, array('header', 'footer', 'nav', 'section', 'main'), true)
+			&& ($signals['input_like_children'] >= 2 || 'form' === $tag || preg_match('/\b(form|newsletter-form)\b/', $cls))) {
 			return 'form_block';
 		}
 
@@ -171,8 +175,8 @@ final class SemanticComponentGraph implements EngineInterface
 			return 'card';
 		}
 
-		// CTA banner.
-		if (preg_match('/\b(cta-banner|call-to-action|cta)\b/', $cls) || $this->ends_with_button($node)) {
+		// CTA banner — only explicit CTA surfaces, not every button-ending column.
+		if (preg_match('/\b(cta-banner|call-to-action)\b/', $cls)) {
 			return 'cta_block';
 		}
 
@@ -259,7 +263,12 @@ final class SemanticComponentGraph implements EngineInterface
 		if (count($children) < 2) {
 			return false;
 		}
-		$row = 'row' === ($constraint['direction'] ?? '') || 'row' === $layout;
+		$row = 'row' === ($constraint['direction'] ?? '') || 'row' === $layout
+			|| preg_match('/\b(socials?|social-icons)\b/', strtolower((string) ($node['cls'] ?? '')));
+		if (!$row && !preg_match('/\b(socials?|social-icons)\b/', strtolower((string) ($node['cls'] ?? '')))) {
+			// Only infer from geometry when children are truly icon-only.
+			$row = 'row' === ($constraint['direction'] ?? '') || 'row' === $layout;
+		}
 		if (!$row) {
 			return false;
 		}
@@ -268,12 +277,39 @@ final class SemanticComponentGraph implements EngineInterface
 			if (!is_array($child)) {
 				continue;
 			}
+			// Service/feature/blog cards contain icons but are not social rows.
+			if ($this->has_substantial_copy_for_social($child)) {
+				return false;
+			}
 			$cls = (string) ($child['cls'] ?? '') . ' ' . (string) ($child['html'] ?? '');
-			if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+fa-[\w-]+/i', $cls) && '' === trim((string) ($child['text'] ?? ''))) {
+			if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+fa-[\w-]+/i', $cls)
+				&& '' === trim((string) ($child['text'] ?? ''))) {
 				++$icons;
 			}
 		}
-		return $icons >= 2;
+		return $icons >= 2 && $icons === count($children);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function has_substantial_copy_for_social(array $node): bool
+	{
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		if (preg_match('/\b(card|service|feature|testimonial|blog|price|icon-box)\b/', $cls)) {
+			return true;
+		}
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		if (in_array($tag, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p'), true)
+			&& '' !== trim((string) ($node['text'] ?? ''))) {
+			return true;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (is_array($child) && $this->has_substantial_copy_for_social($child)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

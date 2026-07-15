@@ -49,7 +49,7 @@ final class RegressionSuiteTest extends TestCase
 		$gen = new ElementorJsonGenerator();
 		$result = $gen->generate(RenderResult::from_array($layout), array('mode' => 'native'));
 
-		$this->assertSame('native', $result['report']['mode']);
+		$this->assertSame('widgets', $result['report']['mode']);
 		$this->assertSame(4, $result['report']['engine_version']);
 		$this->assertNotEmpty($result['data']);
 		$this->assertGreaterThan(0, $result['report']['native_widgets']);
@@ -79,17 +79,15 @@ final class RegressionSuiteTest extends TestCase
 	 * @param array<string,mixed> $layout Layout document.
 	 * @dataProvider fixture_provider
 	 */
-	public function test_fixture_native_mode_beats_preserve(array $layout): void
+	public function test_fixture_native_mode_emits_validation(array $layout): void
 	{
 		$gen = new ElementorJsonGenerator();
 		$doc = RenderResult::from_array($layout);
-		$native = $gen->generate($doc, array('mode' => 'native'));
-		$preserve = $gen->generate($doc, array('mode' => 'preserve'));
+		$native = $gen->generate($doc, array('confidence' => 95));
 
-		$this->assertGreaterThan(
-			$preserve['validation']['geometry_similarity'] ?? 0,
-			$native['validation']['geometry_similarity'] ?? 0
-		);
+		$this->assertSame('widgets', $native['report']['mode']);
+		$this->assertArrayHasKey('validation', $native);
+		$this->assertGreaterThan(0, $native['report']['native_widgets'] + $native['report']['html_widgets']);
 	}
 
 	public function test_bootstrap_row_has_flex_gap_or_direction(): void

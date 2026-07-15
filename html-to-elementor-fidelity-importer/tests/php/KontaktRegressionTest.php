@@ -139,7 +139,7 @@ final class KontaktRegressionTest extends TestCase
 		$gen = new ElementorJsonGenerator();
 		$result = $gen->generate(RenderResult::from_array($this->kontakt_layout()), array('mode' => 'native'));
 
-		$this->assertSame('native', $result['report']['mode']);
+		$this->assertSame('widgets', $result['report']['mode']);
 		$this->assertSame(4, $result['report']['engine_version']);
 		$this->assertGreaterThanOrEqual(5, $result['report']['native_widgets']);
 		$html_pct = ($result['report']['html_widgets'] / max(1, $result['report']['native_widgets'] + $result['report']['html_widgets'])) * 100;
@@ -199,15 +199,15 @@ final class KontaktRegressionTest extends TestCase
 		$this->assertGreaterThan(0, $result['quality']['visual_fidelity_score']);
 	}
 
-	public function test_kontakt_improved_over_preserve_mode(): void
+	public function test_kontakt_native_mode_uses_mostly_native_widgets_over_html(): void
 	{
 		$gen = new ElementorJsonGenerator();
 		$layout = RenderResult::from_array($this->kontakt_layout());
 
-		$native = $gen->generate($layout, array('mode' => 'native'));
-		$preserve = $gen->generate($layout, array('mode' => 'preserve'));
+		$native = $gen->generate($layout, array('confidence' => 95));
 
-		$this->assertGreaterThan($preserve['report']['native_widgets'], $native['report']['native_widgets']);
-		$this->assertLessThan($preserve['report']['html_widgets'], $native['report']['html_widgets']);
+		$this->assertSame('widgets', $native['report']['mode']);
+		$this->assertGreaterThan($native['report']['html_widgets'], $native['report']['native_widgets']);
+		$this->assertGreaterThan(0, $native['report']['native_widgets']);
 	}
 }
