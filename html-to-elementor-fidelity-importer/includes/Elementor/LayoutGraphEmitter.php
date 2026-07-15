@@ -49,6 +49,19 @@ final class LayoutGraphEmitter
 			}
 		}
 
+		$composite = $this->builder->emit_composite_widget($tree);
+		if (null !== $composite) {
+			// Only collapse the whole section when it is itself a pure pattern
+			// (e.g. a FAQ section with no sibling chrome). Mixed sections descend.
+			$role = strtolower((string) ($tree['layoutRole'] ?? ''));
+			$cls = strtolower((string) ($tree['cls'] ?? ''));
+			$pure = in_array($role, array('faq', 'form_block', 'testimonial', 'cta_block', 'cta'), true)
+				|| (bool) preg_match('/^(faq|accordion)(-section)?$/i', trim($cls));
+			if ($pure) {
+				return $this->builder->emit_container($tree, array($composite), true, false, 0.0);
+			}
+		}
+
 		if ($this->builder->needs_html_fallback($tree)) {
 			return $this->builder->emit_fallback_wrap($tree);
 		}
@@ -87,6 +100,19 @@ final class LayoutGraphEmitter
 			return $this->builder->emit_leaves($node);
 		}
 
+		// Prefer a pure composite widget when the node itself is a pattern
+		// (e.g. `.faq` wrapper). Mixed sections fall through so headings stay.
+		$role = strtolower((string) ($node['layoutRole'] ?? ''));
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		$pure_pattern = in_array($role, array('faq', 'form_block', 'testimonial', 'icon_box', 'social_icons', 'pricing', 'cta_block', 'cta'), true)
+			|| (bool) preg_match('/\b(faq|accordion|testimonial|service-card|cta-banner|socials|newsletter-form)\b/', $cls);
+		if ($pure_pattern) {
+			$composite = $this->builder->emit_composite_widget($node);
+			if (null !== $composite) {
+				return array($composite);
+			}
+		}
+
 		if ($this->builder->needs_html_fallback($node)) {
 			return array($this->builder->emit_html_widget($node));
 		}
@@ -100,15 +126,15 @@ final class LayoutGraphEmitter
 		$child_row = 'row' === $this->builder->flex_direction($node);
 		$self_width = (float) ($node['s']['w'] ?? 0);
 
-		foreach ((array) ($node['children'] ?? array()) as $child) {
-			if (!is_array($child)) {
-				continue;
-			}
-			$out = array_merge(
-				$out,
-				$this->emit_node($child, false, $child_row, $self_width)
-			);
-		}
+		// Group consecutive accordion/details children into one widget.
+		$grouped = $this->emit_children_with_accordion_groups(
+			(array) ($node['children'] ?? array()),
+			$is_section,
+			$child_row,
+			$self_width,
+			$node
+		);
+		$out = array_merge($out, $grouped);
 
 		if (empty($out)) {
 			if ($this->builder->looks_like_spacer($node)) {
@@ -128,6 +154,66 @@ final class LayoutGraphEmitter
 	}
 
 	/**
+	 * Emit children, collapsing consecutive details/faq-item nodes into one accordion.
+	 *
+	 * @param array<int,mixed>    $children     Child nodes.
+	 * @param bool                $is_section   Section flag.
+	 * @param bool                $child_row    Row layout.
+	 * @param float               $self_width   Parent width.
+	 * @param array<string,mixed> $parent       Parent node (for class hints).
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function emit_children_with_accordion_groups(
+		array $children,
+		bool $is_section,
+		bool $child_row,
+		float $self_width,
+		array $parent
+	): array {
+		$out = array();
+		$buffer = array();
+		$flush = function () use (&$out, &$buffer, $parent): void {
+			if (count($buffer) >= 2) {
+				$group = array(
+					'tag' => 'div',
+					'cls' => trim((string) ($parent['cls'] ?? '') . ' faq'),
+					'layoutRole' => 'faq',
+					'children' => $buffer,
+					's' => array(),
+				);
+				$composite = $this->builder->emit_composite_widget($group);
+				if (null !== $composite) {
+					$out[] = $composite;
+					$buffer = array();
+					return;
+				}
+			}
+			foreach ($buffer as $item) {
+				$out = array_merge($out, $this->emit_node($item, false, false, 0.0));
+			}
+			$buffer = array();
+		};
+
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
+			if ($is_item) {
+				$buffer[] = $child;
+				continue;
+			}
+			$flush();
+			$out = array_merge($out, $this->emit_node($child, false, $child_row, $self_width));
+		}
+		$flush();
+
+		return $out;
+	}
+
+	/**
 	 * Emit a single node — container, hoisted children, or leaf.
 	 *
 	 * @param array<string,mixed> $node         Node.
@@ -143,6 +229,11 @@ final class LayoutGraphEmitter
 		if ('layered_block' === $role) {
 			$layered = $this->builder->emit_layered_block($node);
 			return null !== $layered ? array($layered) : $this->emit_children($node, $is_section, $parent_row, $parent_width);
+		}
+
+		$composite = $this->builder->emit_composite_widget($node);
+		if (null !== $composite) {
+			return array($composite);
 		}
 
 		if (!empty($node['atomic'])) {
@@ -184,6 +275,11 @@ final class LayoutGraphEmitter
 			'card',
 			'cta_block',
 			'form_block',
+			'faq',
+			'testimonial',
+			'icon_box',
+			'social_icons',
+			'pricing',
 			'stack',
 			'section',
 		), true)) {

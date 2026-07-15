@@ -104,7 +104,20 @@ final class WrapperEliminationEngine implements EngineInterface
 			return false;
 		}
 		$role = (string) ($node['layoutRole'] ?? '');
-		if (in_array($role, array('layered_block', 'horizontal_bar', 'footer_band', 'card', 'form_block', 'column_group'), true)) {
+		if (in_array($role, array(
+			'layered_block',
+			'horizontal_bar',
+			'footer_band',
+			'card',
+			'form_block',
+			'column_group',
+			'faq',
+			'testimonial',
+			'icon_box',
+			'social_icons',
+			'pricing',
+			'cta_block',
+		), true)) {
 			return false;
 		}
 		if (VisualSignals::is_layered($node)) {

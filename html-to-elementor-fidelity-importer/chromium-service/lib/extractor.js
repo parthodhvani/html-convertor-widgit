@@ -80,6 +80,24 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
     await page.goto(fileUrl, { waitUntil: config.waitUntil, timeout: config.timeout });
     await waitForStable(page, config);
 
+    // Expand collapsed FAQ/accordion panels so answer content is extractable.
+    await page.evaluate(() => {
+      document.querySelectorAll('details:not([open])').forEach((el) => {
+        el.open = true;
+      });
+      document.querySelectorAll('.faq-item, .accordion-item, [data-accordion-item]').forEach((item) => {
+        item.classList.add('open', 'active', 'show');
+        item.querySelectorAll('.faq-a, .accordion-collapse, .accordion-body, .accordion-content').forEach((panel) => {
+          panel.style.maxHeight = 'none';
+          panel.style.height = 'auto';
+          panel.style.overflow = 'visible';
+          panel.style.display = 'block';
+          panel.style.opacity = '1';
+          panel.classList.add('show', 'open', 'in');
+        });
+      });
+    });
+
     const meta = await page.evaluate(() => ({
       title: document.title || '',
       url: location.href,

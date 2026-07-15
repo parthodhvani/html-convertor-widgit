@@ -339,7 +339,7 @@ final class LayoutGraphEngine implements EngineInterface
 	{
 		foreach ($children as $child) {
 			$text = strtolower((string) ($child['text'] ?? ''));
-			if (preg_match('/(\$|€|£)\s?\d+|\/mo|per month|monat/', $text)) {
+			if (preg_match('/(\$|€|£|CHF|EUR)\s?\d+|\/mo|per month|monat|Min\./i', $text)) {
 				return true;
 			}
 		}

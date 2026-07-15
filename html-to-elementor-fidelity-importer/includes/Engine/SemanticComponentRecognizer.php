@@ -42,6 +42,12 @@ final class SemanticComponentRecognizer implements EngineInterface
 		'section',
 		'card',
 		'media_block',
+		'form_block',
+		'faq',
+		'testimonial',
+		'icon_box',
+		'social_icons',
+		'pricing',
 	);
 
 	public function __construct(?VisualLeafClassifier $leaf = null, int $threshold = 95)
@@ -138,9 +144,10 @@ final class SemanticComponentRecognizer implements EngineInterface
 			return false;
 		}
 
+		// Forms are reconstructed as native Elementor Form widgets via
+		// CompositePatternBuilder — do not force HTML fallback.
 		if ('form_block' === $role) {
-			$this->record_fallback($node, $role, 45);
-			return true;
+			return false;
 		}
 
 		if (VisualSignals::is_layered($node)) {
@@ -168,7 +175,12 @@ final class SemanticComponentRecognizer implements EngineInterface
 			return true;
 		}
 
-		return $this->has_unmappable_inputs($node);
+		// Input clusters without a form_block role still prefer native form mapping.
+		if ($this->has_unmappable_inputs($node)) {
+			return false;
+		}
+
+		return false;
 	}
 
 	/**

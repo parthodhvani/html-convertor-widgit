@@ -63,6 +63,12 @@ final class VisualLeafClassifier
 			), 88);
 		}
 
+		// Font Awesome / icon fonts — native Icon widget.
+		$icon = $this->maybe_icon($node);
+		if (null !== $icon) {
+			return $icon;
+		}
+
 		// Typography-driven text widgets.
 		if (VisualSignals::looks_heading($node)) {
 			$level = $this->heading_level($signals['font_size_px']);
@@ -82,12 +88,51 @@ final class VisualLeafClassifier
 			return array('kind' => 'fallback', 'confidence' => 50);
 		}
 
-		// Form controls without native Elementor mapping.
+		// Form controls without native Elementor mapping at leaf level.
 		if (VisualSignals::looks_input_like($node) || $signals['input_like_children'] > 0) {
 			return array('kind' => 'fallback', 'confidence' => 45);
 		}
 
 		return null;
+	}
+
+	/**
+	 * Map Font Awesome / icon-font leaves to the Icon widget.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 * @return array{kind:string,type:string,settings:array<string,mixed>,confidence:int}|null
+	 */
+	private function maybe_icon(array $node): ?array
+	{
+		$cls = (string) ($node['cls'] ?? '');
+		$html = (string) ($node['html'] ?? '');
+		$combined = $cls . ' ' . $html;
+		if (!preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+(fa-[\w-]+)/i', $combined, $m)
+			&& !preg_match('/\bfa-[\w-]+/', $cls)) {
+			$tag = strtolower((string) ($node['tag'] ?? ''));
+			if (!in_array($tag, array('i', 'span'), true) || !preg_match('/\bfa(?:s|r|b|l)?\b|\bfa-[\w-]+/', $cls)) {
+				return null;
+			}
+		}
+
+		$value = trim(preg_replace('/\s+/', ' ', $cls));
+		if ('' === $value && preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+(fa-[\w-]+)/i', $combined, $m)) {
+			$value = strtolower($m[1] . ' ' . $m[2]);
+		}
+		if ('' === $value) {
+			return null;
+		}
+
+		$library = 'fa-solid';
+		if (preg_match('/\bfab\b|\bfa-brands\b/', $value)) {
+			$library = 'fa-brands';
+		} elseif (preg_match('/\bfar\b|\bfa-regular\b/', $value)) {
+			$library = 'fa-regular';
+		}
+
+		return $this->result('icon', array(
+			'selected_icon' => array('value' => $value, 'library' => $library),
+		), 90);
 	}
 
 	/**

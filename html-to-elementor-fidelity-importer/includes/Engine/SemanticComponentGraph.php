@@ -106,6 +106,8 @@ final class SemanticComponentGraph implements EngineInterface
 	{
 		$box = $signals['bbox'];
 		$h = $box['height'];
+		$cls = strtolower((string) ($node['cls'] ?? '') . ' ' . (string) ($node['id'] ?? ''));
+		$tag = strtolower((string) ($node['tag'] ?? ''));
 
 		// Layered full-bleed block (hero, banner) — geometry only.
 		if ($signals['is_layered'] && $h >= 180 && null !== $signals['image_child']) {
@@ -130,9 +132,35 @@ final class SemanticComponentGraph implements EngineInterface
 			return 'footer_band';
 		}
 
-		// Form block — multiple input-like descendants.
-		if ($signals['input_like_children'] >= 3) {
+		// Form block — multiple input-like descendants or <form>/newsletter.
+		if ($signals['input_like_children'] >= 2 || 'form' === $tag || preg_match('/\b(form|newsletter-form)\b/', $cls)) {
 			return 'form_block';
+		}
+
+		// FAQ / accordion — repeated Q/A or class hints.
+		if (preg_match('/\b(faq|accordion|disclosure)\b/', $cls) || $this->looks_faq($node, $layout)) {
+			return 'faq';
+		}
+
+		// Testimonial / review card.
+		if (preg_match('/\b(testimonial|review)\b/', $cls) || $this->looks_testimonial($node)) {
+			return 'testimonial';
+		}
+
+		// Social icon row.
+		if (preg_match('/\b(socials?|social-icons)\b/', $cls) || $this->looks_social_row($node, $constraint, $layout)) {
+			return 'social_icons';
+		}
+
+		// Service / pricing cards.
+		if (preg_match('/\b(service-card|pricing|price-table|icon-box|feature)\b/', $cls)
+			|| (($signals['has_border'] || $signals['has_shadow']) && $this->has_icon_signal($node))) {
+			if ($this->has_price_text($node)) {
+				return 'pricing';
+			}
+			if ($this->has_icon_signal($node) || preg_match('/\b(service-card|icon-box|feature)\b/', $cls)) {
+				return 'icon_box';
+			}
 		}
 
 		// Card — bordered/shadow box among equal siblings.
@@ -143,17 +171,17 @@ final class SemanticComponentGraph implements EngineInterface
 			return 'card';
 		}
 
+		// CTA banner.
+		if (preg_match('/\b(cta-banner|call-to-action|cta)\b/', $cls) || $this->ends_with_button($node)) {
+			return 'cta_block';
+		}
+
 		// Grid / row of columns.
 		if ('grid' === $layout || ('row' === ($constraint['direction'] ?? '') && ($constraint['equal_width'] ?? false))) {
 			return 'column_group';
 		}
 		if ('row' === ($constraint['direction'] ?? '')) {
 			return 'row_group';
-		}
-
-		// CTA — vertical stack ending with button-like leaf.
-		if ($this->ends_with_button($node)) {
-			return 'cta_block';
 		}
 
 		// Media block — dominant image area.
@@ -166,6 +194,151 @@ final class SemanticComponentGraph implements EngineInterface
 		}
 
 		return 'section';
+	}
+
+	/**
+	 * @param array<string,mixed> $node   Node.
+	 * @param string              $layout Layout type.
+	 */
+	private function looks_faq(array $node, string $layout): bool
+	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 2) {
+			return false;
+		}
+		$q = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			$text = trim((string) ($child['text'] ?? ''));
+			if (preg_match('/\b(faq-item|accordion-item)\b/', $cls) || str_ends_with($text, '?')
+				|| preg_match('/\b(faq-q|accordion-header|accordion-button)\b/', $cls)) {
+				++$q;
+			}
+		}
+		return $q >= 2 && in_array($layout, array('stack', 'column', ''), true);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function looks_testimonial(array $node): bool
+	{
+		$has_stars = false;
+		$has_quote = false;
+		$has_who = false;
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$text = (string) ($child['text'] ?? '');
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			if (preg_match('/★|⭐|\bstars?\b/u', $text . ' ' . $cls)) {
+				$has_stars = true;
+			}
+			if (false !== strpos($text, '„') || false !== strpos($text, '"') || 'blockquote' === ($child['tag'] ?? '')) {
+				$has_quote = true;
+			}
+			if (preg_match('/\b(who|author|avatar|name)\b/', $cls)) {
+				$has_who = true;
+			}
+		}
+		return ($has_quote && ($has_stars || $has_who));
+	}
+
+	/**
+	 * @param array<string,mixed> $node       Node.
+	 * @param array<string,mixed> $constraint Constraint.
+	 * @param string              $layout     Layout.
+	 */
+	private function looks_social_row(array $node, array $constraint, string $layout): bool
+	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 2) {
+			return false;
+		}
+		$row = 'row' === ($constraint['direction'] ?? '') || 'row' === $layout;
+		if (!$row) {
+			return false;
+		}
+		$icons = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$cls = (string) ($child['cls'] ?? '') . ' ' . (string) ($child['html'] ?? '');
+			if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+fa-[\w-]+/i', $cls) && '' === trim((string) ($child['text'] ?? ''))) {
+				++$icons;
+			}
+		}
+		return $icons >= 2;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function looks_pricing_card(array $node): bool
+	{
+		return $this->has_price_text($node) && ('' !== $this->first_heading_text($node));
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function has_price_text(array $node): bool
+	{
+		$text = (string) ($node['text'] ?? '');
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		if (preg_match('/\bprice\b/', $cls) || preg_match('/(CHF|EUR|USD|\$|€|£)\s*[\d\'.,]+/i', $text)) {
+			return true;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (is_array($child) && $this->has_price_text($child)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function has_icon_signal(array $node): bool
+	{
+		$cls = (string) ($node['cls'] ?? '') . ' ' . (string) ($node['html'] ?? '');
+		if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+fa-[\w-]+/i', $cls) || preg_match('/\b(card-icon|icon)\b/', strtolower($cls))) {
+			return true;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (is_array($child) && $this->has_icon_signal($child)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function first_heading_text(array $node): string
+	{
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		$text = trim((string) ($node['text'] ?? ''));
+		if (in_array($tag, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6'), true) && '' !== $text) {
+			return $text;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$found = $this->first_heading_text($child);
+			if ('' !== $found) {
+				return $found;
+			}
+		}
+		return '';
 	}
 
 	/**
