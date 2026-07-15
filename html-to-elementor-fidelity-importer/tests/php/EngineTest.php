@@ -531,4 +531,54 @@ final class EngineTest extends TestCase
 		$this->assertSame(4, $prepared['engines']['version']);
 		$this->assertNotEmpty($prepared['tokens']);
 	}
+
+	public function test_visual_extraction_carries_accessibility_and_xpath_metadata(): void
+	{
+		$engine = new VisualExtractionEngine();
+		$layout = array(
+			'meta' => array('title' => 'Extraction Meta'),
+			'sections' => array(
+				array(
+					'tree' => array(
+						'tag' => 'button',
+						'text' => 'Contact',
+						'ariaRole' => 'button',
+						'ariaLabel' => 'Contact us',
+						'xpath' => '/html[1]/body[1]/button[1]',
+						'domPath' => 'body > button',
+						'states' => array('hover' => true),
+						'pseudo' => array('before' => array('content' => '"→"')),
+						'children' => array(),
+					),
+				),
+			),
+		);
+		$out = $engine->enrich(RenderResult::from_array($layout))->to_array();
+		$visual = $out['sections'][0]['tree']['visual'] ?? array();
+		$this->assertSame('/html[1]/body[1]/button[1]', $visual['xpath'] ?? '');
+		$this->assertSame('Contact us', $visual['accessibility']['label'] ?? '');
+		$this->assertTrue($visual['states']['hover'] ?? false);
+	}
+
+	public function test_whitespace_analyzer_uses_parent_bbox_for_padding(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 100, 'y' => 200, 'width' => 500, 'height' => 300),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 120, 'y' => 220, 'width' => 300, 'height' => 24), 's' => array()),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 120, 'y' => 264, 'width' => 300, 'height' => 24), 's' => array()),
+					),
+					'layoutConstraint' => array('direction' => 'column'),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$padding = $out[0]['tree']['whitespace']['padding'] ?? array();
+		$this->assertSame(20.0, (float) ($padding['top'] ?? 0));
+		$this->assertSame(20.0, (float) ($padding['left'] ?? 0));
+	}
 }

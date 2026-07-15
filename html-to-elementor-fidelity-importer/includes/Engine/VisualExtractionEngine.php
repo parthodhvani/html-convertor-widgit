@@ -69,17 +69,44 @@ final class VisualExtractionEngine implements EngineInterface
 	private function enrich_node(array &$node, ?array $parent, int $depth, array $section_origin): void
 	{
 		$s = $node['s'] ?? array();
-		$bbox = $this->normalize_bbox($node, $section_origin);
+		$bbox = $node['bbox'] ?? $this->bbox_from_styles($s);
+		$pseudo = (array) ($node['pseudo'] ?? array());
+		$states = (array) ($node['states'] ?? array());
+		$stacking = array_merge($this->stacking_context($s), (array) ($node['stacking'] ?? array()));
 
 		$node['bbox'] = $bbox;
 		$node['visual'] = array(
 			'bbox' => $bbox,
 			'depth' => $depth,
-			'stacking' => $this->stacking_context($s),
+			'stacking' => $stacking,
 			'visible' => !$this->is_hidden($s),
 			'role' => $node['role'] ?? $node['ariaRole'] ?? '',
 			'dom_path' => $node['domPath'] ?? '',
 			'xpath' => $node['xpath'] ?? '',
+			'uid' => (string) ($node['uid'] ?? ''),
+			'unique_key' => (string) ($node['uniqueKey'] ?? ''),
+			'states' => array(
+				'hover' => (bool) ($states['hover'] ?? false),
+				'focus' => (bool) ($states['focus'] ?? false),
+				'active' => (bool) ($states['active'] ?? false),
+			),
+			'pseudo' => array(
+				'before' => (array) ($pseudo['before'] ?? array()),
+				'after' => (array) ($pseudo['after'] ?? array()),
+			),
+			'accessibility' => array(
+				'role' => (string) ($node['ariaRole'] ?? ''),
+				'label' => (string) ($node['ariaLabel'] ?? ''),
+				'labelledby' => (string) ($node['ariaLabelledby'] ?? ''),
+				'describedby' => (string) ($node['ariaDescribedby'] ?? ''),
+				'name' => (string) ($node['a11yName'] ?? $node['text'] ?? ''),
+			),
+			'css_variables' => (array) ($node['cssVars'] ?? array()),
+			'parent_uid' => (string) ($node['parentUid'] ?? ''),
+			'sibling_index' => (int) ($node['siblingIndex'] ?? 0),
+			'sibling_count' => (int) ($node['siblingCount'] ?? 0),
+			'child_count' => (int) ($node['childCount'] ?? 0),
+			'visible_text' => (string) ($node['visibleText'] ?? $node['text'] ?? ''),
 		);
 
 		if (null !== $parent) {
@@ -195,6 +222,8 @@ final class VisualExtractionEngine implements EngineInterface
 			'bbox' => $section['bbox'] ?? array(),
 			'semantic' => (bool) ($section['semantic'] ?? false),
 			'tag' => (string) ($section['tag'] ?? ''),
+			'dom_path' => (string) ($section['domPath'] ?? ''),
+			'xpath' => (string) ($section['xpath'] ?? ''),
 		);
 	}
 }

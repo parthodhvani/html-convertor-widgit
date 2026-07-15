@@ -479,6 +479,23 @@ final class LayoutTreeConverter
         if (!empty($alignment['align_items'])) {
             $out['flex_align_items'] = (string) $alignment['align_items'];
         }
+		if (!empty($constraint['stretch'])) {
+			$out['flex_align_items'] = 'stretch';
+		}
+		if (!empty($constraint['fill'])) {
+			$out['flex_grow'] = 1;
+		}
+		if (!empty($constraint['auto_width'])) {
+			$out['width'] = array('unit' => '%', 'size' => 100);
+		}
+
+		$responsive = (array) ($node['responsiveLayout'] ?? array());
+		if (!empty($responsive['tablet']['flex_direction'])) {
+			$out['flex_direction_tablet'] = (string) $responsive['tablet']['flex_direction'];
+		}
+		if (!empty($responsive['mobile']['flex_direction'])) {
+			$out['flex_direction_mobile'] = (string) $responsive['mobile']['flex_direction'];
+		}
 
         return $out;
     }
