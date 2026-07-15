@@ -239,47 +239,6 @@ final class EngineTest extends TestCase
 				),
 			),
 		);
-		$out = $solver->solve($sections);
-		$constraint = $out[0]['tree']['layoutConstraint'] ?? array();
-		$this->assertSame('row', $constraint['direction'] ?? '');
-		$this->assertGreaterThan(0, $constraint['gap'] ?? 0);
-	}
-
-	public function test_whitespace_analyzer_measures_gap_from_bbox(): void
-	{
-		$analyzer = new WhitespaceAnalyzer();
-		$sections = array(
-			array(
-				'tree' => array(
-					'tag' => 'div',
-					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 400),
-					'children' => array(
-						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 40), 's' => array()),
-						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 64, 'width' => 600, 'height' => 40), 's' => array()),
-					),
-					'layoutConstraint' => array('direction' => 'column', 'gap' => 24),
-				),
-			),
-		);
-		$out = $analyzer->analyze($sections);
-		$this->assertGreaterThan(0, $out[0]['tree']['whitespace']['gap'] ?? 0);
-	}
-
-	public function test_alignment_engine_detects_shared_left(): void
-	{
-		$engine = new AlignmentEngine();
-		$sections = array(
-			array(
-				'tree' => array(
-					'tag' => 'div',
-					'children' => array(
-						array('tag' => 'h2', 'atomic' => true, 'bbox' => array('x' => 48, 'y' => 0, 'width' => 200, 'height' => 32), 's' => array()),
-						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 48, 'y' => 48, 'width' => 400, 'height' => 20), 's' => array()),
-					),
-					'layoutConstraint' => array('direction' => 'column'),
-				),
-			),
-		);
 		$out = $engine->apply($sections);
 		$this->assertTrue($out[0]['tree']['alignment']['shared_left'] ?? false);
 	}

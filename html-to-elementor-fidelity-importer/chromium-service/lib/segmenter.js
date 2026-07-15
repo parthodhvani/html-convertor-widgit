@@ -355,14 +355,79 @@ function browserPageSegmenter() {
         return p === 'absolute' || p === 'fixed' || p === 'sticky';
       });
       const slider = /swiper|slick|owl-carousel|splide|flickity/i.test(node.cls);
-      if ((layered || slider) && !node.html) {
+      const composite = /faq|accordion|testimonial|form|newsletter|cta-banner|service-card|socials/i.test(node.cls)
+        || tag === 'form' || tag === 'details';
+      if ((layered || slider || composite) && !node.html) {
         node.html = el.outerHTML.slice(0, MAX_HTML);
+      }
+
+      // Include collapsed FAQ/accordion panels that fail the height>0 visibility
+      // check so accordion answers still reach the PHP reconstructor.
+      if (/faq|accordion|disclosure/i.test(node.cls) || tag === 'details') {
+        Array.from(el.children).forEach((child) => {
+          if (kids.some((k) => k.uid && child.getAttribute('data-h2e-uid') === k.uid)) {
+            return;
+          }
+          const forced = buildTreeForce(child, depth + 1);
+          if (forced) kids.push(forced);
+        });
+        node.children = kids;
       }
     } else {
       node.atomic = true;
       node.html = el.outerHTML.slice(0, MAX_HTML);
     }
 
+    return node;
+  }
+
+  /**
+   * Build a tree node even when height is 0 (collapsed disclosure panels).
+   */
+  function buildTreeForce(el, depth) {
+    if (depth > MAX_DEPTH || counter.n > MAX_NODES) return null;
+    if (!(el instanceof Element)) return null;
+    const cs = window.getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+    const tag = el.tagName.toLowerCase();
+    if (SKIP.has(tag)) return null;
+
+    counter.n += 1;
+    const uid = String(uidSeq.v++);
+    el.setAttribute('data-h2e-uid', uid);
+    const rect = el.getBoundingClientRect();
+    const styles = styleSet(cs);
+    const node = {
+      tag,
+      uid,
+      id: el.id || '',
+      cls: typeof el.className === 'string' ? el.className.trim() : '',
+      text: directText(el),
+      s: styles,
+      bbox: {
+        x: num(rect.x),
+        y: num(rect.y),
+        width: num(Math.max(rect.width, 1)),
+        height: num(Math.max(rect.height, 1)),
+      },
+      collapsed: true,
+      ariaRole: el.getAttribute('role') || '',
+    };
+    if (tag === 'a') node.href = el.getAttribute('href') || '';
+
+    const treatAsContainer = !ATOMIC.has(tag);
+    if (treatAsContainer) {
+      const kids = [];
+      Array.from(el.children).forEach((child) => {
+        const c = buildTreeForce(child, depth + 1);
+        if (c) kids.push(c);
+      });
+      node.children = kids;
+      node.html = el.outerHTML.slice(0, MAX_HTML);
+    } else {
+      node.atomic = true;
+      node.html = el.outerHTML.slice(0, MAX_HTML);
+    }
     return node;
   }
 

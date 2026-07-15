@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace HtmlToElementor\Elementor;
 
+use HtmlToElementor\Engine\CompositePatternBuilder;
 use HtmlToElementor\Engine\CssMappingEngine;
 use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
@@ -27,6 +28,7 @@ final class LayoutTreeConverter
 
     private CssMapper $css;
     private WidgetClassifier $classifier;
+    private CompositePatternBuilder $patterns;
     private ?SemanticComponentRecognizer $recognition = null;
     private ?CssMappingEngine $css_engine = null;
     private ?LayeredLayoutSolver $layered_solver = null;
@@ -39,10 +41,11 @@ final class LayoutTreeConverter
      */
     private array $stats;
 
-    public function __construct(?CssMapper $css = null, ?WidgetClassifier $classifier = null)
+    public function __construct(?CssMapper $css = null, ?WidgetClassifier $classifier = null, ?CompositePatternBuilder $patterns = null)
     {
         $this->css = $css ?? new CssMapper();
         $this->classifier = $classifier ?? new WidgetClassifier();
+        $this->patterns = $patterns ?? new CompositePatternBuilder();
         $this->reset_stats();
     }
 
@@ -112,6 +115,54 @@ final class LayoutTreeConverter
     public function emit_horizontal_bar(array $node): ?array
     {
         return $this->reconstruct_horizontal_bar($node);
+    }
+
+    /**
+     * Emit a composite native widget (accordion, form, testimonial, …) when
+     * the node matches a recognised marketing-page pattern.
+     *
+     * @param array<string,mixed> $node Source node.
+     * @return array<string,mixed>|null
+     */
+    public function emit_composite_widget(array $node): ?array
+    {
+        $built = $this->patterns->build($node);
+        if (null === $built) {
+            return null;
+        }
+
+        $type = (string) ($built['type'] ?? '');
+        $settings = (array) ($built['settings'] ?? array());
+        $role = (string) ($built['role'] ?? '');
+
+        // Accordion tabs need stable Elementor repeater IDs.
+        if ('accordion' === $type && !empty($settings['tabs']) && is_array($settings['tabs'])) {
+            foreach ($settings['tabs'] as $i => $tab) {
+                if (empty($tab['_id'])) {
+                    $settings['tabs'][$i]['_id'] = ElementId::generate();
+                }
+            }
+        }
+        if ('form' === $type && !empty($settings['form_fields']) && is_array($settings['form_fields'])) {
+            foreach ($settings['form_fields'] as $i => $field) {
+                if (empty($field['_id'])) {
+                    $settings['form_fields'][$i]['_id'] = ElementId::generate();
+                }
+            }
+        }
+        if ('social-icons' === $type && !empty($settings['social_icon_list']) && is_array($settings['social_icon_list'])) {
+            foreach ($settings['social_icon_list'] as $i => $item) {
+                if (empty($item['_id'])) {
+                    $settings['social_icon_list'][$i]['_id'] = ElementId::generate();
+                }
+            }
+        }
+
+        if ('' !== $role) {
+            $this->stats['roles'][$role] = ($this->stats['roles'][$role] ?? 0) + 1;
+        }
+
+        return $this->widget($type, $settings, $node);
     }
 
     public function emit_fallback_wrap(array $node): array
@@ -667,6 +718,14 @@ final class LayoutTreeConverter
                     $out['primary_color'] = (string) $node['s']['color'];
                 }
                 return $out;
+            case 'icon-box':
+            case 'price-table':
+            case 'testimonial':
+            case 'call-to-action':
+            case 'accordion':
+            case 'form':
+            case 'social-icons':
+            case 'star-rating':
             case 'icon-list':
             case 'divider':
             case 'spacer':

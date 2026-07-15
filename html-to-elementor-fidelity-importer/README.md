@@ -15,10 +15,14 @@ Elementor containers and native widgets**, not HTML blocks:
 * **Full computed-CSS extraction** (Chromium): typography, spacing, background, border,
   shadow, sizing, flex/grid layout and position — per node, with tablet/mobile responsive
   values. See `chromium-service/lib/segmenter.js`.
-* **Component recognition** (`includes/Elementor/WidgetClassifier.php`): headings → Heading,
+* **Component recognition** (`includes/Elementor/WidgetClassifier.php` +
+  `CompositePatternBuilder` / `AccordionRecognizer`): headings → Heading,
   `<p>` → Text Editor, `<img>` → Image, buttons/`.btn`/`a` → Button, `<ul>`/`<ol>` → Icon List,
   `<hr>` → Divider, font icons → Icon, inline SVG → Image (data URI), YouTube/Vimeo → Video,
-  Google Maps → Map. Detects header/nav/hero/cta/card/feature/testimonial/faq/pricing roles.
+  Google Maps → Map. Composite marketing patterns map to native widgets: FAQ/accordion →
+  Accordion, forms → Form, testimonials → Testimonial, service cards with prices → Price Table,
+  feature/icon cards → Icon Box, CTA banners → Call to Action, social rows → Social Icons,
+  star ratings → Star Rating. Detects header/nav/hero/cta/card/feature/testimonial/faq/pricing roles.
 * **CSS → Elementor controls** (`includes/Elementor/CssMapper.php`): computed styles become
   native typography / spacing / background / border / shadow / flex controls (responsive),
   instead of inline HTML.

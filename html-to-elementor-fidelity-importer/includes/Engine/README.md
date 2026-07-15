@@ -53,8 +53,28 @@ ImportQualityReport
 | `WhitespaceAnalyzer` | Measure whitespace → Elementor gap/padding |
 | `AlignmentEngine` | Shared edges, baselines, centers → flex alignment |
 | `SemanticComponentRecognizer` | Geometry + context classification |
+| `AccordionRecognizer` | FAQ / `<details>` → native Elementor Accordion |
+| `CompositePatternBuilder` | Forms, testimonials, icon-boxes, CTAs, social icons, price tables |
 | `PixelRepairEngine` | Iterative layout/typography/gap repair |
 | `VisualValidationEngine` | Geometry-first fidelity scoring |
+
+## Native composite widgets
+
+Marketing-page patterns (Petra Müller–style and similar) map to native Elementor widgets:
+
+| Pattern | Elementor widget |
+|---------|------------------|
+| FAQ / accordion / `<details>` | `accordion` |
+| Contact / booking / newsletter forms | `form` |
+| Testimonial / review cards | `testimonial` |
+| Service cards with prices | `price-table` |
+| Feature / icon cards | `icon-box` |
+| CTA banners | `call-to-action` |
+| Social icon rows | `social-icons` |
+| Star ratings | `star-rating` |
+| Font Awesome icons | `icon` |
+
+Collapsed FAQ panels are expanded during Chromium extraction so answers are not dropped.
 
 ## Tests
 
