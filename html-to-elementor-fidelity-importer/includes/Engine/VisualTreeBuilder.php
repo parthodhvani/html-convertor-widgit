@@ -110,6 +110,16 @@ final class VisualTreeBuilder implements EngineInterface
 				continue;
 			}
 
+			// Never merge across landmark section tags — preserves hero/nav/footer
+			// geometry and layered absolute layouts.
+			if ($this->group_has_landmarks($group)) {
+				foreach ($group as $section) {
+					$merged[] = $section;
+				}
+				$i = $j;
+				continue;
+			}
+
 			$merged[] = $this->compose_visual_section($group, $gid);
 			$this->restructured += count($group) - 1;
 			$i = $j;
@@ -121,6 +131,27 @@ final class VisualTreeBuilder implements EngineInterface
 		}
 
 		return $merged;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $group Sections.
+	 */
+	private function group_has_landmarks(array $group): bool
+	{
+		foreach ($group as $section) {
+			$tag = strtolower((string) ($section['tag'] ?? ''));
+			$cls = strtolower((string) ($section['classes'] ?? ($section['tree']['cls'] ?? '')));
+			if (!empty($section['semantic'])) {
+				return true;
+			}
+			if (in_array($tag, array('section', 'header', 'footer', 'nav', 'main', 'aside', 'article'), true)) {
+				return true;
+			}
+			if (preg_match('/\b(nav|navbar|hero|banner|footer|header)\b/', $cls)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -280,7 +311,9 @@ final class VisualTreeBuilder implements EngineInterface
 		$col_score = 0;
 
 		for ($i = 0; $i < count($boxes) - 1; ++$i) {
-			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1]) && Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1]) > 0) {
+			// Flush flex/grid tracks often have hgap=0 (gutters via padding).
+			// Overlapping Y is enough to count as a visual row.
+			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1])) {
 				++$row_score;
 			}
 			if (Geometry::overlaps_x($boxes[$i], $boxes[$i + 1]) && Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 0) {
@@ -293,7 +326,7 @@ final class VisualTreeBuilder implements EngineInterface
 		$similar_height = $this->shared_size_axis($boxes, 'height');
 		$similar_width = $this->shared_size_axis($boxes, 'width');
 
-		if (($row_score > $col_score && $row_score >= 1) || ($similar_height && $shared_bg)) {
+		if (($row_score > $col_score && $row_score >= 1) || ($similar_height && $shared_bg && $row_score >= $col_score)) {
 			usort($siblings, function (array $a, array $b): int {
 				return Geometry::bbox($a)['x'] <=> Geometry::bbox($b)['x'];
 			});

@@ -646,8 +646,14 @@ function browserPageSegmenter() {
         out.push(group[0].el);
         return;
       }
-      // If every member is semantic, keep them separate for editability.
-      if (group.every((g) => g.semantic)) {
+      // Landmark / semantic blocks must stay independent sections — merging
+      // nav+hero+services destroys geometry matching and layered heroes.
+      const landmark = (g) => {
+        const t = (g.el.tagName || '').toUpperCase();
+        return g.semantic || ['SECTION', 'HEADER', 'FOOTER', 'NAV', 'MAIN', 'ASIDE', 'ARTICLE'].includes(t)
+          || /\b(nav|navbar|hero|banner|footer|header)\b/i.test(g.el.className || '');
+      };
+      if (group.some(landmark)) {
         group.forEach((g) => out.push(g.el));
         return;
       }

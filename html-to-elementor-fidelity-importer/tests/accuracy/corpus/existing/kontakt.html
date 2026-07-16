@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kontakt – WF Baumanagement GmbH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --anthracite:#30313a;
+  --gold:#957d4a;
+  --gold-light:#b09868;
+  --white:#fff;
+  --off:#f5f4f1;
+  --mid:#5a5b65;
+  --light:#e8e6e0;
+}
+body{font-family:'Montserrat',sans-serif;background:#fff;color:#1a1b22;}
+nav{background:var(--anthracite);display:flex;align-items:center;justify-content:space-between;padding:14px 48px;position:sticky;top:0;z-index:100;}
+.nav-brand{display:flex;align-items:center;gap:14px;}
+.brand-text strong{display:block;font-size:11.5px;font-weight:800;color:#fff;letter-spacing:4px;text-transform:uppercase;}
+.brand-text span{font-size:9px;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;}
+.nav-links{display:flex;gap:30px;list-style:none;}
+.nav-links a{color:rgba(255,255,255,.6);text-decoration:none;font-size:9.5px;letter-spacing:2px;text-transform:uppercase;font-weight:500;transition:color .2s;}
+.nav-links a:hover,.nav-links a.active{color:var(--gold);}
+.nav-cta{background:transparent;border:1px solid var(--gold);color:var(--gold);padding:9px 22px;font-family:'Montserrat',sans-serif;font-size:8.5px;letter-spacing:2px;text-transform:uppercase;font-weight:600;cursor:pointer;transition:all .2s;}
+.nav-cta:hover{background:var(--gold);color:#fff;}
+.page-hero{position:relative;height:380px;overflow:hidden;}
+.page-hero img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
+.page-hero-overlay{position:absolute;inset:0;background:linear-gradient(90deg,rgba(48,49,58,.9) 0%,rgba(48,49,58,.6) 55%,rgba(48,49,58,.2) 100%);}
+.page-hero-content{position:absolute;top:50%;left:48px;transform:translateY(-50%);}
+.page-eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+.page-eyebrow span{color:var(--gold);font-size:8.5px;letter-spacing:3.5px;text-transform:uppercase;font-weight:600;}
+.eyebrow-line{width:28px;height:1px;background:var(--gold);}
+.page-hero-content h1{font-size:52px;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1.5px;}
+.page-hero-content h1 em{color:var(--gold);font-style:normal;}
+.page-hero-content p{color:rgba(255,255,255,.6);font-size:13px;line-height:1.85;font-weight:300;margin-top:12px;max-width:440px;}
+.section-eye{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.eye-line{width:24px;height:1px;background:var(--gold);display:block;}
+.section-eye span{color:var(--gold);font-size:8.5px;letter-spacing:3px;text-transform:uppercase;font-weight:600;}
+h2.section-title{font-size:30px;font-weight:800;color:var(--anthracite);letter-spacing:-.5px;margin-bottom:10px;}
+footer{background:#1a1b22;padding:30px 48px;display:flex;justify-content:space-between;align-items:center;}
+.footer-left{display:flex;align-items:center;gap:14px;}
+.footer-copy{font-size:9.5px;color:rgba(255,255,255,.28);}
+.footer-links{display:flex;gap:18px;list-style:none;}
+.footer-links a{font-size:8.5px;color:rgba(255,255,255,.28);text-decoration:none;letter-spacing:1px;text-transform:uppercase;}
+
+
+/* Layout */
+.kontakt-main{display:grid;grid-template-columns:1fr 1fr;min-height:600px;}
+
+/* Linke Spalte – Info */
+.kontakt-info{background:var(--anthracite);padding:70px 52px;display:flex;flex-direction:column;justify-content:center;}
+.kontakt-info .section-eye{justify-content:flex-start;}
+.kontakt-info h2{font-size:32px;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:14px;}
+.kontakt-intro{font-size:13px;color:rgba(255,255,255,.52);line-height:1.9;font-weight:300;margin-bottom:40px;}
+.info-block{margin-bottom:32px;}
+.info-label{font-size:8px;letter-spacing:2.5px;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:8px;display:block;}
+.info-value{font-size:14px;color:#fff;font-weight:500;margin-bottom:3px;}
+.info-sub{font-size:12px;color:rgba(255,255,255,.4);font-weight:300;}
+.info-divider{width:28px;height:1px;background:rgba(149,125,74,.3);margin:32px 0;}
+.office-hours{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
+.oh-day{font-size:10px;color:rgba(255,255,255,.4);font-weight:300;}
+.oh-time{font-size:11px;color:rgba(255,255,255,.7);font-weight:500;}
+.social-row{display:flex;gap:12px;margin-top:36px;}
+.social-btn{background:rgba(255,255,255,.07);border:1px solid rgba(149,125,74,.2);color:var(--gold);padding:9px 16px;font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:2px;text-transform:uppercase;font-weight:600;cursor:pointer;}
+
+/* Rechte Spalte – Formular */
+.kontakt-form-wrap{background:var(--off);padding:70px 52px;display:flex;flex-direction:column;justify-content:center;}
+.kontakt-form-wrap .section-eye{justify-content:flex-start;}
+.kontakt-form-wrap h2{font-size:28px;font-weight:800;color:var(--anthracite);margin-bottom:8px;}
+.form-intro{font-size:12.5px;color:var(--mid);line-height:1.8;font-weight:300;margin-bottom:34px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.form-group{display:flex;flex-direction:column;}
+.form-group.full{grid-column:1/-1;}
+label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--mid);font-weight:600;margin-bottom:7px;}
+input,select,textarea{font-family:'Montserrat',sans-serif;font-size:12.5px;color:var(--anthracite);background:#fff;border:1.5px solid var(--light);padding:12px 14px;outline:none;transition:border-color .2s;width:100%;}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);}
+textarea{resize:vertical;min-height:120px;}
+select{appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23957d4a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;}
+.form-submit{margin-top:20px;}
+.btn-submit{background:var(--gold);color:#fff;border:none;padding:15px 36px;font-family:'Montserrat',sans-serif;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;font-weight:700;cursor:pointer;width:100%;transition:background .2s;}
+.btn-submit:hover{background:var(--gold-light);}
+.form-privacy{font-size:9.5px;color:rgba(90,91,101,.5);margin-top:12px;line-height:1.6;text-align:center;}
+.form-privacy a{color:var(--gold);}
+
+/* Karte + Anfahrt */
+.anfahrt-band{background:#fff;padding:70px 48px;}
+.anfahrt-inner{max-width:960px;margin:0 auto;}
+.anfahrt-inner .section-eye{justify-content:center;}
+.anfahrt-inner h2{text-align:center;margin-bottom:48px;}
+.anfahrt-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;}
+.map-placeholder{background:var(--anthracite);height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.4);}
+.map-placeholder .map-icon{font-size:40px;margin-bottom:14px;color:var(--gold);}
+.map-placeholder p{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;text-align:center;line-height:1.8;}
+.map-placeholder strong{color:#fff;display:block;font-size:13px;margin-bottom:6px;}
+.anfahrt-info{background:var(--off);padding:44px 40px;display:flex;flex-direction:column;justify-content:center;gap:28px;}
+.anfahrt-item{display:flex;gap:16px;align-items:flex-start;}
+.anfahrt-icon{width:36px;height:36px;background:var(--gold);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;flex-shrink:0;}
+.anfahrt-title{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--anthracite);margin-bottom:5px;}
+.anfahrt-text{font-size:12px;color:var(--mid);line-height:1.7;font-weight:300;}
+
+/* Erstberatung-Highlight */
+.erstberatung{background:var(--anthracite);padding:70px 48px;text-align:center;}
+.erstberatung h2{font-size:34px;font-weight:800;color:#fff;margin-bottom:12px;}
+.erstberatung p{color:rgba(255,255,255,.52);font-size:13px;font-weight:300;max-width:520px;margin:0 auto 32px;}
+.erstberatung-boxes{display:flex;justify-content:center;gap:2px;margin-bottom:36px;}
+.eb-box{background:rgba(255,255,255,.05);padding:24px 30px;flex:0 0 200px;}
+.eb-num{font-size:26px;font-weight:800;color:var(--gold);display:block;}
+.eb-lbl{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.38);margin-top:4px;display:block;}
+.btn-white{background:#fff;color:var(--gold);border:none;padding:14px 36px;font-family:'Montserrat',sans-serif;font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;font-weight:700;cursor:pointer;}
+
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">
+    <a href="WF_Baumanagement_Homepage.html"><svg width="50" height="40" viewBox="0 0 110 88" fill="none">
+      <line x1="8" y1="14" x2="8" y2="74" stroke="white" stroke-width="3.5"/>
+      <polyline points="8,74 26,36 40,56 54,14" stroke="white" stroke-width="3.5" fill="none"/>
+      <line x1="54" y1="14" x2="90" y2="14" stroke="white" stroke-width="3.5"/>
+      <line x1="54" y1="40" x2="80" y2="40" stroke="white" stroke-width="3"/>
+      <line x1="54" y1="14" x2="54" y2="74" stroke="white" stroke-width="3.5"/>
+      <rect x="2" y="2" width="106" height="84" stroke="#957d4a" stroke-width="1.5" fill="none"/>
+    </svg></a>
+    <div class="brand-text">
+      <strong>Baumanagement</strong>
+      <span>entwickeln | planen | begleiten</span>
+    </div>
+  </div>
+  <ul class="nav-links">
+    <li><a href="WF_Leistungen.html">Leistungen</a></li>
+    <li><a href="#">Über uns</a></li>
+    <li><a href="#">Referenzen</a></li>
+    <li><a href="WF_Kontakt.html" class="active">Kontakt</a></li>
+  </ul>
+  <button class="nav-cta">Beratung anfragen</button>
+</nav>
+
+<section class="page-hero">
+  <img src="https://randomimageurl.com/assets/images/local/20260103_0519_Random%20Natural%20Landscape_simple_compose_01ke205qahfmftrexg9rs7svjn_compressed_q80.jpeg">
+  <div class="page-hero-overlay"></div>
+  <div class="page-hero-content">
+    <div class="page-eyebrow"><div class="eyebrow-line"></div><span>Kontakt</span></div>
+    <h1>Sprechen wir<br>über Ihr <em>Projekt.</em></h1>
+    <p>Kostenlose Erstberatung – unverbindlich und persönlich. Wir freuen uns auf Ihre Anfrage.</p>
+  </div>
+</section>
+
+<!-- Hauptbereich: Info + Formular -->
+<div class="kontakt-main">
+
+  <!-- Info-Spalte -->
+  <div class="kontakt-info">
+    <div class="section-eye"><span class="eye-line"></span><span>Wir sind für Sie da</span></div>
+    <h2>Ihr persönlicher Kontakt</h2>
+    <p class="kontakt-intro">Mit mehr als 60 Jahren gemeinsamer Erfahrung in der Baubranche sind wir die richtigen Ansprechpartner. Kontaktieren Sie uns – wir melden uns umgehend zurück.</p>
+
+    <div class="info-block">
+      <span class="info-label">Adresse</span>
+      <div class="info-value">WF Baumanagement GmbH</div>
+      <div class="info-sub">Galgenau 28</div>
+      <div class="info-sub">4240 Freistadt, Österreich</div>
+    </div>
+
+    <div class="info-divider"></div>
+
+    <div class="info-block">
+      <span class="info-label">Telefon</span>
+      <div class="info-value">+43 (0) 664 193 91 21</div>
+      <div class="info-sub">Mo–Fr 8:00–17:00 Uhr</div>
+    </div>
+
+    <div class="info-block">
+      <span class="info-label">E-Mail</span>
+      <div class="info-value">office@wf-baumanagement.at</div>
+      <div class="info-sub">Antwort innerhalb von 24 Stunden</div>
+    </div>
+
+    <div class="info-divider"></div>
+
+    <div class="info-block">
+      <span class="info-label">Bürozeiten</span>
+      <div class="office-hours">
+        <div><div class="oh-day">Montag – Freitag</div><div class="oh-time">08:00 – 17:00</div></div>
+        <div><div class="oh-day">Samstag</div><div class="oh-time">Nach Vereinbarung</div></div>
+        <div><div class="oh-day">Sonntag</div><div class="oh-time">Geschlossen</div></div>
+        <div><div class="oh-day">Feiertage</div><div class="oh-time">Geschlossen</div></div>
+      </div>
+    </div>
+
+    <div class="info-divider"></div>
+
+    <div class="info-block">
+      <span class="info-label">Firmendaten</span>
+      <div class="info-sub">UID: ATU12345678</div>
+      <div class="info-sub">FN: 123456a · Landesgericht Linz</div>
+    </div>
+
+    <div class="social-row">
+      <button class="social-btn">LinkedIn</button>
+      <button class="social-btn">Instagram</button>
+      <button class="social-btn">Xing</button>
+    </div>
+  </div>
+
+  <!-- Formular-Spalte -->
+  <div class="kontakt-form-wrap">
+    <div class="section-eye"><span class="eye-line"></span><span>Anfrage stellen</span></div>
+    <h2>Kostenlose Erstberatung</h2>
+    <p class="form-intro">Füllen Sie das Formular aus – wir melden uns innerhalb von 24 Stunden bei Ihnen. Kein Risiko, keine Verpflichtung.</p>
+
+    <form>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="vorname">Vorname *</label>
+          <input type="text" id="vorname" placeholder="Maria">
+        </div>
+        <div class="form-group">
+          <label for="nachname">Nachname *</label>
+          <input type="text" id="nachname" placeholder="Muster">
+        </div>
+        <div class="form-group">
+          <label for="email">E-Mail-Adresse *</label>
+          <input type="email" id="email" placeholder="maria@beispiel.at">
+        </div>
+        <div class="form-group">
+          <label for="telefon">Telefon</label>
+          <input type="tel" id="telefon" placeholder="+43 664 ...">
+        </div>
+        <div class="form-group full">
+          <label for="leistung">Gewünschte Leistung</label>
+          <select id="leistung">
+            <option value="">– Bitte auswählen –</option>
+            <option>Entwickeln – Projektentwicklung & Konzept</option>
+            <option>Planen – Entwurf, Einreichung & Ausführung</option>
+            <option>Begleiten – Bauaufsicht & Koordination</option>
+            <option>Gesamtpaket – Entwickeln, Planen & Begleiten</option>
+            <option>Kostenlose Erstberatung</option>
+            <option>Sonstiges</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label for="projektart">Projektart</label>
+          <select id="projektart">
+            <option value="">– Bitte auswählen –</option>
+            <option>Einfamilienhaus – Neubau</option>
+            <option>Einfamilienhaus – Umbau / Sanierung</option>
+            <option>Mehrfamilienhaus</option>
+            <option>Gewerbeobjekt</option>
+            <option>Sonstiges</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label for="nachricht">Ihre Nachricht *</label>
+          <textarea id="nachricht" placeholder="Erzählen Sie uns von Ihrem Projekt – wo stehen Sie gerade, was planen Sie?"></textarea>
+        </div>
+      </div>
+      <div class="form-submit">
+        <button type="submit" class="btn-submit">Anfrage absenden</button>
+        <p class="form-privacy">Mit dem Absenden stimmen Sie unserer <a href="#">Datenschutzerklärung</a> zu. Ihre Daten werden ausschließlich für die Bearbeitung Ihrer Anfrage verwendet.</p>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Anfahrt -->
+<div class="anfahrt-band">
+  <div class="anfahrt-inner">
+    <div class="section-eye" style="justify-content:center"><span class="eye-line"></span><span>Anfahrt</span><span class="eye-line"></span></div>
+    <h2 class="section-title" style="text-align:center">So finden Sie uns</h2>
+    <div class="anfahrt-grid">
+      <div class="map-placeholder">
+        <div class="map-icon">◎</div>
+        <strong>WF Baumanagement GmbH</strong>
+        <p>Galgenau 28<br>4240 Freistadt<br>Österreich</p>
+      </div>
+      <div class="anfahrt-info">
+        <div class="anfahrt-item">
+          <div class="anfahrt-icon">🚗</div>
+          <div>
+            <div class="anfahrt-title">Mit dem Auto</div>
+            <div class="anfahrt-text">Von Linz über die A7 Richtung Freistadt, Ausfahrt Freistadt Süd. Galgenau 28 liegt im nördlichen Stadtgebiet. Parkplätze vor dem Haus vorhanden.</div>
+          </div>
+        </div>
+        <div class="anfahrt-item">
+          <div class="anfahrt-icon">🚆</div>
+          <div>
+            <div class="anfahrt-title">Mit dem Zug</div>
+            <div class="anfahrt-text">Bahnhof Freistadt (Mühlkreisbahn), ca. 10 Minuten zu Fuß oder mit dem Taxi zum Büro.</div>
+          </div>
+        </div>
+        <div class="anfahrt-item">
+          <div class="anfahrt-icon">📍</div>
+          <div>
+            <div class="anfahrt-title">GPS-Koordinaten</div>
+            <div class="anfahrt-text">48.5028° N, 14.5017° E<br>Google Maps: „WF Baumanagement Freistadt"</div>
+          </div>
+        </div>
+        <div class="anfahrt-item">
+          <div class="anfahrt-icon">📞</div>
+          <div>
+            <div class="anfahrt-title">Termin vereinbaren</div>
+            <div class="anfahrt-text">Bitte vereinbaren Sie vorab einen Termin – wir nehmen uns die Zeit, die Ihr Projekt verdient.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Erstberatungs-Highlight -->
+<div class="erstberatung">
+  <div class="section-eye" style="justify-content:center"><span class="eye-line" style="background:rgba(149,125,74,.4)"></span><span>Unser Versprechen</span><span class="eye-line" style="background:rgba(149,125,74,.4)"></span></div>
+  <h2>Kostenlose Erstberatung</h2>
+  <p>Nützen Sie das Angebot für eine kostenlose Erstberatung und entscheiden Sie danach, in welchem Umfang wir Sie begleiten dürfen – ob einzelne Pakete, im vollen Umfang oder nur stundenweise.</p>
+  <div class="erstberatung-boxes">
+    <div class="eb-box"><span class="eb-num">0 €</span><span class="eb-lbl">Erstberatung kostenlos</span></div>
+    <div class="eb-box"><span class="eb-num">24h</span><span class="eb-lbl">Antwortzeit garantiert</span></div>
+    <div class="eb-box"><span class="eb-num">100%</span><span class="eb-lbl">Unverbindlich</span></div>
+  </div>
+  <button class="btn-white">Jetzt Termin anfragen</button>
+</div>
+
+<footer>
+  <div class="footer-left">
+    <svg width="28" height="22" viewBox="0 0 110 88" fill="none">
+      <line x1="8" y1="14" x2="8" y2="74" stroke="#957d4a" stroke-width="3.5"/>
+      <polyline points="8,74 26,36 40,56 54,14" stroke="#957d4a" stroke-width="3.5" fill="none"/>
+      <line x1="54" y1="14" x2="90" y2="14" stroke="#957d4a" stroke-width="3.5"/>
+      <line x1="54" y1="40" x2="80" y2="40" stroke="#957d4a" stroke-width="3"/>
+      <line x1="54" y1="14" x2="54" y2="74" stroke="#957d4a" stroke-width="3.5"/>
+    </svg>
+    <span class="footer-copy">© 2026 WF Baumanagement GmbH · Galgenau 28, 4240 Freistadt</span>
+  </div>
+  <ul class="footer-links">
+    <li><a href="#">Impressum</a></li>
+    <li><a href="#">Datenschutz</a></li>
+    <li><a href="#">Barrierefreiheit</a></li>
+  </ul>
+</footer>
+</body>
+</html>

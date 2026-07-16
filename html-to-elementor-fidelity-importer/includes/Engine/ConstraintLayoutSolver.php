@@ -69,14 +69,29 @@ final class ConstraintLayoutSolver implements EngineInterface
 		$children = (array) ($node['children'] ?? array());
 		if (count($children) >= 2) {
 			$constraint = $this->infer_constraint($children, $node);
-			$node['layoutConstraint'] = $constraint;
 
 			if ($constraint['gap'] > 0) {
-				$node['s']['gap'] = $constraint['gap'] . 'px';
-				$node['s']['_gap_geometry'] = true;
-				$spacing_values[(string) $constraint['gap']] = ($spacing_values[(string) $constraint['gap']] ?? 0) + 1;
-				$this->strip_child_margins($node);
+				$disp = (string) (($node['s']['disp'] ?? ''));
+				$is_flex_grid = false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
+				$had_css_gap = !empty($node['s']['cgap'])
+					|| !empty($node['s']['rgap'])
+					|| (!empty($node['s']['gap']) && empty($node['s']['_gap_geometry']) && empty($node['s']['_gap_whitespace']));
+
+				// Collapse margins → flex_gap only for horizontal tracks or author CSS gap.
+				// Vertical stacks (esp. those later promoted to composites) keep margins.
+				$collapse = $is_flex_grid && ('row' === ($constraint['direction'] ?? '') || $had_css_gap);
+				if ($collapse) {
+					$node['s']['gap'] = $constraint['gap'] . 'px';
+					$node['s']['_gap_geometry'] = true;
+					$spacing_values[(string) $constraint['gap']] = ($spacing_values[(string) $constraint['gap']] ?? 0) + 1;
+					$this->strip_child_margins($node);
+				} else {
+					$constraint['gap_from_margins'] = $constraint['gap'];
+					$constraint['gap'] = 0;
+				}
 			}
+
+			$node['layoutConstraint'] = $constraint;
 		}
 
 		foreach ($children as $i => $child) {
@@ -274,6 +289,27 @@ final class ConstraintLayoutSolver implements EngineInterface
 	 */
 	private function infer_direction(array $children, array $boxes, array $parent): string
 	{
+		// 1) Explicit CSS flex/grid is authoritative over visualSiblingLayout.
+		// Bootstrap/Tailwind rows often have flush columns (hgap=0) that the
+		// visual tree mis-labels as column.
+		$parent_s = $parent['s'] ?? array();
+		$disp = (string) ($parent_s['disp'] ?? '');
+		if (false !== strpos($disp, 'flex')) {
+			$fd = strtolower((string) ($parent_s['fd'] ?? 'row'));
+			return (false !== strpos($fd, 'column')) ? 'column' : 'row';
+		}
+		if (false !== strpos($disp, 'grid')) {
+			return 'row';
+		}
+
+		$layout_type = (string) ($parent['layoutType'] ?? '');
+		if (in_array($layout_type, array('row', 'grid'), true)) {
+			return 'row';
+		}
+		if ('stack' === $layout_type) {
+			return 'column';
+		}
+
 		$visual = (string) ($children[0]['visualSiblingLayout'] ?? '');
 		if ('row' === $visual) {
 			return 'row';
@@ -284,17 +320,6 @@ final class ConstraintLayoutSolver implements EngineInterface
 
 		$group = (string) ($parent['visualGroup'] ?? '');
 		if ('row' === $group) {
-			return 'row';
-		}
-
-		// Explicit CSS flex/grid direction when geometry is unavailable.
-		$parent_s = $parent['s'] ?? array();
-		$disp = (string) ($parent_s['disp'] ?? '');
-		if (false !== strpos($disp, 'flex')) {
-			$fd = strtolower((string) ($parent_s['fd'] ?? 'row'));
-			return (false !== strpos($fd, 'column')) ? 'column' : 'row';
-		}
-		if (false !== strpos($disp, 'grid')) {
 			return 'row';
 		}
 
@@ -313,10 +338,6 @@ final class ConstraintLayoutSolver implements EngineInterface
 			if (Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 4) {
 				++$col_votes;
 			}
-		}
-
-		if (false !== strpos($disp, 'grid')) {
-			++$row_votes;
 		}
 
 		return $row_votes > $col_votes ? 'row' : 'column';
