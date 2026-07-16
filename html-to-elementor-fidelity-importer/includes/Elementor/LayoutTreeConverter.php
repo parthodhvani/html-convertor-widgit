@@ -714,14 +714,20 @@ final class LayoutTreeConverter
                     $this->css->typography($node),
                     $this->css->text_color($node, 'title_color'),
                     $this->css->alignment($node, 'align'),
-                    $this->css->spacing($node, true)
+                    $this->css->spacing($node, true),
+                    $this->css->border($node),
+                    $this->css->background($node),
+                    $this->css->box_shadow($node)
                 );
             case 'text-editor':
                 return array_merge(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'text_color'),
                     $this->css->alignment($node, 'align'),
-                    $this->css->spacing($node, true)
+                    $this->css->spacing($node, true),
+                    $this->css->border($node),
+                    $this->css->background($node),
+                    $this->css->box_shadow($node)
                 );
             case 'button':
                 $style = array_merge(
