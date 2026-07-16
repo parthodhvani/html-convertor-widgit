@@ -264,7 +264,8 @@ function attachNodeResponsive(node, uidMaps) {
 }
 
 /**
- * Remove internal marker attributes from captured HTML and slim the tree.
+ * Remove internal marker attributes from captured HTML.
+ * Keeps `uid` on the IR so responsive maps and repair can re-join nodes.
  *
  * @param {object|null} node Tree node.
  */
@@ -273,7 +274,6 @@ function stripTreeMarkers(node) {
   if (typeof node.html === 'string') {
     node.html = node.html.replace(/\sdata-h2e-(section|uid)="\d+"/g, '');
   }
-  delete node.uid;
   (node.children || []).forEach(stripTreeMarkers);
 }
 
@@ -326,8 +326,9 @@ function extractAssetsInPage() {
 function measureTaggedSections() {
   const props = [
     'display', 'backgroundColor', 'color', 'paddingTop', 'paddingBottom',
-    'paddingLeft', 'paddingRight', 'marginTop', 'marginBottom',
+    'paddingLeft', 'paddingRight', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
     'flexDirection', 'justifyContent', 'alignItems', 'textAlign', 'fontSize',
+    'gap', 'columnGap', 'rowGap', 'gridTemplateColumns', 'overflow',
   ];
   const out = {};
   document.querySelectorAll('[data-h2e-section]').forEach((el) => {
@@ -356,16 +357,26 @@ function measureUids() {
   document.querySelectorAll('[data-h2e-uid]').forEach((el) => {
     const cs = window.getComputedStyle(el);
     const r = el.getBoundingClientRect();
-    out[el.getAttribute('data-h2e-uid')] = {
+    const entry = {
       fs: cs.fontSize,
       mt: cs.marginTop, mr: cs.marginRight, mb: cs.marginBottom, ml: cs.marginLeft,
       pt: cs.paddingTop, pr: cs.paddingRight, pb: cs.paddingBottom, pl: cs.paddingLeft,
       ta: cs.textAlign,
       disp: cs.display,
       fd: cs.flexDirection,
+      jc: cs.justifyContent,
+      ai: cs.alignItems,
+      gap: cs.columnGap !== 'normal' ? cs.columnGap : cs.gap,
+      fw_wrap: cs.flexWrap,
+      pos: cs.position,
       w: Math.round(r.width * 100) / 100,
       h: Math.round(r.height * 100) / 100,
     };
+    if (cs.display.indexOf('grid') !== -1) {
+      entry.gtc = cs.gridTemplateColumns;
+      entry.gtr = cs.gridTemplateRows;
+    }
+    out[el.getAttribute('data-h2e-uid')] = entry;
   });
   return out;
 }

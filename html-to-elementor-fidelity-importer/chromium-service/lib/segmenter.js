@@ -27,9 +27,12 @@ function browserPageSegmenter() {
   const CAPTURED_PROPS = [
     'display', 'position', 'backgroundColor', 'backgroundImage', 'color',
     'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight',
-    'marginTop', 'marginBottom', 'flexDirection', 'justifyContent',
-    'alignItems', 'textAlign', 'fontSize', 'fontFamily', 'lineHeight',
-    'borderTopWidth', 'borderBottomWidth', 'minHeight',
+    'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+    'flexDirection', 'justifyContent', 'alignItems', 'textAlign',
+    'fontSize', 'fontFamily', 'lineHeight',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius',
+    'minHeight', 'gap', 'columnGap', 'rowGap', 'gridTemplateColumns', 'overflow',
   ];
 
   const ATOMIC = new Set([
@@ -111,6 +114,7 @@ function browserPageSegmenter() {
   }
 
   // Capture the full computed style set for an element.
+  // Keys are abbreviated for IR size; keep legacy scalars (bdw/br) for PHP CssMapper.
   function styleSet(cs) {
     const s = {
       // Typography.
@@ -141,42 +145,130 @@ function browserPageSegmenter() {
     };
     if (cs.zIndex && cs.zIndex !== 'auto') s.z = cs.zIndex;
     if (cs.overflow && cs.overflow !== 'visible') s.ov = cs.overflow;
+    if (cs.overflowX && cs.overflowX !== 'visible') s.ovX = cs.overflowX;
+    if (cs.overflowY && cs.overflowY !== 'visible') s.ovY = cs.overflowY;
     if (cs.transform && cs.transform !== 'none') s.tf = cs.transform;
+    if (cs.transformOrigin && cs.transformOrigin !== '50% 50% 0px') s.tfo = cs.transformOrigin;
     if (cs.filter && cs.filter !== 'none') s.filter = cs.filter;
     if (cs.clipPath && cs.clipPath !== 'none') s.clip = cs.clipPath;
     if (cs.maskImage && cs.maskImage !== 'none') s.mask = cs.maskImage;
+    if (cs.mixBlendMode && cs.mixBlendMode !== 'normal') s.blend = cs.mixBlendMode;
     if (cs.transition && cs.transition !== 'all 0s ease 0s') s.transition = cs.transition;
     if (cs.animationName && cs.animationName !== 'none') s.animation = cs.animationName;
+    if (cs.textShadow && cs.textShadow !== 'none') s.tsh = cs.textShadow;
+    if (cs.whiteSpace && cs.whiteSpace !== 'normal') s.ws = cs.whiteSpace;
+    if (cs.wordSpacing && cs.wordSpacing !== '0px') s.wsp = cs.wordSpacing;
+    if (cs.direction && cs.direction !== 'ltr') s.dir = cs.direction;
+
+    // Flex container + item props (item props matter for absolute fidelity).
     if (cs.display.indexOf('flex') !== -1) {
       s.fd = cs.flexDirection;
       s.fw_wrap = cs.flexWrap;
+      if (cs.alignContent && cs.alignContent !== 'normal') s.ac = cs.alignContent;
     }
+    const flexGrow = cs.flexGrow;
+    const flexShrink = cs.flexShrink;
+    const flexBasis = cs.flexBasis;
+    if (flexGrow && flexGrow !== '0') s.fg = flexGrow;
+    if (flexShrink && flexShrink !== '1') s.fsh = flexShrink;
+    if (flexBasis && flexBasis !== 'auto') s.fb = flexBasis;
+    if (cs.order && cs.order !== '0') s.ord = cs.order;
+    if (cs.alignSelf && cs.alignSelf !== 'auto') s.aself = cs.alignSelf;
+
+    // Grid container tracks / areas.
     if (cs.display.indexOf('grid') !== -1) {
       s.gtc = cs.gridTemplateColumns;
+      s.gtr = cs.gridTemplateRows;
+      if (cs.gridTemplateAreas && cs.gridTemplateAreas !== 'none') s.gta = cs.gridTemplateAreas;
+      if (cs.gridAutoFlow && cs.gridAutoFlow !== 'row') s.gaf = cs.gridAutoFlow;
+      if (cs.justifyItems && cs.justifyItems !== 'normal') s.ji = cs.justifyItems;
     }
+    if (cs.gridColumn && cs.gridColumn !== 'auto') s.gc = cs.gridColumn;
+    if (cs.gridRow && cs.gridRow !== 'auto') s.gr = cs.gridRow;
+
     if (cs.justifyContent && cs.justifyContent !== 'normal') s.jc = cs.justifyContent;
     if (cs.alignItems && cs.alignItems !== 'normal') s.ai = cs.alignItems;
     const gap = cs.columnGap !== 'normal' ? cs.columnGap : (cs.gap !== 'normal' ? cs.gap : '');
     if (gap) s.gap = gap;
-    // Background.
+    if (cs.rowGap && cs.rowGap !== 'normal' && cs.rowGap !== gap) s.rgap = cs.rowGap;
+    if (cs.columnGap && cs.columnGap !== 'normal' && cs.columnGap !== gap) s.cgap = cs.columnGap;
+
+    // Background (preserve gradients as structured flag + raw image).
     if (!transparent(cs.backgroundColor)) s.bg = cs.backgroundColor;
     if (cs.backgroundImage && cs.backgroundImage !== 'none') {
       s.bgImg = cs.backgroundImage;
       s.bgSize = cs.backgroundSize;
       s.bgPos = cs.backgroundPosition;
       s.bgRepeat = cs.backgroundRepeat;
+      if (/gradient\(/i.test(cs.backgroundImage)) s.bgGrad = true;
     }
-    // Border (top edge as representative + radius).
-    if (num(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none') {
-      s.bdw = num(cs.borderTopWidth);
-      s.bds = cs.borderTopStyle;
-      s.bdc = cs.borderTopColor;
+
+    // Per-side borders (legacy bdw/bds/bdc = max/first non-zero for backcompat).
+    const bdwT = num(cs.borderTopWidth);
+    const bdwR = num(cs.borderRightWidth);
+    const bdwB = num(cs.borderBottomWidth);
+    const bdwL = num(cs.borderLeftWidth);
+    const bdsT = cs.borderTopStyle;
+    const bdsR = cs.borderRightStyle;
+    const bdsB = cs.borderBottomStyle;
+    const bdsL = cs.borderLeftStyle;
+    const sides = [
+      { w: bdwT, st: bdsT, c: cs.borderTopColor, k: 'T' },
+      { w: bdwR, st: bdsR, c: cs.borderRightColor, k: 'R' },
+      { w: bdwB, st: bdsB, c: cs.borderBottomColor, k: 'B' },
+      { w: bdwL, st: bdsL, c: cs.borderLeftColor, k: 'L' },
+    ];
+    let maxW = 0;
+    let repStyle = '';
+    let repColor = '';
+    sides.forEach((side) => {
+      if (side.w > 0 && side.st && side.st !== 'none') {
+        s['bdw' + side.k] = side.w;
+        s['bds' + side.k] = side.st;
+        if (!transparent(side.c)) s['bdc' + side.k] = side.c;
+        if (side.w > maxW) {
+          maxW = side.w;
+          repStyle = side.st;
+          repColor = side.c;
+        }
+      }
+    });
+    if (maxW > 0) {
+      s.bdw = maxW;
+      s.bds = repStyle;
+      if (!transparent(repColor)) s.bdc = repColor;
+      // Structured per-side widths for CssMapper dimensions controls.
+      s.bd = {
+        t: bdsT !== 'none' ? bdwT : 0,
+        r: bdsR !== 'none' ? bdwR : 0,
+        b: bdsB !== 'none' ? bdwB : 0,
+        l: bdsL !== 'none' ? bdwL : 0,
+      };
     }
-    const radius = num(cs.borderTopLeftRadius);
-    if (radius > 0) s.br = radius;
+
+    // Per-corner radii (legacy br = top-left / max for backcompat).
+    const brTL = num(cs.borderTopLeftRadius);
+    const brTR = num(cs.borderTopRightRadius);
+    const brBR = num(cs.borderBottomRightRadius);
+    const brBL = num(cs.borderBottomLeftRadius);
+    if (brTL > 0 || brTR > 0 || brBR > 0 || brBL > 0) {
+      s.brTL = brTL;
+      s.brTR = brTR;
+      s.brBR = brBR;
+      s.brBL = brBL;
+      s.br = Math.max(brTL, brTR, brBR, brBL);
+      s.brad = { tl: brTL, tr: brTR, br: brBR, bl: brBL };
+    }
+
     // Effects.
     if (cs.boxShadow && cs.boxShadow !== 'none') s.sh = cs.boxShadow;
     if (cs.opacity && parseFloat(cs.opacity) < 1) s.op = parseFloat(cs.opacity);
+    if (cs.position === 'sticky' || cs.position === 'fixed' || cs.position === 'absolute') {
+      const inset = {
+        top: cs.top, right: cs.right, bottom: cs.bottom, left: cs.left,
+      };
+      if (Object.values(inset).some((v) => v && v !== 'auto')) s.inset = inset;
+    }
     return s;
   }
 
