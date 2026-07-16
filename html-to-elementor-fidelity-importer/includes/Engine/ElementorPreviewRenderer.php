@@ -155,6 +155,9 @@ HTML;
 				$css[] = $side . ':' . (float) $s[$side]['size'] . ($s[$side]['unit'] ?? 'px');
 			}
 		}
+		if (!empty($s['_offset_x']['size']) && empty($s['left']['size'])) {
+			$css[] = 'left:' . (float) $s['_offset_x']['size'] . ($s['_offset_x']['unit'] ?? 'px');
+		}
 		if (isset($s['_opacity']['size'])) {
 			$css[] = 'opacity:' . (float) $s['_opacity']['size'];
 		}

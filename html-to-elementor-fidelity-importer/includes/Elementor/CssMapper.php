@@ -112,6 +112,21 @@ final class CssMapper
             if (!empty($typo['textWidth'])) {
                 $out['_h2e_text_width'] = (float) $typo['textWidth'];
             }
+            // Wrapping controls layout height — never drop silently.
+            $wrap_css = array();
+            foreach (array('whiteSpace' => 'white-space', 'wordBreak' => 'word-break', 'overflowWrap' => 'overflow-wrap') as $key => $prop) {
+                $val = trim((string) ($typo[$key] ?? ''));
+                if ('' !== $val && 'normal' !== $val) {
+                    $wrap_css[] = $prop . ':' . $val;
+                }
+            }
+            if (!empty($wrap_css)) {
+                $out = $this->merge_custom_css($out, implode(';', $wrap_css));
+                $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                    (array) ($out['_h2e_unsupported'] ?? array()),
+                    array('text-wrap')
+                )));
+            }
         }
 
         return $out;
@@ -533,8 +548,14 @@ final class CssMapper
         if (!empty($s['ai'])) {
             $out['flex_align_items'] = $this->flex_align((string) $s['ai']);
         }
-        if ('row' === $direction || $is_grid) {
+        // Preserve authored wrap (IR key: fw_wrap). Default wrap only for CSS grid.
+        $wrap = strtolower((string) ($s['fw_wrap'] ?? $s['wrap'] ?? ''));
+        if ($is_grid) {
             $out['flex_wrap'] = 'wrap';
+        } elseif ('' !== $wrap) {
+            $out['flex_wrap'] = (false !== strpos($wrap, 'wrap') && false === strpos($wrap, 'nowrap'))
+                ? 'wrap'
+                : 'nowrap';
         }
         // Always set the gap explicitly (0 when the source has none) so it
         // overrides Elementor's default container gap, which would otherwise
@@ -578,12 +599,73 @@ final class CssMapper
         if ($min_h && $min_h['size'] > 0) {
             $out['min_height'] = $min_h;
         }
+        // Preserve max-width / max-height — primary cause of wrong parent width
+        // cascading into text wrap and section height errors.
+        $max_w = $this->size($s['maxW'] ?? null);
+        if ($max_w && $max_w['size'] > 0) {
+            $out = $this->merge_custom_css($out, 'max-width:' . $max_w['size'] . ($max_w['unit'] ?? 'px'));
+            $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                (array) ($out['_h2e_unsupported'] ?? array()),
+                array('max-width')
+            )));
+        }
+        $max_h = $this->size($s['maxH'] ?? null);
+        if ($max_h && $max_h['size'] > 0) {
+            $out = $this->merge_custom_css($out, 'max-height:' . $max_h['size'] . ($max_h['unit'] ?? 'px'));
+        }
+        $min_w = $this->size($s['minW'] ?? null);
+        if ($min_w && $min_w['size'] > 0) {
+            $out = $this->merge_custom_css($out, 'min-width:' . $min_w['size'] . ($min_w['unit'] ?? 'px'));
+        }
+        // Fixed/auto width from computed style when not percentage-driven by parent row.
+        $w = $this->size($s['w'] ?? null);
+        if ($w && $w['size'] > 0 && empty($out['width'])) {
+            $parent_hint = (float) ($node['parentWidth'] ?? 0);
+            if ($parent_hint <= 0 && !empty($node['bbox']['width'])) {
+                // Keep large full-bleed widths as 100%; mid sizes as px.
+                if ($w['size'] >= 1100) {
+                    $out['width'] = array('unit' => '%', 'size' => 100);
+                } elseif ($w['size'] < 1100) {
+                    $out['width'] = array('unit' => 'px', 'size' => round($w['size']));
+                    $out['content_width'] = $out['content_width'] ?? 'full';
+                }
+            }
+        }
+        if (!empty($s['ar']) && 'auto' !== $s['ar']) {
+            $out = $this->merge_custom_css($out, 'aspect-ratio:' . $s['ar']);
+        }
         if (isset($s['op']) && (float) $s['op'] < 1) {
             $out['_opacity'] = array(
                 'unit' => 'px',
                 'size' => round((float) $s['op'], 2),
             );
         }
+
+        // Flex item props — Elementor lacks first-class controls; preserve via CSS.
+        $item_css = array();
+        if (isset($s['fg']) && '' !== (string) $s['fg'] && '0' !== (string) $s['fg']) {
+            $item_css[] = 'flex-grow:' . $s['fg'];
+        }
+        if (isset($s['fsh']) && '' !== (string) $s['fsh']) {
+            $item_css[] = 'flex-shrink:' . $s['fsh'];
+        }
+        if (!empty($s['fb']) && 'auto' !== $s['fb']) {
+            $item_css[] = 'flex-basis:' . $s['fb'];
+        }
+        if (!empty($s['aself']) && 'auto' !== $s['aself']) {
+            $item_css[] = 'align-self:' . $s['aself'];
+        }
+        if (isset($s['ord']) && is_numeric($s['ord']) && (int) $s['ord'] !== 0) {
+            $item_css[] = 'order:' . (int) $s['ord'];
+        }
+        if (!empty($item_css)) {
+            $out = $this->merge_custom_css($out, implode(';', $item_css));
+            $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                (array) ($out['_h2e_unsupported'] ?? array()),
+                array('flex-item')
+            )));
+        }
+
         return $out;
     }
 

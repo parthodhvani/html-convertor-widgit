@@ -1,0 +1,9 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Absolute 1</title>
+<style>body{margin:0;font-family:system-ui,sans-serif}.hero{position:relative;height:440px;background:#0f172a;color:#fff;overflow:hidden}
+.bg{position:absolute;inset:0;background:linear-gradient(120deg,#1e293b,#0f172a 60%);opacity:.95}
+.content{position:absolute;left:9%;top:29%;max-width:480px;z-index:2}
+h1{font-size:2.5rem;margin:0 0 .75rem}.btn{display:inline-block;background:#f59e0b;color:#111;padding:.75rem 1.1rem;border-radius:6px;text-decoration:none;font-weight:700}
+.badge{position:absolute;right:8%;top:12%;background:rgba(255,255,255,.12);padding:.5rem .8rem;border-radius:999px;z-index:2}</style></head><body>
+<section class="hero"><div class="bg"></div><div class="badge">Edition 1</div>
+<div class="content"><h1>Overlay Hero 1</h1><p>Absolute layers must survive compilation.</p><a class="btn" href="#">Register</a></div></section>
+<section style="padding:2.5rem 10%"><h2>Below</h2><p>In-flow content after the hero.</p></section></body></html>

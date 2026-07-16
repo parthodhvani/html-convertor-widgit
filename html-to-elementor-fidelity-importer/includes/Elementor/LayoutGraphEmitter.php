@@ -36,7 +36,11 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($tree['layoutRole'] ?? '');
 
-		if (in_array($role, array('layered_block', 'hero'), true)) {
+		// Prefer layered reconstruction whenever Chromium shows cover overlays,
+		// even if a later role pass labeled the node row_group/stack.
+		if ((in_array($role, array('layered_block', 'hero'), true) || VisualSignals::is_layered($tree)
+				|| !empty($tree['layeredLayout']))
+			&& (VisualSignals::is_layered($tree) || !empty($tree['layeredLayout']))) {
 			$layered = $this->builder->emit_layered_block($tree);
 			if (null !== $layered) {
 				return $layered;
@@ -227,7 +231,9 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($node['layoutRole'] ?? '');
 
-		if (in_array($role, array('layered_block', 'hero'), true)) {
+		if ((in_array($role, array('layered_block', 'hero'), true) || VisualSignals::is_layered($node)
+				|| !empty($node['layeredLayout']))
+			&& (VisualSignals::is_layered($node) || !empty($node['layeredLayout']))) {
 			$layered = $this->builder->emit_layered_block($node);
 			return null !== $layered ? array($layered) : $this->emit_children($node, $is_section, $parent_row, $parent_width);
 		}
@@ -307,6 +313,16 @@ final class LayoutGraphEmitter
 
 		$signals = VisualSignals::analyze($node);
 		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding']) {
+			return true;
+		}
+		// Preserve boxes that still carry browser margins or fixed widths —
+		// hoisting them is a primary source of missing frames / wrong sizes.
+		$s = $node['s'] ?? array();
+		$margin_sum = (float) ($s['mt'] ?? 0) + (float) ($s['mb'] ?? 0) + (float) ($s['ml'] ?? 0) + (float) ($s['mr'] ?? 0);
+		if ($margin_sum >= 4) {
+			return true;
+		}
+		if (!empty($s['maxW']) || (!empty($s['w']) && (float) $s['w'] > 0 && (float) $s['w'] < 1100)) {
 			return true;
 		}
 

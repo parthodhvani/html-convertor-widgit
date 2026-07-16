@@ -400,9 +400,22 @@ final class PixelRepairEngine implements EngineInterface
 			return;
 		}
 		$ws = $node['whitespace'] ?? array();
-		if (!empty($ws['padding']) && is_array($ws['padding'])) {
+		$s = $node['s'] ?? array();
+		$has_computed_pad = array_key_exists('pt', $s) || array_key_exists('pr', $s)
+			|| array_key_exists('pb', $s) || array_key_exists('pl', $s);
+		// Never repair from residual bbox padding when Chromium already provided
+		// padding (including 0). Class-keyed maps also collide across Bootstrap
+		// utility classes and amplify wrong spacing.
+		if (!$has_computed_pad && empty($ws['padding_residual_ignored'])
+			&& !empty($ws['padding']) && is_array($ws['padding'])) {
 			$cls = (string) ($node['cls'] ?? '');
-			if ('' !== $cls) {
+			$max = max(
+				(float) ($ws['padding']['top'] ?? 0),
+				(float) ($ws['padding']['right'] ?? 0),
+				(float) ($ws['padding']['bottom'] ?? 0),
+				(float) ($ws['padding']['left'] ?? 0)
+			);
+			if ('' !== $cls && $max > 0 && $max <= 160 && !isset($map[$cls])) {
 				$map[$cls] = $ws['padding'];
 			}
 		}

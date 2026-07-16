@@ -92,7 +92,7 @@ final class CssMappingEngine implements EngineInterface
 	}
 
 	/**
-	 * Map container-level styles using constraint-based spacing only (no margins).
+	 * Map container-level styles: flex/paint + padding/gap + preserved margins.
 	 *
 	 * @param array<string,mixed> $node       Tree node.
 	 * @param bool                $is_section Top-level section flag.
@@ -114,7 +114,7 @@ final class CssMappingEngine implements EngineInterface
 	}
 
 	/**
-	 * Padding and gap from geometry constraints — never margins.
+	 * Padding, gap, and (when still present) margins from browser IR.
 	 *
 	 * @param array<string,mixed> $node       Tree node.
 	 * @param bool                $is_section Top-level section flag.
@@ -126,30 +126,55 @@ final class CssMappingEngine implements EngineInterface
 		$whitespace = $node['whitespace'] ?? array();
 		$constraint = $node['layoutConstraint'] ?? array();
 
-		// Padding from measured whitespace or computed padding (not margin).
-		$padding = $this->mapper->spacing($node, false);
-		unset($padding['margin']);
-		$out = array_merge($out, $padding);
+		// Prefer CSS padding; allow whitespace to fill missing sides only.
+		$spacing = $this->mapper->spacing($node, true);
+		$out = array_merge($out, $spacing);
 
-		if (!empty($whitespace['padding']) && is_array($whitespace['padding'])) {
+		// Residual bbox padding is only a fallback when Chromium never emitted
+		// padding keys. Cap each side so under-filled rows cannot invent 1000px+.
+		$s = $node['s'] ?? array();
+		$has_computed_pad = array_key_exists('pt', $s) || array_key_exists('pr', $s)
+			|| array_key_exists('pb', $s) || array_key_exists('pl', $s);
+		if (!$has_computed_pad && !empty($whitespace['padding']) && is_array($whitespace['padding']) && empty($out['padding'])) {
 			$p = $whitespace['padding'];
-			$out['padding'] = array(
-				'unit' => 'px',
-				'top' => (string) round((float) ($p['top'] ?? 0)),
-				'right' => (string) round((float) ($p['right'] ?? 0)),
-				'bottom' => (string) round((float) ($p['bottom'] ?? 0)),
-				'left' => (string) round((float) ($p['left'] ?? 0)),
-				'isLinked' => false,
+			$sides = array(
+				'top' => (float) ($p['top'] ?? 0),
+				'right' => (float) ($p['right'] ?? 0),
+				'bottom' => (float) ($p['bottom'] ?? 0),
+				'left' => (float) ($p['left'] ?? 0),
 			);
+			$max_side = max($sides);
+			if ($max_side > 0 && $max_side <= 160) {
+				$out['padding'] = array(
+					'unit' => 'px',
+					'top' => (string) round($sides['top']),
+					'right' => (string) round($sides['right']),
+					'bottom' => (string) round($sides['bottom']),
+					'left' => (string) round($sides['left']),
+					'isLinked' => false,
+				);
+			}
 		}
 
-		$gap = (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0);
-		if ($gap > 0) {
+		// Only emit flex_gap when constraint/CSS gap exists — not margin-invented gaps.
+		$gap = (float) ($constraint['gap'] ?? 0);
+		if ($gap <= 0 && !empty($node['s']['gap']) && empty($node['whitespace']['gap_from_margins'])) {
+			$gap = (float) preg_replace('/[^\d.]/', '', (string) $node['s']['gap']);
+		}
+		if ($gap > 0 && empty($constraint['gap_from_margins']) && empty($whitespace['gap_from_margins'])) {
 			$g = (string) round($gap);
+			$row_gap = $gap;
+			$col_gap = $gap;
+			if (!empty($node['s']['rgap'])) {
+				$row_gap = (float) preg_replace('/[^\d.]/', '', (string) $node['s']['rgap']);
+			}
+			if (!empty($node['s']['cgap'])) {
+				$col_gap = (float) preg_replace('/[^\d.]/', '', (string) $node['s']['cgap']);
+			}
 			$out['flex_gap'] = array(
-				'column' => $g,
-				'row' => $g,
-				'isLinked' => true,
+				'column' => (string) round($col_gap),
+				'row' => (string) round($row_gap),
+				'isLinked' => abs($row_gap - $col_gap) < 0.5,
 				'unit' => 'px',
 				'size' => round($gap),
 			);

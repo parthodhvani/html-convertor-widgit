@@ -78,13 +78,23 @@ final class WhitespaceAnalyzer implements EngineInterface
 			$constraint_gap = (float) ($node['layoutConstraint']['gap'] ?? 0);
 			$measured_gap = (float) ($whitespace['gap'] ?? 0);
 
+			// Constraint gap is authoritative when present. Never invent a gap from
+			// pure margin geometry and wipe child margins — that is the earliest
+			// cause of spacing → wrap → height cascade failures.
+			$had_css_gap = $this->node_has_css_gap($node);
+			$margins_already_collapsed = !empty($node['s']['_gap_geometry']) && $constraint_gap > 0;
+			$direction = (string) ($node['layoutConstraint']['direction'] ?? $whitespace['direction'] ?? 'column');
+
 			if ($constraint_gap > 0) {
 				$gap = round($constraint_gap, 0);
 				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
 				$node['s']['gap'] = $gap . 'px';
 				$node['s']['_gap_source'] = 'constraint';
-				$this->clear_child_margins($node);
-			} elseif ($measured_gap > 0) {
+				// Only strip margins when CSS gap existed or a horizontal collapse ran.
+				if ($had_css_gap || $margins_already_collapsed || 'row' === $direction) {
+					$this->clear_child_margins($node);
+				}
+			} elseif ($measured_gap > 0 && $had_css_gap) {
 				$gap = round($measured_gap, 0);
 				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
 				$node['s']['gap'] = $gap . 'px';
@@ -98,14 +108,23 @@ final class WhitespaceAnalyzer implements EngineInterface
 				}
 				$node['layoutConstraint']['gap'] = $gap;
 				$this->clear_child_margins($node);
+			} elseif ($measured_gap > 0) {
+				// Diagnostic only — preserve child margins as the spacing model.
+				$node['whitespace']['gap_from_margins'] = round($measured_gap, 0);
 			}
 
-			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0
-				|| $whitespace['padding']['right'] > 0 || $whitespace['padding']['bottom'] > 0) {
-				$node['s']['pt'] = max((float) ($node['s']['pt'] ?? 0), $whitespace['padding']['top']);
-				$node['s']['pl'] = max((float) ($node['s']['pl'] ?? 0), $whitespace['padding']['left']);
-				$node['s']['pr'] = max((float) ($node['s']['pr'] ?? 0), $whitespace['padding']['right']);
-				$node['s']['pb'] = max((float) ($node['s']['pb'] ?? 0), $whitespace['padding']['bottom']);
+			// Geometry residual (parent box minus children union) is diagnostic only.
+			// Chromium computed padding is authoritative — writing residual into s.pr/pt
+			// invented 1000px+ "padding" on under-filled flex/list rows and blew width.
+			if ($this->computed_padding_absent($node)) {
+				foreach (array('top' => 'pt', 'right' => 'pr', 'bottom' => 'pb', 'left' => 'pl') as $side => $key) {
+					$residual = (float) ($whitespace['padding'][$side] ?? 0);
+					if ($residual > 0 && $residual <= 160) {
+						$node['s'][$key] = $residual;
+					}
+				}
+			} else {
+				$node['whitespace']['padding_residual_ignored'] = true;
 			}
 		}
 
@@ -196,6 +215,44 @@ final class WhitespaceAnalyzer implements EngineInterface
 		}
 
 		return 'column';
+	}
+
+	/**
+	 * True when the browser computed style already declared a gap.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function node_has_css_gap(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		if (!empty($s['cgap']) || !empty($s['rgap'])) {
+			return true;
+		}
+		$gap = trim((string) ($s['gap'] ?? ''));
+		if ('' === $gap || 'normal' === $gap || '0px' === $gap || '0' === $gap) {
+			return false;
+		}
+		// Ignore gaps we ourselves invented earlier in the pipeline.
+		if (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace']) || !empty($s['_gap_source'])) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * True when Chromium padding keys were never extracted (legacy / synthetic nodes).
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function computed_padding_absent(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		foreach (array('pt', 'pr', 'pb', 'pl') as $key) {
+			if (array_key_exists($key, $s)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

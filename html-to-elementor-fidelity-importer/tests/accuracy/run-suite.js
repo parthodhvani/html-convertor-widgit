@@ -157,10 +157,101 @@ async function processPage(page, args, runDir) {
   }
 
   row.pixel_similarity = pixel;
+  row.paint_accuracy = Number(summary.colour || row.colour || 0);
+  row.css_preservation = Math.max(0, 100 - Math.min(100, (summary.unsupported_css_count || 0) * 2));
   row.composite = compositeScore(row);
   row.issues = classifyMismatches(row);
+
+  // Visual debug package for developers.
+  writeDebugOutput(pageDir, row, shotDesktop, path.join(pageDir, 'shot-preview.png'));
+
   fs.writeFileSync(path.join(pageDir, 'page-result.json'), JSON.stringify(row, null, 2));
   return row;
+}
+
+/**
+ * Write /debug-output style artifacts beside each page result.
+ *
+ * @param {string} pageDir Page work dir.
+ * @param {object} row Result row.
+ * @param {string} originalPng Original screenshot path.
+ * @param {string} previewPng Preview screenshot path.
+ */
+function writeDebugOutput(pageDir, row, originalPng, previewPng) {
+  const debugDir = path.join(pageDir, 'debug-output');
+  fs.mkdirSync(debugDir, { recursive: true });
+  try {
+    if (fs.existsSync(originalPng)) fs.copyFileSync(originalPng, path.join(debugDir, 'original.png'));
+    if (fs.existsSync(previewPng)) fs.copyFileSync(previewPng, path.join(debugDir, 'elementor-render.png'));
+  } catch (e) {
+    // ignore copy errors
+  }
+
+  const v = row.validation || {};
+  const layoutDiff = {
+    problem: (row.issues && row.issues[0] && row.issues[0].category) || 'none',
+    evidence: (row.issues && row.issues[0] && row.issues[0].evidence) || '',
+    original: {
+      source_frames: v.source_frames || 0,
+      geometry_similarity: row.geometry_similarity,
+      spacing_similarity: row.spacing_similarity,
+    },
+    generated: {
+      emitted_frames: v.emitted_frames || 0,
+      matched_frames: v.matched_frames || 0,
+      bbox_delta: v.bbox_delta || 0,
+      position_rmse: v.position_rmse || 0,
+      size_rmse: v.size_rmse || 0,
+    },
+    cause: rankCause(row),
+    expected_gain_hint: (row.issues && row.issues[0] && row.issues[0].impact)
+      ? `~${Math.min(3, Math.round((row.issues[0].impact / 40) * 10) / 10)}% if resolved`
+      : '',
+  };
+  fs.writeFileSync(path.join(debugDir, 'layout-diff.json'), JSON.stringify(layoutDiff, null, 2));
+
+  const cssLossPath = path.join(pageDir, 'css-loss.json');
+  if (fs.existsSync(cssLossPath)) {
+    fs.copyFileSync(cssLossPath, path.join(debugDir, 'css-loss.json'));
+  } else {
+    fs.writeFileSync(path.join(debugDir, 'css-loss.json'), JSON.stringify({ unsupported: {}, note: 'no css-loss emitted' }, null, 2));
+  }
+
+  fs.writeFileSync(path.join(debugDir, 'typography-diff.json'), JSON.stringify({
+    typography_similarity: row.typography_similarity,
+    note: 'Measured via GeometryComparator typography channel',
+  }, null, 2));
+
+  fs.writeFileSync(path.join(debugDir, 'paint-diff.json'), JSON.stringify({
+    pixel_similarity: row.pixel_similarity,
+    colour: row.colour,
+    paint_accuracy: row.paint_accuracy,
+    pixel_method: row.pixel_method || null,
+  }, null, 2));
+
+  // difference.png is approximate: reuse compare metadata (no pixel buffer export yet).
+  fs.writeFileSync(path.join(debugDir, 'difference.json'), JSON.stringify(row.pixel_compare || {}, null, 2));
+}
+
+/**
+ * @param {object} row Page row.
+ * @returns {string}
+ */
+function rankCause(row) {
+  const issue = (row.issues && row.issues[0]) || null;
+  if (!issue) return 'within tolerance';
+  const map = {
+    missing_emission: 'Emitter dropped or absorbed frames before Elementor JSON',
+    spacing_gap: 'Margin/gap model diverged from browser spacing (often margin→gap wipe)',
+    geometry_position_size: 'Container width/position/size mismatch vs Chromium bboxes',
+    color_background: 'Background/gradient/paint not mapped or not in preview CSS',
+    pixel_paint_preview: 'Preview oracle / paint CSS gap (check custom CSS injection)',
+    pixel_overall: 'Large pixel delta — inspect absolute layers and backgrounds',
+    flex_gap_unstable: 'Repair loop rewriting flex_gap without convergence',
+    typography_mismatch: 'Font metrics / wrapping / line-height drift',
+    responsive_behavior: 'Breakpoint stack/width inference incorrect',
+  };
+  return map[issue.category] || issue.evidence || issue.category;
 }
 
 async function main() {
@@ -208,6 +299,13 @@ async function main() {
       avg_spacing: avg('spacing_similarity'),
       avg_responsive: avg('responsive_similarity'),
       avg_colour: avg('colour'),
+      avg_paint_accuracy: avg('paint_accuracy'),
+      avg_css_preservation: avg('css_preservation'),
+      native_widget_pct: (() => {
+        const n = rows.reduce((s, r) => s + (r.native_widgets || 0), 0);
+        const h = rows.reduce((s, r) => s + (r.html_widgets || 0), 0);
+        return (n + h) > 0 ? Math.round((n / (n + h)) * 1000) / 10 : 0;
+      })(),
       total_native_widgets: rows.reduce((s, r) => s + (r.native_widgets || 0), 0),
       total_html_widgets: rows.reduce((s, r) => s + (r.html_widgets || 0), 0),
       errors: rows.filter((r) => r.error).length,

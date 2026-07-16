@@ -74,14 +74,50 @@ final class VisualSignals
 		if (in_array($pos, array('absolute', 'fixed', 'relative'), true) && 'relative' !== $pos) {
 			return false;
 		}
-		$absolute = 0;
+		$parent = Geometry::bbox($node);
+		$parent_area = max(1.0, $parent['width'] * $parent['height']);
+		$cover_layers = 0;
 		foreach ((array) ($node['children'] ?? array()) as $child) {
-			$p = strtolower((string) ($child['s']['pos'] ?? ''));
-			if (in_array($p, array('absolute', 'fixed'), true)) {
-				++$absolute;
+			if (!is_array($child)) {
+				continue;
 			}
+			$p = strtolower((string) ($child['s']['pos'] ?? ''));
+			if (!in_array($p, array('absolute', 'fixed'), true)) {
+				continue;
+			}
+			// Ignore fixed/absolute chrome (theme toggles, cookies, FABs).
+			// Only true cover/overlay layers should trigger layered reconstruction —
+			// otherwise the whole page becomes layered_block and flex rows flatten.
+			$cls = strtolower((string) ($child['cls'] ?? '') . ' ' . (string) ($child['id'] ?? ''));
+			if (preg_match('/\b(visually-hidden|sr-only|screen-reader-only|u-hidden)\b/', $cls)) {
+				continue;
+			}
+			$box = Geometry::bbox($child);
+			// Unresolved/synthetic bboxes (0×0) still count for unit fixtures.
+			// Clipped 1×1 offscreen nodes are accessibility chrome — ignore.
+			if ($box['width'] <= 0 || $box['height'] <= 0) {
+				++$cover_layers;
+				continue;
+			}
+			if ($box['width'] <= 2 && $box['height'] <= 2) {
+				continue;
+			}
+			$area = $box['width'] * $box['height'];
+			$width_ratio = $box['width'] / max(1.0, $parent['width']);
+			$area_ratio = $area / $parent_area;
+			// Tiny fixed/absolute chrome (theme toggles, FABs, cookie chips).
+			if ($area < 120 * 120 && $area_ratio < 0.12) {
+				continue;
+			}
+			if ('fixed' === $p && $area_ratio < 0.25) {
+				continue;
+			}
+			if ($area_ratio < 0.12 && $width_ratio < 0.45) {
+				continue;
+			}
+			++$cover_layers;
 		}
-		return $absolute >= 1;
+		return $cover_layers >= 1;
 	}
 
 	/**
@@ -120,9 +156,18 @@ final class VisualSignals
 	 */
 	public static function looks_input_like(array $node): bool
 	{
+		$cls = strtolower((string) ($node['cls'] ?? '') . ' ' . (string) ($node['id'] ?? ''));
+		if (preg_match('/\b(divider|separator|spacer|vr|hr)\b/', $cls)) {
+			return false;
+		}
 		$s = $node['s'] ?? array();
 		$box = Geometry::bbox($node);
 		$h = $box['height'] ?: (float) ($s['h'] ?? 0);
+		$w = $box['width'] ?: (float) ($s['w'] ?? 0);
+		// Full-bleed horizontal rules are dividers, not inputs.
+		if ($w >= 600 && $h <= 64) {
+			return false;
+		}
 		$has_border = !empty($s['bdw']);
 		$has_text = '' !== trim((string) ($node['text'] ?? ''));
 		$role = strtolower((string) ($node['ariaRole'] ?? ''));
