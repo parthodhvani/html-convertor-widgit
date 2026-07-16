@@ -111,10 +111,14 @@ final class SemanticComponentGraph implements EngineInterface
 
 		// Layered full-bleed block (hero, banner) — geometry only.
 		if ($signals['is_layered'] && $h >= 180 && null !== $signals['image_child']) {
-			return 'layered_block';
+			return ($context['is_first'] ?? false) || $h >= 320 ? 'hero' : 'layered_block';
 		}
 		if ($signals['is_layered'] && $h >= 120) {
 			return 'layered_block';
+		}
+		// First tall section with large heading → hero even without absolute layers.
+		if (($context['is_first'] ?? false) && $h >= 280 && $this->has_large_heading($node)) {
+			return 'hero';
 		}
 
 		// Horizontal bar (navigation, toolbar) — wide, shallow row at page top.
@@ -123,7 +127,7 @@ final class SemanticComponentGraph implements EngineInterface
 		$shallow = ($h > 0 && $h <= 120) || ($h <= 0 && ($context['is_first'] ?? false));
 		if ($row_layout && $wide && $shallow) {
 			if ($signals['atomic_child_count'] >= 1 || ($context['is_first'] ?? false)) {
-				return 'horizontal_bar';
+				return ($context['is_first'] ?? false) ? 'header' : 'horizontal_bar';
 			}
 		}
 
@@ -178,6 +182,29 @@ final class SemanticComponentGraph implements EngineInterface
 		// CTA banner — only explicit CTA surfaces, not every button-ending column.
 		if (preg_match('/\b(cta-banner|call-to-action)\b/', $cls)) {
 			return 'cta_block';
+		}
+		if ($this->looks_cta($node, $signals)) {
+			return 'cta_block';
+		}
+
+		// Gallery / portfolio / logo cloud / team / stats / timeline (Phase 10).
+		if ($this->looks_gallery($node, $constraint, $layout)) {
+			return 'gallery';
+		}
+		if ($this->looks_logo_cloud($node, $constraint, $layout)) {
+			return 'logo_cloud';
+		}
+		if ($this->looks_team($node, $constraint)) {
+			return 'team';
+		}
+		if ($this->looks_stats($node, $constraint, $layout)) {
+			return 'statistics';
+		}
+		if ($this->looks_timeline($node)) {
+			return 'timeline';
+		}
+		if ($this->looks_contact($node, $signals)) {
+			return 'contact';
 		}
 
 		// Grid / row of columns.
@@ -411,6 +438,206 @@ final class SemanticComponentGraph implements EngineInterface
 		}
 		$last = $children[count($children) - 1];
 		return VisualSignals::looks_button($last);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function has_large_heading(array $node): bool
+	{
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			$fs = VisualSignals::font_size_px($child['s'] ?? array());
+			if (in_array($tag, array('h1', 'h2'), true) || $fs >= 32) {
+				return true;
+			}
+			if ($this->has_large_heading($child)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<string,mixed> $node    Node.
+	 * @param array<string,mixed> $signals Signals.
+	 */
+	private function looks_cta(array $node, array $signals): bool
+	{
+		$has_heading = $this->has_large_heading($node);
+		$has_button = $this->ends_with_button($node) || $this->count_buttons($node) >= 1;
+		$box = $signals['bbox'];
+		return $has_heading && $has_button && $box['height'] >= 120 && $box['height'] <= 480
+			&& ($signals['has_background'] || $signals['is_layered']);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function count_buttons(array $node): int
+	{
+		$n = 0;
+		if (VisualSignals::looks_button($node)) {
+			++$n;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (is_array($child)) {
+				$n += $this->count_buttons($child);
+			}
+		}
+		return $n;
+	}
+
+	/**
+	 * @param array<string,mixed> $node       Node.
+	 * @param array<string,mixed> $constraint Constraint.
+	 * @param string              $layout     Layout.
+	 */
+	private function looks_gallery(array $node, array $constraint, string $layout): bool
+	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 3) {
+			return false;
+		}
+		$row = 'row' === ($constraint['direction'] ?? '') || 'grid' === $layout || 'row' === $layout;
+		if (!$row) {
+			return false;
+		}
+		$images = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			if (!empty($child['src']) || 'img' === ($child['tag'] ?? '') || null !== VisualSignals::analyze($child)['image_child']) {
+				++$images;
+			}
+		}
+		return $images >= 3 && $images >= (int) ceil(count($children) * 0.6);
+	}
+
+	/**
+	 * @param array<string,mixed> $node       Node.
+	 * @param array<string,mixed> $constraint Constraint.
+	 * @param string              $layout     Layout.
+	 */
+	private function looks_logo_cloud(array $node, array $constraint, string $layout): bool
+	{
+		if (!$this->looks_gallery($node, $constraint, $layout)) {
+			return false;
+		}
+		$children = (array) ($node['children'] ?? array());
+		$short = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$h = Geometry::bbox($child)['height'];
+			if ($h > 0 && $h <= 80) {
+				++$short;
+			}
+		}
+		return $short >= 3;
+	}
+
+	/**
+	 * @param array<string,mixed> $node       Node.
+	 * @param array<string,mixed> $constraint Constraint.
+	 */
+	private function looks_team(array $node, array $constraint): bool
+	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 2 || empty($constraint['equal_width'])) {
+			return false;
+		}
+		$with_image_and_name = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$has_img = null !== VisualSignals::analyze($child)['image_child'] || !empty($child['src']);
+			$has_text = '' !== trim((string) ($child['text'] ?? ''));
+			foreach ((array) ($child['children'] ?? array()) as $gc) {
+				if (is_array($gc) && '' !== trim((string) ($gc['text'] ?? ''))) {
+					$has_text = true;
+				}
+			}
+			if ($has_img && $has_text) {
+				++$with_image_and_name;
+			}
+		}
+		return $with_image_and_name >= 2;
+	}
+
+	/**
+	 * @param array<string,mixed> $node       Node.
+	 * @param array<string,mixed> $constraint Constraint.
+	 * @param string              $layout     Layout.
+	 */
+	private function looks_stats(array $node, array $constraint, string $layout): bool
+	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 2) {
+			return false;
+		}
+		$row = 'row' === ($constraint['direction'] ?? '') || 'row' === $layout;
+		if (!$row) {
+			return false;
+		}
+		$numeric = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$text = trim((string) ($child['text'] ?? ''));
+			foreach ((array) ($child['children'] ?? array()) as $gc) {
+				if (is_array($gc)) {
+					$text .= ' ' . trim((string) ($gc['text'] ?? ''));
+				}
+			}
+			if (preg_match('/\d/', $text) && VisualSignals::font_size_px($child['s'] ?? array()) >= 22) {
+				++$numeric;
+			}
+		}
+		return $numeric >= 2;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function looks_timeline(array $node): bool
+	{
+		$children = (array) ($node['children'] ?? array());
+		if (count($children) < 3) {
+			return false;
+		}
+		$dated = 0;
+		foreach ($children as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$text = (string) ($child['text'] ?? '') . ' ' . (string) ($child['cls'] ?? '');
+			if (preg_match('/\b(20\d{2}|19\d{2}|timeline|step-\d)\b/i', $text)) {
+				++$dated;
+			}
+		}
+		return $dated >= 3;
+	}
+
+	/**
+	 * @param array<string,mixed> $node    Node.
+	 * @param array<string,mixed> $signals Signals.
+	 */
+	private function looks_contact(array $node, array $signals): bool
+	{
+		if ($signals['input_like_children'] >= 2) {
+			return true;
+		}
+		$text = strtolower((string) ($node['text'] ?? '') . ' ' . (string) ($node['cls'] ?? ''));
+		return (bool) preg_match('/\b(contact|adresse|address|email|telefon|phone|maps?)\b/', $text)
+			&& ($signals['input_like_children'] >= 1 || false !== strpos($text, 'map'));
 	}
 
 	/**

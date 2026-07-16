@@ -63,8 +63,55 @@ final class CssMapper
             $out['typography_letter_spacing'] = $ls;
         }
         $decoration = strtolower((string) ($s['td'] ?? ''));
-        if ($decoration && 'none' !== $decoration && false !== strpos($decoration, 'underline')) {
-            $out['typography_text_decoration'] = 'underline';
+        if ($decoration && 'none' !== $decoration) {
+            if (false !== strpos($decoration, 'underline')) {
+                $out['typography_text_decoration'] = 'underline';
+            } elseif (false !== strpos($decoration, 'line-through')) {
+                $out['typography_text_decoration'] = 'line-through';
+            }
+        }
+
+        $style = strtolower((string) ($s['fst'] ?? ''));
+        if ('italic' === $style || 'oblique' === $style) {
+            $out['typography_font_style'] = 'italic';
+        }
+
+        $text_shadow = (string) ($s['tsh'] ?? '');
+        if ('' !== $text_shadow && 'none' !== $text_shadow) {
+            $parsed = $this->parse_shadow($text_shadow);
+            if (null !== $parsed) {
+                // Elementor Text Shadow group (no spread).
+                $out['text_shadow_text_shadow_type'] = 'yes';
+                $out['text_shadow_text_shadow'] = array(
+                    'horizontal' => $parsed['horizontal'],
+                    'vertical' => $parsed['vertical'],
+                    'blur' => $parsed['blur'],
+                    'color' => $parsed['color'],
+                );
+            }
+        }
+
+        // Phase 12 — prefer measured line-height / letter-spacing from typography bag.
+        $typo = $node['typography'] ?? array();
+        if (is_array($typo)) {
+            if (empty($out['typography_line_height']) && !empty($typo['lineHeightPx']) && !empty($typo['fontSizePx'])) {
+                $ratio = ((float) $typo['lineHeightPx']) / max(1.0, (float) $typo['fontSizePx']);
+                if ($ratio > 0.8 && $ratio < 3.5) {
+                    $out['typography_typography'] = 'custom';
+                    $out['typography_line_height'] = array('unit' => 'em', 'size' => round($ratio, 2));
+                }
+            }
+            if (empty($out['typography_letter_spacing']) && isset($typo['letterSpacingPx'])
+                && abs((float) $typo['letterSpacingPx']) > 0.01) {
+                $out['typography_typography'] = 'custom';
+                $out['typography_letter_spacing'] = array(
+                    'unit' => 'px',
+                    'size' => round((float) $typo['letterSpacingPx'], 2),
+                );
+            }
+            if (!empty($typo['textWidth'])) {
+                $out['_h2e_text_width'] = (float) $typo['textWidth'];
+            }
         }
 
         return $out;
@@ -153,7 +200,7 @@ final class CssMapper
     }
 
     /**
-     * Background controls for a container (colour + image).
+     * Background controls for a container (colour + image + gradient).
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -162,22 +209,36 @@ final class CssMapper
     {
         $s = $node['s'] ?? array();
         $out = array();
+        $unsupported = array();
 
-        $bg_image = $this->css_url((string) ($s['bgImg'] ?? ''));
-        if ('' !== $bg_image) {
-            $out['background_background'] = 'classic';
-            $out['background_image'] = array(
-                'url' => $bg_image,
-                'id' => '',
-            );
-            if (!empty($s['bgSize'])) {
-                $out['background_size'] = $this->bg_keyword((string) $s['bgSize']);
+        $bg_img_raw = (string) ($s['bgImg'] ?? '');
+        $is_gradient = !empty($s['bgGrad']) || ('' !== $bg_img_raw && false !== stripos($bg_img_raw, 'gradient('));
+
+        if ($is_gradient) {
+            $gradient = $this->parse_gradient($bg_img_raw);
+            if (null !== $gradient) {
+                $out = array_merge($out, $gradient);
+            } else {
+                $unsupported[] = 'background-image:gradient';
+                $out = $this->merge_custom_css($out, 'background-image:' . $bg_img_raw);
             }
-            if (!empty($s['bgPos'])) {
-                $out['background_position'] = $this->bg_position((string) $s['bgPos']);
-            }
-            if (!empty($s['bgRepeat'])) {
-                $out['background_repeat'] = (string) $s['bgRepeat'];
+        } else {
+            $bg_image = $this->css_url($bg_img_raw);
+            if ('' !== $bg_image) {
+                $out['background_background'] = 'classic';
+                $out['background_image'] = array(
+                    'url' => $bg_image,
+                    'id' => '',
+                );
+                if (!empty($s['bgSize'])) {
+                    $out['background_size'] = $this->bg_keyword((string) $s['bgSize']);
+                }
+                if (!empty($s['bgPos'])) {
+                    $out['background_position'] = $this->bg_position((string) $s['bgPos']);
+                }
+                if (!empty($s['bgRepeat'])) {
+                    $out['background_repeat'] = (string) $s['bgRepeat'];
+                }
             }
         }
 
@@ -186,14 +247,28 @@ final class CssMapper
             if (empty($out['background_background'])) {
                 $out['background_background'] = 'classic';
             }
-            $out['background_color'] = $bg_color;
+            // Gradient parse already sets color A; only fill classic backgrounds here.
+            if ('gradient' !== ($out['background_background'] ?? '') || empty($out['background_color'])) {
+                if ('gradient' !== ($out['background_background'] ?? '')) {
+                    $out['background_color'] = $bg_color;
+                } elseif (empty($out['background_color'])) {
+                    $out['background_color'] = $bg_color;
+                }
+            }
+        }
+
+        if (!empty($unsupported)) {
+            $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                (array) ($out['_h2e_unsupported'] ?? array()),
+                $unsupported
+            )));
         }
 
         return $out;
     }
 
     /**
-     * Border + border-radius controls.
+     * Border + border-radius controls (per-side / per-corner when IR provides them).
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -203,18 +278,183 @@ final class CssMapper
         $s = $node['s'] ?? array();
         $out = array();
 
-        $width = (float) ($s['bdw'] ?? 0);
-        if ($width > 0) {
-            $out['border_border'] = (string) ($s['bds'] ?? 'solid');
-            $out['border_width'] = $this->dimensions($width, $width, $width, $width);
-            if (!empty($s['bdc']) && !$this->is_transparent((string) $s['bdc'])) {
-                $out['border_color'] = (string) $s['bdc'];
+        $bd = is_array($s['bd'] ?? null) ? $s['bd'] : null;
+        $top = $bd ? (float) ($bd['t'] ?? 0) : (float) ($s['bdwT'] ?? $s['bdw'] ?? 0);
+        $right = $bd ? (float) ($bd['r'] ?? 0) : (float) ($s['bdwR'] ?? $s['bdw'] ?? 0);
+        $bottom = $bd ? (float) ($bd['b'] ?? 0) : (float) ($s['bdwB'] ?? $s['bdw'] ?? 0);
+        $left = $bd ? (float) ($bd['l'] ?? 0) : (float) ($s['bdwL'] ?? $s['bdw'] ?? 0);
+
+        if ($top > 0 || $right > 0 || $bottom > 0 || $left > 0) {
+            $out['border_border'] = (string) ($s['bds'] ?? $s['bdsT'] ?? $s['bdsR'] ?? 'solid');
+            $out['border_width'] = $this->dimensions($top, $right, $bottom, $left);
+            $color = (string) ($s['bdc'] ?? $s['bdcT'] ?? $s['bdcR'] ?? $s['bdcB'] ?? $s['bdcL'] ?? '');
+            if ('' !== $color && !$this->is_transparent($color)) {
+                $out['border_color'] = $color;
             }
         }
 
-        $radius = (float) ($s['br'] ?? 0);
-        if ($radius > 0) {
-            $out['border_radius'] = $this->dimensions($radius, $radius, $radius, $radius);
+        $brad = is_array($s['brad'] ?? null) ? $s['brad'] : null;
+        if ($brad) {
+            $tl = (float) ($brad['tl'] ?? 0);
+            $tr = (float) ($brad['tr'] ?? 0);
+            $br = (float) ($brad['br'] ?? 0);
+            $bl = (float) ($brad['bl'] ?? 0);
+            if ($tl > 0 || $tr > 0 || $br > 0 || $bl > 0) {
+                // Elementor border_radius dimensions: top=TL, right=TR, bottom=BR, left=BL.
+                $out['border_radius'] = $this->dimensions($tl, $tr, $br, $bl);
+            }
+        } else {
+            $tl = (float) ($s['brTL'] ?? $s['br'] ?? 0);
+            $tr = (float) ($s['brTR'] ?? $s['br'] ?? 0);
+            $br = (float) ($s['brBR'] ?? $s['br'] ?? 0);
+            $bl = (float) ($s['brBL'] ?? $s['br'] ?? 0);
+            if ($tl > 0 || $tr > 0 || $br > 0 || $bl > 0) {
+                $out['border_radius'] = $this->dimensions($tl, $tr, $br, $bl);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Image-specific media controls (object-fit / aspect-ratio) + custom CSS fallback.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
+    public function image_media(array $node): array
+    {
+        $s = $node['s'] ?? array();
+        $out = array();
+        $css = array();
+
+        $object_fit = strtolower((string) ($s['of'] ?? ''));
+        if ('' !== $object_fit && 'fill' !== $object_fit) {
+            // Elementor Image has no universal object-fit control across versions;
+            // emit wrapper CSS so raster fidelity is preserved.
+            $css[] = 'object-fit:' . $object_fit;
+            $out['_h2e_object_fit'] = $object_fit;
+        }
+
+        $ar = trim((string) ($s['ar'] ?? ''));
+        if ('' !== $ar && 'auto' !== $ar) {
+            $css[] = 'aspect-ratio:' . $ar;
+            $out['_h2e_aspect_ratio'] = $ar;
+        }
+
+        if (!empty($css)) {
+            $out = $this->merge_custom_css($out, implode(';', $css));
+            $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                (array) ($out['_h2e_unsupported'] ?? array()),
+                array_filter(array(
+                    '' !== $object_fit && 'fill' !== $object_fit ? 'object-fit' : '',
+                    ('' !== $ar && 'auto' !== $ar) ? 'aspect-ratio' : '',
+                ))
+            )));
+        }
+
+        return $out;
+    }
+
+    /**
+     * Paint/layout effects Elementor cannot express as native controls.
+     * Emits `_h2e_custom_css` (property list) instead of silently dropping.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
+    public function effects(array $node): array
+    {
+        $s = $node['s'] ?? array();
+        $css = array();
+        $unsupported = array();
+
+        if (!empty($s['tf']) && 'none' !== $s['tf']) {
+            $css[] = 'transform:' . $s['tf'];
+            $unsupported[] = 'transform';
+            if (!empty($s['tfo'])) {
+                $css[] = 'transform-origin:' . $s['tfo'];
+            }
+        }
+        if (!empty($s['filter']) && 'none' !== $s['filter']) {
+            $css[] = 'filter:' . $s['filter'];
+            $unsupported[] = 'filter';
+        }
+        if (!empty($s['clip']) && 'none' !== $s['clip']) {
+            $css[] = 'clip-path:' . $s['clip'];
+            $unsupported[] = 'clip-path';
+        }
+        if (!empty($s['mask']) && 'none' !== $s['mask']) {
+            $css[] = 'mask-image:' . $s['mask'];
+            $unsupported[] = 'mask-image';
+        }
+        if (!empty($s['blend']) && 'normal' !== $s['blend']) {
+            $css[] = 'mix-blend-mode:' . $s['blend'];
+            $unsupported[] = 'mix-blend-mode';
+        }
+        if (!empty($s['isolation']) && 'auto' !== $s['isolation']) {
+            $css[] = 'isolation:' . $s['isolation'];
+            $unsupported[] = 'isolation';
+        }
+        if (!empty($s['bdFilter']) && 'none' !== $s['bdFilter']) {
+            $css[] = 'backdrop-filter:' . $s['bdFilter'];
+            $unsupported[] = 'backdrop-filter';
+        }
+        if (!empty($s['ov']) && 'visible' !== $s['ov']) {
+            $css[] = 'overflow:' . $s['ov'];
+            $unsupported[] = 'overflow';
+        }
+        if (!empty($s['contain']) && 'none' !== $s['contain']) {
+            $css[] = 'contain:' . $s['contain'];
+            $unsupported[] = 'contain';
+        }
+        if (!empty($s['z'])) {
+            // Elementor containers support z_index in advanced; map when numeric.
+            if (is_numeric($s['z'])) {
+                $out = array('z_index' => (string) $s['z']);
+            } else {
+                $css[] = 'z-index:' . $s['z'];
+                $unsupported[] = 'z-index';
+                $out = array();
+            }
+        } else {
+            $out = array();
+        }
+
+        $pos = strtolower((string) ($s['pos'] ?? ''));
+        if (in_array($pos, array('sticky', 'fixed', 'absolute'), true)) {
+            // Prefer Elementor position control when sticky/absolute.
+            if ('sticky' === $pos) {
+                $out['position'] = 'sticky';
+            } elseif ('absolute' === $pos) {
+                $out['position'] = 'absolute';
+            } else {
+                $css[] = 'position:fixed';
+                $unsupported[] = 'position:fixed';
+            }
+            $inset = is_array($s['inset'] ?? null) ? $s['inset'] : array();
+            foreach (array('top', 'right', 'bottom', 'left') as $side) {
+                $val = (string) ($inset[$side] ?? '');
+                if ('' !== $val && 'auto' !== $val) {
+                    $size = $this->size($val);
+                    if ($size) {
+                        $out[$side] = $size;
+                    } else {
+                        $css[] = $side . ':' . $val;
+                    }
+                }
+            }
+        }
+
+        if (!empty($s['dir']) && 'rtl' === strtolower((string) $s['dir'])) {
+            $out['direction'] = 'rtl';
+        }
+
+        if (!empty($css)) {
+            $out = $this->merge_custom_css($out, implode(';', $css));
+        }
+        if (!empty($unsupported)) {
+            $out['_h2e_unsupported'] = array_values(array_unique($unsupported));
         }
 
         return $out;
@@ -265,6 +505,25 @@ final class CssMapper
         $direction = (false !== strpos($direction, 'column')) ? 'column' : 'row';
         if ($is_grid) {
             $direction = 'row';
+            // Preserve grid track definition via custom CSS — Elementor has no CSS Grid.
+            $grid_css = array();
+            if (!empty($s['gtc'])) {
+                $grid_css[] = 'display:grid';
+                $grid_css[] = 'grid-template-columns:' . $s['gtc'];
+            }
+            if (!empty($s['gtr'])) {
+                $grid_css[] = 'grid-template-rows:' . $s['gtr'];
+            }
+            if (!empty($s['gta'])) {
+                $grid_css[] = 'grid-template-areas:' . $s['gta'];
+            }
+            if (!empty($grid_css)) {
+                $out = $this->merge_custom_css($out, implode(';', $grid_css));
+                $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                    (array) ($out['_h2e_unsupported'] ?? array()),
+                    array('display:grid')
+                )));
+            }
         }
         $out['flex_direction'] = $direction;
 
@@ -548,6 +807,103 @@ final class CssMapper
             return $m[2];
         }
         return '';
+    }
+
+    /**
+     * Parse a CSS gradient into Elementor background gradient controls.
+     *
+     * Verified control names against Elementor Group_Control_Background:
+     * background_background=gradient, background_color, background_color_b,
+     * background_gradient_type, background_gradient_angle, stop controls.
+     *
+     * @param string $value background-image value.
+     * @return array<string,mixed>|null
+     */
+    private function parse_gradient(string $value): ?array
+    {
+        $value = trim($value);
+        if ('' === $value) {
+            return null;
+        }
+
+        $type = 'linear';
+        if (preg_match('/radial-gradient\s*\(/i', $value)) {
+            $type = 'radial';
+        } elseif (!preg_match('/linear-gradient\s*\(/i', $value)) {
+            return null;
+        }
+
+        $angle = 180.0;
+        if (preg_match('/linear-gradient\s*\(\s*([+-]?\d+(?:\.\d+)?)deg/i', $value, $m)) {
+            $angle = (float) $m[1];
+        } elseif (preg_match('/linear-gradient\s*\(\s*to\s+([a-z\s]+),/i', $value, $m)) {
+            $to = strtolower(trim(preg_replace('/\s+/', ' ', $m[1])));
+            $map = array(
+                'top' => 0.0,
+                'right' => 90.0,
+                'bottom' => 180.0,
+                'left' => 270.0,
+                'top right' => 45.0,
+                'right top' => 45.0,
+                'bottom right' => 135.0,
+                'right bottom' => 135.0,
+                'bottom left' => 225.0,
+                'left bottom' => 225.0,
+                'top left' => 315.0,
+                'left top' => 315.0,
+            );
+            $angle = $map[$to] ?? 180.0;
+        }
+
+        // Collect color stops (rgb()/rgba()/hsl()/hex/named roughly via regex).
+        $colors = array();
+        if (preg_match_all('/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/', $value, $matches)) {
+            $colors = $matches[1];
+        }
+        if (count($colors) < 2) {
+            return null;
+        }
+
+        $out = array(
+            'background_background' => 'gradient',
+            'background_color' => $colors[0],
+            'background_color_b' => $colors[count($colors) - 1],
+            'background_gradient_type' => $type,
+            'background_color_stop' => array('unit' => '%', 'size' => 0),
+            'background_color_b_stop' => array('unit' => '%', 'size' => 100),
+        );
+        if ('linear' === $type) {
+            $out['background_gradient_angle'] = array(
+                'unit' => 'deg',
+                'size' => $angle,
+            );
+        }
+
+        // Preserve multi-stop / complex gradients via custom CSS as well.
+        if (count($colors) > 2) {
+            $out = $this->merge_custom_css($out, 'background-image:' . $value);
+            $out['_h2e_unsupported'] = array('background-image:multi-stop-gradient');
+        }
+
+        return $out;
+    }
+
+    /**
+     * Append CSS declarations onto `_h2e_custom_css` (semicolon-separated props).
+     *
+     * @param array<string,mixed> $settings Settings.
+     * @param string              $css      Declarations without selector.
+     * @return array<string,mixed>
+     */
+    private function merge_custom_css(array $settings, string $css): array
+    {
+        $css = trim($css, " \t\n\r\0\x0B;");
+        if ('' === $css) {
+            return $settings;
+        }
+        $existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
+        $settings['_h2e_custom_css'] = '' === $existing ? $css : ($existing . ';' . $css);
+        return $settings;
     }
 
     /**

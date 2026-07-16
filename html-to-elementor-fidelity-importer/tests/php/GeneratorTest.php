@@ -143,6 +143,48 @@ final class GeneratorTest extends TestCase
 		$this->assertSame(12.0, $shadow['box_shadow_box_shadow']['blur']);
 	}
 
+	public function test_css_mapper_gradient_and_asymmetric_border(): void
+	{
+		$mapper = new CssMapper();
+		$gradient = $mapper->background(array(
+			's' => array(
+				'bgGrad' => true,
+				'bgImg' => 'linear-gradient(135deg, rgb(26, 58, 74), rgb(13, 31, 40))',
+			),
+		));
+		$this->assertSame('gradient', $gradient['background_background']);
+		$this->assertSame('rgb(26, 58, 74)', $gradient['background_color']);
+		$this->assertSame('rgb(13, 31, 40)', $gradient['background_color_b']);
+		$this->assertSame('linear', $gradient['background_gradient_type']);
+		$this->assertSame(135.0, $gradient['background_gradient_angle']['size']);
+
+		$border = $mapper->border(array(
+			's' => array(
+				'bd' => array('t' => 1, 'r' => 4, 'b' => 1, 'l' => 1),
+				'bds' => 'solid',
+				'bdc' => 'rgb(204, 68, 85)',
+				'brad' => array('tl' => 4, 'tr' => 20, 'br' => 4, 'bl' => 20),
+			),
+		));
+		$this->assertSame('1', (string) $border['border_width']['top']);
+		$this->assertSame('4', (string) $border['border_width']['right']);
+		$this->assertFalse($border['border_width']['isLinked']);
+		$this->assertSame('20', (string) $border['border_radius']['right']);
+		$this->assertSame('4', (string) $border['border_radius']['top']);
+	}
+
+	public function test_css_mapper_image_media_emits_custom_css(): void
+	{
+		$mapper = new CssMapper();
+		$media = $mapper->image_media(array(
+			's' => array('of' => 'cover', 'ar' => '5 / 3'),
+		));
+		$this->assertSame('cover', $media['_h2e_object_fit']);
+		$this->assertStringContainsString('object-fit:cover', $media['_h2e_custom_css']);
+		$this->assertStringContainsString('aspect-ratio:5 / 3', $media['_h2e_custom_css']);
+		$this->assertContains('object-fit', $media['_h2e_unsupported']);
+	}
+
 	public function test_classifier_fallback_and_components(): void
 	{
 		$classifier = new WidgetClassifier();

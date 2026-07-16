@@ -69,7 +69,7 @@ final class ImportEngine
 		}
 
 		$this->apply_elementor_meta($post_id, $data);
-		$this->store_source_assets($post_id, (array) ($args['assets'] ?? array()));
+		$this->store_source_assets($post_id, (array) ($args['assets'] ?? array()), $data);
 
 		// Phase 10: register global colours from extracted tokens.
 		if (Settings::get('apply_global_colors', true)) {
@@ -114,18 +114,63 @@ final class ImportEngine
 	 * Store the source CSS/JS/links so the front end can reproduce styling the
 	 * native controls do not cover (Phase: fidelity safety net, no HTML widget).
 	 *
-	 * @param int                 $post_id Target post.
-	 * @param array<string,mixed> $assets  Asset bundle from the renderer.
+	 * Also emits per-element `_h2e_custom_css` declarations scoped to
+	 * `.elementor-element-{id}` so transforms/object-fit/grid tracks are not lost.
+	 *
+	 * @param int                            $post_id Target post.
+	 * @param array<string,mixed>            $assets  Asset bundle from the renderer.
+	 * @param array<int,array<string,mixed>> $data    Elementor tree (optional).
 	 */
-	private function store_source_assets(int $post_id, array $assets): void
+	private function store_source_assets(int $post_id, array $assets, array $data = array()): void
 	{
 		if (!Settings::get('inject_source_assets', true)) {
 			return;
 		}
-		update_post_meta($post_id, '_h2e_source_css', (string) ($assets['combinedCss'] ?? ''));
+		$css = (string) ($assets['combinedCss'] ?? '');
+		$generated = $this->collect_element_custom_css($data);
+		if ('' !== $generated) {
+			$css = rtrim($css) . "\n\n/* h2e element custom css */\n" . $generated;
+		}
+		update_post_meta($post_id, '_h2e_source_css', $css);
 		update_post_meta($post_id, '_h2e_source_links', array_values((array) ($assets['stylesheets'] ?? array())));
 		if (Settings::get('inject_source_js', false)) {
 			update_post_meta($post_id, '_h2e_source_js', (string) ($assets['combinedJs'] ?? ''));
+		}
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $elements Elementor elements.
+	 */
+	private function collect_element_custom_css(array $elements): string
+	{
+		$rules = array();
+		$this->walk_custom_css($elements, $rules);
+		return implode("\n", $rules);
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @param array<int,string>              $rules    CSS rules (by ref).
+	 */
+	private function walk_custom_css(array $elements, array &$rules): void
+	{
+		foreach ($elements as $el) {
+			if (!is_array($el)) {
+				continue;
+			}
+			$id = (string) ($el['id'] ?? '');
+			$css = trim((string) ($el['settings']['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
+			if ('' !== $id && '' !== $css) {
+				// Image object-fit targets the img inside the widget wrapper.
+				$selector = '.elementor-element-' . $id;
+				if ('image' === ($el['widgetType'] ?? '')) {
+					$selector .= ' img';
+				}
+				$rules[] = $selector . '{' . $css . ';}';
+			}
+			if (!empty($el['elements']) && is_array($el['elements'])) {
+				$this->walk_custom_css($el['elements'], $rules);
+			}
 		}
 	}
 

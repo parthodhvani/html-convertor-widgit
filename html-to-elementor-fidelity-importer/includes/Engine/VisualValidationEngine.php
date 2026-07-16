@@ -63,21 +63,35 @@ final class VisualValidationEngine implements EngineInterface
 		$total = max(1, $native + $html);
 		$widget_coverage = (int) round($native / $total * 100);
 
-		// Widgets-only pipeline: native widget coverage is the primary fidelity
-		// signal. Geometry simulation remains informative but is secondary when
-		// Elementor cannot be live-rendered for pixel compare in the harness.
+		// Geometry / spacing / typography are the primary fidelity signal.
+		// Widget coverage remains reported but can no longer inflate scores when
+		// layout is wrong. Screenshot compare (when provided) is weighted heavily.
 		$structural = (int) round(
 			$geometry_similarity * 0.45
 			+ $layout * 0.30
 			+ $spacing * 0.15
 			+ $typography * 0.10
 		);
-		$fidelity = (int) round(
-			$widget_coverage * 0.90
-			+ $structural * 0.07
-			+ $responsive * 0.02
-			+ $screenshot * 0.01
-		);
+
+		if ($screenshot > 0) {
+			// Closed-loop path: pixels dominate when a real compare payload exists.
+			$fidelity = (int) round(
+				$screenshot * 0.50
+				+ $structural * 0.30
+				+ $responsive * 0.05
+				+ $widget_coverage * 0.15
+			);
+		} else {
+			// Harness / CI path without live Elementor screenshots.
+			$fidelity = (int) round(
+				$structural * 0.55
+				+ $geometry_similarity * 0.15
+				+ $spacing * 0.10
+				+ $typography * 0.05
+				+ $responsive * 0.05
+				+ $widget_coverage * 0.10
+			);
+		}
 
 		return array_merge($geo, array(
 			'fidelity' => min(100, max(0, $fidelity)),
@@ -99,6 +113,7 @@ final class VisualValidationEngine implements EngineInterface
 			'compare' => $context['compare'] ?? null,
 			'constraint_coverage' => $this->constraint_coverage($sections),
 			'alignment_coverage' => (int) ($geo['alignment_score'] ?? 0),
+			'scoring_mode' => $screenshot > 0 ? 'screenshot_primary' : 'geometry_primary',
 		));
 	}
 

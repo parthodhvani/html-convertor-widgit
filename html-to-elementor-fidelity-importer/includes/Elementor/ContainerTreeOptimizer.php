@@ -16,13 +16,18 @@ if (!defined('ABSPATH')) {
 /**
  * Compresses redundant Elementor containers after layout-graph emission.
  *
- * Merges single-child wrappers, identical parent/child stacks, and adjacent
- * containers that share the same layout signature. Visual styling is preserved.
+ * Phase 13 — Widget Optimizer goals:
+ * - Merge redundant single-child / identical-signature wrappers
+ * - Split oversized flat widget stacks into designer-like groups
+ * - Preserve visual styling and layout controls (never change pixels)
  */
 final class ContainerTreeOptimizer
 {
 
+	private const OVERSIZED_WIDGET_THRESHOLD = 8;
+
 	private int $removed = 0;
+	private int $split = 0;
 	private int $containers_before = 0;
 	private int $containers_after = 0;
 
@@ -35,6 +40,7 @@ final class ContainerTreeOptimizer
 	public function optimize(array $elements): array
 	{
 		$this->removed = 0;
+		$this->split = 0;
 		$this->containers_before = $this->count_containers($elements);
 
 		$optimized = array();
@@ -63,6 +69,7 @@ final class ContainerTreeOptimizer
 			'containers_before' => $this->containers_before,
 			'containers_after' => $after,
 			'redundant_containers_removed' => $this->removed,
+			'oversized_containers_split' => $this->split,
 			'compression_ratio' => round(1 - ($after / $before), 3),
 			'average_container_depth' => 0.0,
 			'max_container_depth' => 0,
@@ -115,7 +122,125 @@ final class ContainerTreeOptimizer
 			return $element;
 		}
 
-		return $this->compress_container_chain($element);
+		$element = $this->compress_container_chain($element);
+		$element = $this->split_oversized_widget_stack($element);
+		$element = $this->unwrap_transparent_single_widget($element);
+
+		return $element;
+	}
+
+	/**
+	 * Split a container with many direct widget children into smaller stacks
+	 * grouped by consecutive widget-type runs (designer-like editability).
+	 * Layout direction / gap are preserved on the parent; groups inherit direction.
+	 *
+	 * @param array<string,mixed> $container Container.
+	 * @return array<string,mixed>
+	 */
+	private function split_oversized_widget_stack(array $container): array
+	{
+		$children = (array) ($container['elements'] ?? array());
+		if (count($children) < self::OVERSIZED_WIDGET_THRESHOLD) {
+			return $container;
+		}
+
+		$all_widgets = true;
+		foreach ($children as $child) {
+			if ('widget' !== ($child['elType'] ?? '')) {
+				$all_widgets = false;
+				break;
+			}
+		}
+		if (!$all_widgets) {
+			return $container;
+		}
+
+		// Do not split rows — equal-width card grids must stay flat.
+		$direction = (string) (($container['settings']['flex_direction'] ?? 'column'));
+		if ('row' === $direction) {
+			return $container;
+		}
+
+		$runs = array();
+		$current = array($children[0]);
+		$current_type = (string) ($children[0]['widgetType'] ?? '');
+		for ($i = 1; $i < count($children); ++$i) {
+			$type = (string) ($children[$i]['widgetType'] ?? '');
+			// Start a new group when type changes AND current run already has content,
+			// but keep heading+text pairs together (common designer pattern).
+			$pair = ('heading' === $current_type && 'text-editor' === $type)
+				|| ('text-editor' === $current_type && 'button' === $type)
+				|| ('heading' === $current_type && 'button' === $type);
+			if ($type !== $current_type && !$pair && count($current) >= 1) {
+				// Flush if the next type starts a new semantic block (heading).
+				if ('heading' === $type && count($current) >= 2) {
+					$runs[] = $current;
+					$current = array($children[$i]);
+					$current_type = $type;
+					continue;
+				}
+			}
+			$current[] = $children[$i];
+			$current_type = $type;
+		}
+		$runs[] = $current;
+
+		if (count($runs) < 2) {
+			return $container;
+		}
+
+		$grouped = array();
+		foreach ($runs as $run_index => $run) {
+			if (1 === count($run)) {
+				$grouped[] = $run[0];
+				continue;
+			}
+			$seed = (string) ($container['id'] ?? 'root') . ':grp:' . $run_index;
+			$grouped[] = array(
+				'id' => substr(md5($seed), 0, 8),
+				'elType' => 'container',
+				'isInner' => true,
+				'settings' => array(
+					'content_width' => 'full',
+					'flex_direction' => $direction,
+					'_h2e_designer_group' => 1,
+				),
+				'elements' => $run,
+			);
+			++$this->split;
+		}
+
+		$container['elements'] = $grouped;
+		return $container;
+	}
+
+	/**
+	 * Promote a single widget out of a transparent inner container that only
+	 * exists as a layout wrapper with no visual styling.
+	 *
+	 * @param array<string,mixed> $container Container.
+	 * @return array<string,mixed>
+	 */
+	private function unwrap_transparent_single_widget(array $container): array
+	{
+		$children = (array) ($container['elements'] ?? array());
+		if (1 !== count($children)) {
+			return $container;
+		}
+		$child = $children[0];
+		if ('container' !== ($child['elType'] ?? '')) {
+			return $container;
+		}
+		$grand = (array) ($child['elements'] ?? array());
+		if (1 !== count($grand) || 'widget' !== ($grand[0]['elType'] ?? '')) {
+			return $container;
+		}
+		if (!$this->is_redundant_container($child)) {
+			return $container;
+		}
+		$container['elements'] = array($grand[0]);
+		++$this->removed;
+		return $container;
 	}
 
 	/**

@@ -241,16 +241,14 @@ final class PixelRepairEngine implements EngineInterface
 		if (empty($gaps)) {
 			return $elements;
 		}
-		$median_gap = Geometry::median(array_values($gaps));
-		if ($median_gap <= 0) {
-			return $elements;
-		}
-		return $this->set_gap_recursive($elements, $median_gap, $changed, $repairs);
+		// Only fill missing flex_gap on containers whose class matches a measured
+		// source node. Never broadcast a page-wide median gap (distorts layouts).
+		return $this->set_gap_by_class($elements, $gaps, $changed, $repairs);
 	}
 
 	/**
-	 * @param array<string,mixed>|null       $node Node.
-	 * @param array<string,float>            $gaps Gaps (by ref).
+	 * @param array<string,mixed>|null $node Node.
+	 * @param array<string,float>      $gaps Gaps keyed by CSS class (by ref).
 	 */
 	private function walk_whitespace($node, array &$gaps): void
 	{
@@ -258,8 +256,14 @@ final class PixelRepairEngine implements EngineInterface
 			return;
 		}
 		$ws = $node['whitespace'] ?? array();
-		if (!empty($ws['gap'])) {
-			$gaps[(string) ($node['cls'] ?? uniqid('n', true))] = (float) $ws['gap'];
+		$cls = trim((string) ($node['cls'] ?? ''));
+		$gap = (float) ($node['layoutConstraint']['gap'] ?? $ws['gap'] ?? 0);
+		if ($gap > 0 && '' !== $cls) {
+			$primary = preg_split('/\s+/', $cls)[0] ?? '';
+			if ('' !== $primary) {
+				$gaps[$primary] = $gap;
+			}
+			$gaps[$cls] = $gap;
 		}
 		foreach ((array) ($node['children'] ?? array()) as $child) {
 			$this->walk_whitespace($child, $gaps);
@@ -268,26 +272,46 @@ final class PixelRepairEngine implements EngineInterface
 
 	/**
 	 * @param array<int,array<string,mixed>> $elements Elements.
-	 * @param float                          $gap      Gap px.
+	 * @param array<string,float>            $gaps     Class → gap map.
 	 * @param bool                           $changed  Changed flag.
 	 * @param array<int,string>              $repairs  Repair log.
 	 * @return array<int,array<string,mixed>>
 	 */
-	private function set_gap_recursive(array $elements, float $gap, bool &$changed, array &$repairs): array
+	private function set_gap_by_class(array $elements, array $gaps, bool &$changed, array &$repairs): array
 	{
 		foreach ($elements as $i => $el) {
-			if ('container' === ($el['elType'] ?? '') && count((array) ($el['elements'] ?? array())) >= 2 && empty($el['settings']['flex_gap'])) {
-				$elements[$i]['settings']['flex_gap'] = array(
-					'column' => (string) round($gap),
-					'row' => (string) round($gap),
-					'isLinked' => true,
-					'unit' => 'px',
-					'size' => round($gap),
-				);
-				$changed = true;
-				$repairs[] = 'inferred_gap';
+			if ('container' === ($el['elType'] ?? '')
+				&& count((array) ($el['elements'] ?? array())) >= 2
+				&& empty($el['settings']['flex_gap'])
+			) {
+				$cls = trim((string) ($el['settings']['_css_classes'] ?? ''));
+				$gap = 0.0;
+				if ('' !== $cls && isset($gaps[$cls])) {
+					$gap = (float) $gaps[$cls];
+				} elseif ('' !== $cls) {
+					$primary = preg_split('/\s+/', $cls)[0] ?? '';
+					if ('' !== $primary && isset($gaps[$primary])) {
+						$gap = (float) $gaps[$primary];
+					}
+				}
+				if ($gap > 0) {
+					$elements[$i]['settings']['flex_gap'] = array(
+						'column' => (string) round($gap),
+						'row' => (string) round($gap),
+						'isLinked' => true,
+						'unit' => 'px',
+						'size' => round($gap),
+					);
+					$changed = true;
+					$repairs[] = 'inferred_gap:' . $cls;
+				}
 			}
-			$elements[$i]['elements'] = $this->set_gap_recursive((array) ($el['elements'] ?? array()), $gap, $changed, $repairs);
+			$elements[$i]['elements'] = $this->set_gap_by_class(
+				(array) ($el['elements'] ?? array()),
+				$gaps,
+				$changed,
+				$repairs
+			);
 		}
 		return $elements;
 	}
