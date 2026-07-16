@@ -1,0 +1,412 @@
+{
+  "generated_at": "2026-07-16T09:22:50.454Z",
+  "count": 42,
+  "pages": [
+    {
+      "id": "bs-hero-features",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "hero",
+        "features",
+        "landing"
+      ],
+      "path": "framework/bs-hero-features.html"
+    },
+    {
+      "id": "bs-pricing",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "pricing",
+        "cards"
+      ],
+      "path": "framework/bs-pricing.html"
+    },
+    {
+      "id": "bs-album",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "gallery",
+        "portfolio"
+      ],
+      "path": "framework/bs-album.html"
+    },
+    {
+      "id": "bs-blog",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "blog",
+        "sidebar"
+      ],
+      "path": "framework/bs-blog.html"
+    },
+    {
+      "id": "bs-navbar-form",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "form",
+        "navbar"
+      ],
+      "path": "framework/bs-navbar-form.html"
+    },
+    {
+      "id": "tw-saas-landing",
+      "category": "framework",
+      "tags": [
+        "tailwind",
+        "saas",
+        "hero",
+        "pricing"
+      ],
+      "path": "framework/tw-saas-landing.html"
+    },
+    {
+      "id": "tw-dashboard",
+      "category": "framework",
+      "tags": [
+        "tailwind",
+        "dashboard",
+        "sidebar"
+      ],
+      "path": "framework/tw-dashboard.html"
+    },
+    {
+      "id": "shop-product",
+      "category": "marketing",
+      "tags": [
+        "shopify",
+        "ecommerce",
+        "product"
+      ],
+      "path": "marketing/shop-product.html"
+    },
+    {
+      "id": "shop-collection",
+      "category": "marketing",
+      "tags": [
+        "shopify",
+        "collection",
+        "grid"
+      ],
+      "path": "marketing/shop-collection.html"
+    },
+    {
+      "id": "webflow-agency",
+      "category": "marketing",
+      "tags": [
+        "webflow",
+        "agency",
+        "hero",
+        "absolute"
+      ],
+      "path": "marketing/webflow-agency.html"
+    },
+    {
+      "id": "squarespace-portfolio",
+      "category": "marketing",
+      "tags": [
+        "squarespace",
+        "portfolio",
+        "gallery"
+      ],
+      "path": "marketing/squarespace-portfolio.html"
+    },
+    {
+      "id": "corp-homepage",
+      "category": "marketing",
+      "tags": [
+        "corporate",
+        "wordpress",
+        "sections"
+      ],
+      "path": "marketing/corp-homepage.html"
+    },
+    {
+      "id": "wp-twenty-blog",
+      "category": "marketing",
+      "tags": [
+        "wordpress",
+        "blog",
+        "typography"
+      ],
+      "path": "marketing/wp-twenty-blog.html"
+    },
+    {
+      "id": "flex-complex",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "alignment"
+      ],
+      "path": "layouts/flex-complex.html"
+    },
+    {
+      "id": "css-grid-complex",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex"
+      ],
+      "path": "layouts/css-grid-complex.html"
+    },
+    {
+      "id": "absolute-hero",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "hero"
+      ],
+      "path": "layouts/absolute-hero.html"
+    },
+    {
+      "id": "sticky-header",
+      "category": "layouts",
+      "tags": [
+        "sticky",
+        "header",
+        "scroll"
+      ],
+      "path": "layouts/sticky-header.html"
+    },
+    {
+      "id": "dark-landing",
+      "category": "themes",
+      "tags": [
+        "dark",
+        "gradient",
+        "cta"
+      ],
+      "path": "themes/dark-landing.html"
+    },
+    {
+      "id": "light-editorial",
+      "category": "themes",
+      "tags": [
+        "light",
+        "editorial",
+        "serif"
+      ],
+      "path": "themes/light-editorial.html"
+    },
+    {
+      "id": "faq-accordion",
+      "category": "forms",
+      "tags": [
+        "faq",
+        "details",
+        "accordion"
+      ],
+      "path": "forms/faq-accordion.html"
+    },
+    {
+      "id": "contact-map",
+      "category": "forms",
+      "tags": [
+        "contact",
+        "form",
+        "map"
+      ],
+      "path": "forms/contact-map.html"
+    },
+    {
+      "id": "testimonial-cards",
+      "category": "marketing",
+      "tags": [
+        "testimonials",
+        "cards"
+      ],
+      "path": "marketing/testimonial-cards.html"
+    },
+    {
+      "id": "logo-cloud",
+      "category": "marketing",
+      "tags": [
+        "logos",
+        "social-proof"
+      ],
+      "path": "marketing/logo-cloud.html"
+    },
+    {
+      "id": "timeline",
+      "category": "layouts",
+      "tags": [
+        "timeline",
+        "vertical"
+      ],
+      "path": "layouts/timeline.html"
+    },
+    {
+      "id": "team-grid",
+      "category": "marketing",
+      "tags": [
+        "team",
+        "cards",
+        "images"
+      ],
+      "path": "marketing/team-grid.html"
+    },
+    {
+      "id": "real-bs-features",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "real",
+        "features"
+      ],
+      "path": "framework/real-bs-features.html"
+    },
+    {
+      "id": "real-bs-pricing",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "real",
+        "pricing"
+      ],
+      "path": "framework/real-bs-pricing.html"
+    },
+    {
+      "id": "real-bs-album",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "real",
+        "album"
+      ],
+      "path": "framework/real-bs-album.html"
+    },
+    {
+      "id": "real-bs-jumbotron",
+      "category": "framework",
+      "tags": [
+        "bootstrap",
+        "real",
+        "jumbotron"
+      ],
+      "path": "framework/real-bs-jumbotron.html"
+    },
+    {
+      "id": "existing-angebot",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/angebot.html"
+    },
+    {
+      "id": "existing-blog-detail",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/blog-detail.html"
+    },
+    {
+      "id": "existing-blog",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/blog.html"
+    },
+    {
+      "id": "existing-buchen",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/buchen.html"
+    },
+    {
+      "id": "existing-contact",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/contact.html"
+    },
+    {
+      "id": "existing-faq",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/faq.html"
+    },
+    {
+      "id": "existing-feedbacks",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/feedbacks.html"
+    },
+    {
+      "id": "existing-index",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/index.html"
+    },
+    {
+      "id": "existing-ir-enrichment",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/ir-enrichment.html"
+    },
+    {
+      "id": "existing-kontakt",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/kontakt.html"
+    },
+    {
+      "id": "existing-petra-mueller",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "petra"
+      ],
+      "path": "existing/petra-mueller.html"
+    },
+    {
+      "id": "existing-sample",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/sample.html"
+    },
+    {
+      "id": "existing-vortraege",
+      "category": "existing",
+      "tags": [
+        "production-fixture",
+        "fixture"
+      ],
+      "path": "existing/vortraege.html"
+    }
+  ]
+}

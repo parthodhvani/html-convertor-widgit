@@ -668,7 +668,21 @@ final class SemanticComponentGraph implements EngineInterface
 
 			if (in_array($pos, array('absolute', 'fixed'), true)) {
 				$has_text = '' !== trim((string) ($child['text'] ?? '')) || !empty($child['children']);
-				if (!$has_text && VisualSignals::has_background($child['s'] ?? array())) {
+				$child_s = $child['s'] ?? array();
+				$is_paint_layer = VisualSignals::has_background($child_s)
+					|| !empty($child_s['bgGrad'])
+					|| (!empty($child_s['bgImg']) && (bool) preg_match('/gradient\s*\(/i', (string) $child_s['bgImg']));
+				// Full-bleed paint layers without text become the background when unset.
+				if (!$has_text && $is_paint_layer) {
+					$box = Geometry::bbox($child);
+					$parent_box = Geometry::bbox($node);
+					$covers = $parent_box['width'] > 0
+						&& $box['width'] >= $parent_box['width'] * 0.85
+						&& $box['height'] >= $parent_box['height'] * 0.85;
+					if ($covers && null === $layers['background']) {
+						$layers['background'] = $child;
+						continue;
+					}
 					$layers['overlay'] = $child;
 					continue;
 				}

@@ -64,7 +64,10 @@ final class GeometryComparator implements EngineInterface
 
 			$emitted = $this->estimate_emitted_frames(array($element), array($section));
 			$matched = $this->match_frames($source, $emitted);
-			$matched_total += count($matched);
+			// Composite widgets (price-table, icon-box, …) absorb child source
+			// frames. Credit those descendants so intentional promotion is not
+			// scored as missing emission.
+			$matched_total += count($matched) + $this->credit_absorbed_frames($source, $matched);
 
 			foreach ($matched as $pair) {
 				$s = $pair['source'];
@@ -74,7 +77,10 @@ final class GeometryComparator implements EngineInterface
 				if ($this->edges_aligned($s, $e)) {
 					++$alignment_hits;
 				}
-				if (!empty($s['gap']) || !empty($e['gap'])) {
+				// Widgets (leaves) cannot express flex_gap — skip those pairs so
+				// composite promotions are not scored as false spacing failures.
+				$emitted_is_leaf = 'leaf' === ($e['type'] ?? '');
+				if (!$emitted_is_leaf && (!empty($s['gap']) || !empty($e['gap']))) {
 					++$spacing_total;
 					if ($this->gap_close($s, $e)) {
 						++$spacing_hits;
@@ -378,6 +384,86 @@ final class GeometryComparator implements EngineInterface
 		}
 
 		return $matched;
+	}
+
+	/**
+	 * Count unmatched source frames geometrically contained by a matched
+	 * source frame whose emitted partner is a leaf (composite/widget).
+	 *
+	 * @param array<int,array<string,mixed>>                           $source  Source frames.
+	 * @param array<int,array{source:array<string,mixed>,emitted:array<string,mixed>}> $matched Matched pairs.
+	 */
+	private function credit_absorbed_frames(array $source, array $matched): int
+	{
+		if (empty($matched)) {
+			return 0;
+		}
+
+		$matched_keys = array();
+		foreach ($matched as $pair) {
+			$matched_keys[$this->frame_key($pair['source'])] = true;
+		}
+
+		$composites = array();
+		foreach ($matched as $pair) {
+			if ('leaf' !== ($pair['emitted']['type'] ?? '')) {
+				continue;
+			}
+			$composites[] = $pair['source'];
+		}
+		if (empty($composites)) {
+			return 0;
+		}
+
+		$extra = 0;
+		foreach ($source as $frame) {
+			$key = $this->frame_key($frame);
+			if (isset($matched_keys[$key])) {
+				continue;
+			}
+			foreach ($composites as $parent) {
+				if ($this->frame_contains($parent, $frame)) {
+					++$extra;
+					break;
+				}
+			}
+		}
+
+		return $extra;
+	}
+
+	/**
+	 * @param array<string,mixed> $frame Frame.
+	 */
+	private function frame_key(array $frame): string
+	{
+		return (string) ($frame['key'] ?? (
+			($frame['cls'] ?? '') . ':' . ($frame['x'] ?? 0) . ':' . ($frame['y'] ?? 0) . ':' . ($frame['type'] ?? '')
+		));
+	}
+
+	/**
+	 * @param array<string,mixed> $parent Parent frame.
+	 * @param array<string,mixed> $child  Child frame.
+	 */
+	private function frame_contains(array $parent, array $child): bool
+	{
+		$px = (float) ($parent['x'] ?? 0);
+		$py = (float) ($parent['y'] ?? 0);
+		$pw = (float) ($parent['width'] ?? 0);
+		$ph = (float) ($parent['height'] ?? 0);
+		$cx = (float) ($child['x'] ?? 0);
+		$cy = (float) ($child['y'] ?? 0);
+		$cw = (float) ($child['width'] ?? 0);
+		$ch = (float) ($child['height'] ?? 0);
+		if ($pw <= 0 || $ph <= 0) {
+			return false;
+		}
+		// Allow 2px tolerance for sub-pixel / border differences.
+		return $cx + 2 >= $px
+			&& $cy + 2 >= $py
+			&& ($cx + $cw) <= ($px + $pw + 2)
+			&& ($cy + $ch) <= ($py + $ph + 2);
 	}
 
 	/**

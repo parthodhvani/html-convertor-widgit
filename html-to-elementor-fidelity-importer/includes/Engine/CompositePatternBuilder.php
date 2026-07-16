@@ -676,8 +676,16 @@ final class CompositePatternBuilder implements EngineInterface
 		$title = $this->first_heading($node);
 		$desc = $this->first_paragraph($node);
 		$button = $this->first_button($node);
+		$features = $this->extract_feature_list($node);
 
 		if ('' === $title) {
+			return null;
+		}
+
+		// Feature-rich pricing cards emit as editable widget stacks (heading +
+		// icon-list + button) instead of a single price-table that drops
+		// geometry frames. Keep price-table for compact price/CTA cards.
+		if (count($features) >= 2) {
 			return null;
 		}
 
@@ -689,12 +697,61 @@ final class CompositePatternBuilder implements EngineInterface
 				'sub_heading' => $desc,
 				'price' => $price['amount'],
 				'currency_symbol' => $price['currency'],
-				'period' => $price['period'],
+				'period' => $price['period'] !== '' ? $price['period'] : 'mo',
 				'button_text' => $button['text'] ?: 'Buchen',
 				'link' => array('url' => $button['url'], 'is_external' => '', 'nofollow' => ''),
-				'features_list' => array(),
+				'features_list' => $features,
 			),
 		);
+	}
+
+	/**
+	 * Collect list / checklist feature lines for price-table widgets.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function extract_feature_list(array $node): array
+	{
+		$features = array();
+		$this->collect_list_items($node, $features);
+		return $features;
+	}
+
+	/**
+	 * @param array<string,mixed>              $node     Node.
+	 * @param array<int,array<string,mixed>>   $features Collector.
+	 */
+	private function collect_list_items(array $node, array &$features): void
+	{
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		if ('li' === $tag) {
+			$text = trim((string) ($node['text'] ?? ''));
+			if ('' === $text) {
+				foreach ((array) ($node['children'] ?? array()) as $child) {
+					if (is_array($child)) {
+						$text = trim($text . ' ' . (string) ($child['text'] ?? ''));
+					}
+				}
+				$text = trim($text);
+			}
+			if ('' !== $text) {
+				$features[] = array(
+					'_id' => substr(md5('feat:' . $text . ':' . count($features)), 0, 7),
+					'item_text' => $text,
+					'item_icon' => array(
+						'value' => 'fas fa-check',
+						'library' => 'fa-solid',
+					),
+				);
+			}
+			return;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (is_array($child)) {
+				$this->collect_list_items($child, $features);
+			}
+		}
 	}
 
 	/**

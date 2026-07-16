@@ -1,0 +1,10 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Complex Flex</title>
+<style>body{margin:0;font-family:system-ui,sans-serif}.row{display:flex;gap:16px;padding:24px;align-items:stretch}
+.col{flex:1;background:#f1f5f9;padding:16px;border-radius:8px}.col.aside{flex:0 0 240px;background:#e2e8f0}
+.inner{display:flex;gap:12px}.card{flex:1;background:#fff;padding:12px;border:1px solid #cbd5e1;border-radius:6px}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:#0f172a;color:#fff}
+@media(max-width:768px){.row{flex-direction:column}.col.aside{flex-basis:auto}}</style></head><body>
+<div class="bar"><strong>Flex Lab</strong><span>Docs · API · Status</span></div>
+<div class="row"><div class="col"><h2>Main</h2><div class="inner"><div class="card"><h3>A</h3><p>Card A content</p></div><div class="card"><h3>B</h3><p>Card B content</p></div></div></div>
+<aside class="col aside"><h3>Sidebar</h3><p>Sticky notes and filters live here.</p></aside></div>
+</body></html>

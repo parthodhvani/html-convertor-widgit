@@ -100,34 +100,50 @@ final class PixelRepairEngine implements EngineInterface
 				continue;
 			}
 			$cls = (string) ($el['settings']['_css_classes'] ?? '');
-			foreach ($constraints as $c) {
-				if ('' !== $cls && $cls === ($c['cls'] ?? '')) {
-					if (!empty($c['direction']) && ($el['settings']['flex_direction'] ?? '') !== $c['direction']) {
-						$elements[$i]['settings']['flex_direction'] = $c['direction'];
-						$changed = true;
-						$repairs[] = 'flex_direction:' . $cls;
-					}
-					if (($c['gap'] ?? 0) > 0) {
-						$elements[$i]['settings']['flex_gap'] = array(
-							'column' => (string) $c['gap'],
-							'row' => (string) $c['gap'],
-							'isLinked' => true,
-							'unit' => 'px',
-							'size' => (float) $c['gap'],
-						);
-						$changed = true;
-						$repairs[] = 'flex_gap:' . $cls;
-					}
-					if (!empty($c['justify'])) {
-						$elements[$i]['settings']['flex_justify_content'] = $c['justify'];
-						$changed = true;
-					}
-					if (!empty($c['align_items'])) {
-						$elements[$i]['settings']['flex_align_items'] = $c['align_items'];
-						$changed = true;
-					}
+			if ('' === $cls || !isset($constraints[$cls])) {
+				$elements[$i]['elements'] = $this->apply_layout_constraints(
+					(array) ($el['elements'] ?? array()),
+					$sections,
+					$changed,
+					$repairs
+				);
+				continue;
+			}
+			$c = $constraints[$cls];
+			$settings = (array) ($el['settings'] ?? array());
+
+			if (!empty($c['direction']) && ($settings['flex_direction'] ?? '') !== $c['direction']) {
+				$settings['flex_direction'] = $c['direction'];
+				$changed = true;
+				$repairs[] = 'flex_direction:' . $cls;
+			}
+			if (($c['gap'] ?? 0) > 0) {
+				$target = (float) $c['gap'];
+				$current = $this->current_flex_gap($settings);
+				if (abs($current - $target) > 0.5) {
+					$settings['flex_gap'] = array(
+						'column' => (string) $target,
+						'row' => (string) $target,
+						'isLinked' => true,
+						'unit' => 'px',
+						'size' => $target,
+					);
+					$changed = true;
+					$repairs[] = 'flex_gap:' . $cls;
 				}
 			}
+			if (!empty($c['justify']) && ($settings['flex_justify_content'] ?? '') !== $c['justify']) {
+				$settings['flex_justify_content'] = $c['justify'];
+				$changed = true;
+				$repairs[] = 'flex_justify:' . $cls;
+			}
+			if (!empty($c['align_items']) && ($settings['flex_align_items'] ?? '') !== $c['align_items']) {
+				$settings['flex_align_items'] = $c['align_items'];
+				$changed = true;
+				$repairs[] = 'flex_align:' . $cls;
+			}
+
+			$elements[$i]['settings'] = $settings;
 			$elements[$i]['elements'] = $this->apply_layout_constraints(
 				(array) ($el['elements'] ?? array()),
 				$sections,
@@ -139,8 +155,22 @@ final class PixelRepairEngine implements EngineInterface
 	}
 
 	/**
+	 * @param array<string,mixed> $settings Container settings.
+	 */
+	private function current_flex_gap(array $settings): float
+	{
+		$gap = $settings['flex_gap'] ?? null;
+		if (is_array($gap)) {
+			return (float) ($gap['size'] ?? $gap['row'] ?? 0);
+		}
+		return is_numeric($gap) ? (float) $gap : 0.0;
+	}
+
+	/**
+	 * Collect constraints keyed by CSS class (one row per class).
+	 *
 	 * @param array<int,array<string,mixed>> $sections Sections.
-	 * @return array<int,array<string,mixed>>
+	 * @return array<string,array<string,mixed>>
 	 */
 	private function collect_constraints(array $sections): array
 	{
@@ -152,8 +182,8 @@ final class PixelRepairEngine implements EngineInterface
 	}
 
 	/**
-	 * @param array<string,mixed>|null         $node Node.
-	 * @param array<int,array<string,mixed>>   $out  Output (by ref).
+	 * @param array<string,mixed>|null              $node Node.
+	 * @param array<string,array<string,mixed>>     $out  Output keyed by class.
 	 */
 	private function walk_constraints($node, array &$out): void
 	{
@@ -161,9 +191,10 @@ final class PixelRepairEngine implements EngineInterface
 			return;
 		}
 		$c = $node['layoutConstraint'] ?? array();
-		if (!empty($c)) {
-			$out[] = array(
-				'cls' => (string) ($node['cls'] ?? ''),
+		$cls = trim((string) ($node['cls'] ?? ''));
+		if (!empty($c) && '' !== $cls && !isset($out[$cls])) {
+			$out[$cls] = array(
+				'cls' => $cls,
 				'direction' => (string) ($c['direction'] ?? ''),
 				'gap' => (float) ($c['gap'] ?? 0),
 				'justify' => (string) ($node['alignment']['justify'] ?? ''),

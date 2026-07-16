@@ -232,6 +232,23 @@ HTML;
 				}
 				$attr = empty($img_style) ? '' : ' style="' . htmlspecialchars(implode(';', $img_style), ENT_QUOTES) . '"';
 				return '' !== $url ? '<img src="' . $url . '" alt="' . $alt . '"' . $attr . '>' : '';
+			case 'price-table':
+				$heading = htmlspecialchars((string) ($s['heading'] ?? ''), ENT_QUOTES);
+				$price = htmlspecialchars((string) ($s['currency_symbol'] ?? '') . (string) ($s['price'] ?? ''), ENT_QUOTES);
+				$period = htmlspecialchars((string) ($s['period'] ?? ''), ENT_QUOTES);
+				$btn = htmlspecialchars((string) ($s['button_text'] ?? ''), ENT_QUOTES);
+				$features = '';
+				foreach ((array) ($s['features_list'] ?? array()) as $item) {
+					$features .= '<li>' . htmlspecialchars((string) ($item['item_text'] ?? ''), ENT_QUOTES) . '</li>';
+				}
+				return '<div class="e-price-table" style="text-align:center;padding:1rem">'
+					. ($heading !== '' ? '<h4 style="margin:0 0 .5rem">' . $heading . '</h4>' : '')
+					. '<div style="font-size:2rem;font-weight:700;margin:.5rem 0">' . $price
+					. ($period !== '' ? '<small style="font-size:.9rem;opacity:.7">/' . $period . '</small>' : '')
+					. '</div>'
+					. ($features !== '' ? '<ul style="list-style:none;padding:0;margin:1rem 0;text-align:left">' . $features . '</ul>' : '')
+					. ($btn !== '' ? '<div class="e-widget-button"><a href="#">' . $btn . '</a></div>' : '')
+					. '</div>';
 			case 'divider':
 				return '<hr style="border:none;border-top:1px solid #ccc;margin:0">';
 			case 'spacer':
