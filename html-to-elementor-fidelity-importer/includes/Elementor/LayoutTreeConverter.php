@@ -394,6 +394,7 @@ final class LayoutTreeConverter
                 $this->css->border($node),
                 $this->css->box_shadow($node),
                 $this->css->sizing($node),
+                $this->css->effects($node),
                 $this->css->spacing($node, !$is_section)
             );
         }
@@ -733,7 +734,9 @@ final class LayoutTreeConverter
                     $this->css->alignment($node, 'align'),
                     $this->css->spacing($node, true),
                     $this->css->border($node),
-                    $this->css->box_shadow($node)
+                    $this->css->box_shadow($node),
+                    $this->css->image_media($node),
+                    $this->css->effects($node)
                 );
             case 'icon':
                 $out = array();

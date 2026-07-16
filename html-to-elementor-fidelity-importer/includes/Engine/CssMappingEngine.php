@@ -72,9 +72,14 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->alignment($node, 'align'),
 				$this->mapper->spacing($node, false),
 				$this->mapper->border($node),
-				$this->mapper->box_shadow($node)
+				$this->mapper->box_shadow($node),
+				$this->mapper->image_media($node),
+				$this->mapper->effects($node)
 			),
-			default => $this->mapper->spacing($node, false),
+			default => array_merge(
+				$this->mapper->spacing($node, false),
+				$this->mapper->effects($node)
+			),
 		};
 
 		return $this->apply_token_references($settings);
@@ -95,6 +100,7 @@ final class CssMappingEngine implements EngineInterface
 			$this->mapper->border($node),
 			$this->mapper->box_shadow($node),
 			$this->mapper->sizing($node),
+			$this->mapper->effects($node),
 			$this->map_constraint_spacing($node, $is_section)
 		);
 
