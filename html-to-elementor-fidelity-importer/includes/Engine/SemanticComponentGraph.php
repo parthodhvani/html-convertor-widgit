@@ -109,20 +109,25 @@ final class SemanticComponentGraph implements EngineInterface
 		$cls = strtolower((string) ($node['cls'] ?? '') . ' ' . (string) ($node['id'] ?? ''));
 		$tag = strtolower((string) ($node['tag'] ?? ''));
 
-		$rowish = 'row' === ($constraint['direction'] ?? '') || 'row' === $layout || 'grid' === $layout
-			|| (bool) preg_match('/\b(row|grid|row-cols)\b/', $cls);
-		$multi_col = $rowish && count((array) ($node['children'] ?? array())) >= 2;
+		// Flex/grid multi-column tracks (Bootstrap rows) — not absolute overlays.
+		$flex_grid_track = (
+			(false !== strpos((string) ($node['s']['disp'] ?? ''), 'flex')
+				&& false === strpos(strtolower((string) ($node['s']['fd'] ?? 'row')), 'column'))
+			|| false !== strpos((string) ($node['s']['disp'] ?? ''), 'grid')
+			|| (bool) preg_match('/\b(row-cols|grid-cols)\b/', $cls)
+		) && count((array) ($node['children'] ?? array())) >= 2
+			&& !$signals['is_layered'];
 
 		// Layered full-bleed block (hero, banner) — geometry only.
-		// Never promote multi-column flex/grid tracks to hero/layered (Bootstrap rows).
-		if (!$multi_col && $signals['is_layered'] && $h >= 180 && null !== $signals['image_child']) {
+		// Absolute overlay compositions stay hero/layered even when siblings share a Y band.
+		if ($signals['is_layered'] && $h >= 180 && null !== $signals['image_child']) {
 			return ($context['is_first'] ?? false) || $h >= 320 ? 'hero' : 'layered_block';
 		}
-		if (!$multi_col && $signals['is_layered'] && $h >= 120) {
+		if ($signals['is_layered'] && $h >= 120) {
 			return 'layered_block';
 		}
 		// First tall section with large heading → hero even without absolute layers.
-		if (!$multi_col && ($context['is_first'] ?? false) && $h >= 280 && $this->has_large_heading($node)) {
+		if (!$flex_grid_track && ($context['is_first'] ?? false) && $h >= 280 && $this->has_large_heading($node)) {
 			return 'hero';
 		}
 

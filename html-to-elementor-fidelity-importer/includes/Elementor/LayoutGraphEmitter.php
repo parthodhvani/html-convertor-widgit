@@ -36,7 +36,11 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($tree['layoutRole'] ?? '');
 
-		if (in_array($role, array('layered_block', 'hero'), true) && VisualSignals::is_layered($tree)) {
+		// Prefer layered reconstruction whenever Chromium shows cover overlays,
+		// even if a later role pass labeled the node row_group/stack.
+		if ((in_array($role, array('layered_block', 'hero'), true) || VisualSignals::is_layered($tree)
+				|| !empty($tree['layeredLayout']))
+			&& (VisualSignals::is_layered($tree) || !empty($tree['layeredLayout']))) {
 			$layered = $this->builder->emit_layered_block($tree);
 			if (null !== $layered) {
 				return $layered;
@@ -227,7 +231,9 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($node['layoutRole'] ?? '');
 
-		if (in_array($role, array('layered_block', 'hero'), true) && VisualSignals::is_layered($node)) {
+		if ((in_array($role, array('layered_block', 'hero'), true) || VisualSignals::is_layered($node)
+				|| !empty($node['layeredLayout']))
+			&& (VisualSignals::is_layered($node) || !empty($node['layeredLayout']))) {
 			$layered = $this->builder->emit_layered_block($node);
 			return null !== $layered ? array($layered) : $this->emit_children($node, $is_section, $parent_row, $parent_width);
 		}
