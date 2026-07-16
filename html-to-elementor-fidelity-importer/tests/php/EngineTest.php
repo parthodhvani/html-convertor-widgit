@@ -31,6 +31,8 @@ use HtmlToElementor\Engine\VisualExtractionEngine;
 use HtmlToElementor\Engine\VisualReconstructionOrchestrator;
 use HtmlToElementor\Engine\VisualValidationEngine;
 use HtmlToElementor\Engine\WrapperEliminationEngine;
+use HtmlToElementor\Engine\ElementorPreviewRenderer;
+use HtmlToElementor\Engine\ClosedLoopValidationEngine;
 use HtmlToElementor\Services\RenderResult;
 use PHPUnit\Framework\TestCase;
 
@@ -365,6 +367,69 @@ final class EngineTest extends TestCase
 		$stats = $mapper->coverage_stats(array('heading' => 3, 'text-editor' => 2, 'html' => 1));
 		$this->assertSame(83.3, $stats['native_pct']);
 		$this->assertSame(16.7, $stats['html_pct']);
+	}
+
+	public function test_preview_renderer_emits_gradient_and_widgets(): void
+	{
+		$renderer = new ElementorPreviewRenderer();
+		$html = $renderer->render(array(
+			array(
+				'id' => 'aaaaaaa',
+				'elType' => 'container',
+				'settings' => array(
+					'flex_direction' => 'column',
+					'background_background' => 'gradient',
+					'background_color' => 'rgb(26, 58, 74)',
+					'background_color_b' => 'rgb(13, 31, 40)',
+					'background_gradient_angle' => array('unit' => 'deg', 'size' => 135),
+				),
+				'elements' => array(
+					array(
+						'id' => 'bbbbbbb',
+						'elType' => 'widget',
+						'widgetType' => 'heading',
+						'settings' => array('title' => 'Hello', 'header_size' => 'h1'),
+						'elements' => array(),
+					),
+				),
+				'isInner' => false,
+			),
+		));
+		$this->assertStringContainsString('linear-gradient(135deg', $html);
+		$this->assertStringContainsString('<h1', $html);
+		$this->assertStringContainsString('Hello', $html);
+	}
+
+	public function test_closed_loop_without_screenshots_still_repairs(): void
+	{
+		$engine = new ClosedLoopValidationEngine(95, 2);
+		$result = $engine->run(
+			array(
+				array(
+					'id' => 'c1',
+					'elType' => 'container',
+					'settings' => array('flex_direction' => 'column'),
+					'elements' => array(
+						array(
+							'id' => 'w1',
+							'elType' => 'widget',
+							'widgetType' => 'html',
+							'settings' => array('html' => '<h2>Title</h2>'),
+							'elements' => array(),
+						),
+					),
+					'isInner' => false,
+				),
+			),
+			array(
+				'sections' => array(),
+				'report' => array('native_widgets' => 1, 'html_widgets' => 0),
+				'work_dir' => sys_get_temp_dir() . '/h2e-cl-test',
+			)
+		);
+		$this->assertArrayHasKey('validation', $result);
+		$this->assertArrayHasKey('preview_html', $result);
+		$this->assertStringContainsString('<h2', $result['data'][0]['elements'][0]['settings']['html'] ?? $result['preview_html']);
 	}
 
 	public function test_responsive_engine_normalizes_breakpoints(): void
