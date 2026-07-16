@@ -416,8 +416,10 @@ final class LayoutTreeConverter
                 $settings['width'] = array('unit' => '%', 'size' => $pct);
                 $settings['flex_grow'] = 0;
                 $settings['flex_shrink'] = 1;
-                // Stack to full width on the smallest breakpoint.
-                $settings['width_mobile'] = array('unit' => '%', 'size' => 100);
+                // Full-width on mobile only when the parent row actually stacks.
+                if (!empty($node['responsiveConstraints']['full_width_mobile'])) {
+                    $settings['width_mobile'] = array('unit' => '%', 'size' => 100);
+                }
             } elseif ($width > 0) {
                 $settings['width'] = array('unit' => 'px', 'size' => round($width, 0));
             }
@@ -602,9 +604,14 @@ final class LayoutTreeConverter
             $out['width_tablet'] = $responsive['tablet']['width'];
         }
 
-        $mobile_stack = (bool) (($node['responsiveConstraints']['mobile_stack'] ?? false));
-        if ($mobile_stack && empty($out['flex_direction_mobile'])) {
+        $rc = $node['responsiveConstraints'] ?? array();
+        if (!empty($rc['mobile_stack']) && empty($out['flex_direction_mobile'])) {
             $out['flex_direction_mobile'] = 'column';
+        }
+        if (!empty($rc['tablet_stack']) && empty($out['flex_direction_tablet'])) {
+            $out['flex_direction_tablet'] = 'column';
+        }
+        if (!empty($rc['full_width_mobile']) && empty($out['width_mobile'])) {
             $out['width_mobile'] = array('unit' => '%', 'size' => 100);
         }
 

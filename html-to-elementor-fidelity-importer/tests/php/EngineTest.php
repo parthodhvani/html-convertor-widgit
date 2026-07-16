@@ -376,6 +376,46 @@ final class EngineTest extends TestCase
 		$this->assertSame(375, $bps['mobile']);
 	}
 
+	public function test_responsive_does_not_blindly_stack_all_rows(): void
+	{
+		$engine = new ResponsiveReconstructionEngine();
+		$nav = array(
+			'tree' => array(
+				'tag' => 'nav',
+				'layoutRole' => 'horizontal_bar',
+				'layoutType' => 'row',
+				'layoutConstraint' => array('direction' => 'row'),
+				's' => array('disp' => 'flex', 'fd' => 'row', 'w' => 1200),
+				'children' => array(
+					array('tag' => 'a', 'atomic' => true, 'text' => 'Home', 's' => array('w' => 80), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 80, 'height' => 40)),
+					array('tag' => 'a', 'atomic' => true, 'text' => 'About', 's' => array('w' => 80), 'bbox' => array('x' => 100, 'y' => 0, 'width' => 80, 'height' => 40)),
+				),
+			),
+		);
+		$out = $engine->annotate(array($nav));
+		$this->assertFalse((bool) ($out[0]['tree']['responsiveConstraints']['mobile_stack'] ?? false));
+
+		$cards = array(
+			'tree' => array(
+				'tag' => 'div',
+				'layoutType' => 'row',
+				'layoutConstraint' => array('direction' => 'row'),
+				's' => array('disp' => 'flex', 'fd' => 'row', 'w' => 1200),
+				'r' => array(
+					'mobile' => array('fd' => 'column', 'disp' => 'flex', 'w' => 375),
+				),
+				'children' => array(
+					array('tag' => 'div', 's' => array('w' => 360, 'bg' => 'rgb(255,255,255)', 'br' => 8), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 360, 'height' => 200), 'children' => array()),
+					array('tag' => 'div', 's' => array('w' => 360, 'bg' => 'rgb(255,255,255)', 'br' => 8), 'bbox' => array('x' => 400, 'y' => 0, 'width' => 360, 'height' => 200), 'children' => array()),
+					array('tag' => 'div', 's' => array('w' => 360, 'bg' => 'rgb(255,255,255)', 'br' => 8), 'bbox' => array('x' => 800, 'y' => 0, 'width' => 360, 'height' => 200), 'children' => array()),
+				),
+			),
+		);
+		$stacked = $engine->annotate(array($cards));
+		$this->assertTrue((bool) ($stacked[0]['tree']['responsiveConstraints']['mobile_stack'] ?? false));
+		$this->assertTrue((bool) ($stacked[0]['tree']['children'][0]['responsiveConstraints']['full_width_mobile'] ?? false));
+	}
+
 	public function test_animation_engine_maps_fade_transition(): void
 	{
 		$engine = new AnimationEngine();
