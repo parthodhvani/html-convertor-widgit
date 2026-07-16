@@ -494,6 +494,47 @@ final class EngineTest extends TestCase
 		$this->assertGreaterThan(0, $score['source_frames']);
 	}
 
+	public function test_leaf_classifier_plain_link_is_text_not_button(): void
+	{
+		$classifier = new VisualLeafClassifier();
+		$link = $classifier->classify(array(
+			'tag' => 'a',
+			'atomic' => true,
+			'text' => 'Read more',
+			'href' => 'https://example.com/post',
+			's' => array('fs' => '16px', 'h' => 24, 'w' => 90),
+			'bbox' => array('x' => 0, 'y' => 0, 'width' => 90, 'height' => 24),
+		));
+		$this->assertNotNull($link);
+		$this->assertSame('text-editor', $link['type']);
+		$this->assertStringContainsString('https://example.com/post', $link['settings']['editor']);
+
+		$btn = $classifier->classify(array(
+			'tag' => 'a',
+			'atomic' => true,
+			'text' => 'Book now',
+			'href' => 'https://example.com/book',
+			'cls' => 'btn btn-primary',
+			's' => array('bg' => 'rgb(0,0,0)', 'pt' => 12, 'pb' => 12, 'pl' => 20, 'pr' => 20, 'h' => 44, 'w' => 140),
+			'bbox' => array('x' => 0, 'y' => 0, 'width' => 140, 'height' => 44),
+		));
+		$this->assertSame('button', $btn['type']);
+	}
+
+	public function test_leaf_classifier_maps_address_from_embed(): void
+	{
+		$classifier = new VisualLeafClassifier();
+		$map = $classifier->classify(array(
+			'tag' => 'iframe',
+			'atomic' => true,
+			'src' => 'https://www.google.com/maps/embed/v1/place?q=Zurich%2C+Switzerland',
+			'html' => '<iframe src="https://www.google.com/maps/embed/v1/place?q=Zurich%2C+Switzerland"></iframe>',
+			's' => array('h' => 400, 'w' => 600),
+		));
+		$this->assertSame('google_maps', $map['type']);
+		$this->assertSame('Zurich, Switzerland', $map['settings']['address']);
+	}
+
 	public function test_layout_graph_emitter_hoists_transparent_wrapper(): void
 	{
 		$converter = new \HtmlToElementor\Elementor\LayoutTreeConverter();

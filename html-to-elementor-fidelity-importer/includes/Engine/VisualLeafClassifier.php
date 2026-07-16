@@ -36,11 +36,42 @@ final class VisualLeafClassifier
 		$html = (string) ($node['html'] ?? '');
 		$tag = strtolower((string) ($node['tag'] ?? ''));
 		$bg_url = $this->extract_bg_url((string) ($node['s']['bgImg'] ?? ''));
+		$embed_hay = $src . ' ' . $html;
+
+		// Embedded media by URL before treating src as a raster image.
+		if ($this->is_youtube($embed_hay)) {
+			return $this->result('video', array(
+				'video_type' => 'youtube',
+				'youtube_url' => $this->extract_src($html) ?: $src,
+			), 88);
+		}
+		if ($this->is_vimeo($embed_hay)) {
+			return $this->result('video', array(
+				'video_type' => 'vimeo',
+				'vimeo_url' => $this->extract_src($html) ?: $src,
+			), 88);
+		}
+		if ($this->is_maps($embed_hay)) {
+			$map_src = $this->extract_src($html) ?: $src;
+			return $this->result('google_maps', array(
+				'address' => $this->maps_address($map_src, $html),
+				'custom_height' => array('unit' => 'px', 'size' => max(200, (int) round((float) ($node['s']['h'] ?? 360)))),
+			), 85);
+		}
 
 		// Real image sources only — CSS gradients must not become Image widgets.
-		if ('' !== $src || '' !== $bg_url) {
+		// iframe/video/audio src values are not images.
+		if (('img' === $tag || 'picture' === $tag || '' !== $bg_url) && ('' !== $src || '' !== $bg_url)) {
 			return $this->result('image', array(
 				'image' => array('url' => $src ?: $bg_url, 'id' => ''),
+				'image_size' => 'full',
+				'alt' => (string) ($node['alt'] ?? ''),
+			), 90);
+		}
+		if ('' !== $src && !in_array($tag, array('iframe', 'video', 'audio', 'source', 'embed', 'object'), true)
+			&& preg_match('/\.(png|jpe?g|gif|webp|svg|avif)(\?|$)/i', $src)) {
+			return $this->result('image', array(
+				'image' => array('url' => $src, 'id' => ''),
 				'image_size' => 'full',
 				'alt' => (string) ($node['alt'] ?? ''),
 			), 90);
@@ -60,23 +91,21 @@ final class VisualLeafClassifier
 			}
 		}
 
-		// Embedded media by URL (content signal, not layout heuristic).
-		if ($this->is_youtube($html)) {
-			return $this->result('video', array('video_type' => 'youtube', 'youtube_url' => $this->extract_src($html)), 88);
-		}
-		if ($this->is_vimeo($html)) {
-			return $this->result('video', array('video_type' => 'vimeo', 'vimeo_url' => $this->extract_src($html)), 88);
-		}
-		if ($this->is_maps($html)) {
-			return $this->result('google_maps', array('address' => '', 'custom_height' => array('unit' => 'px', 'size' => 360)), 85);
-		}
-
-		// Buttons / CTAs — including gradient-filled links with icons.
+		// Buttons / CTAs — visual chrome or explicit button semantics only.
 		if (VisualSignals::looks_button($node) || $this->looks_link_button($node, $text)) {
 			return $this->result('button', array(
 				'text' => $text ?: 'Button',
 				'link' => array('url' => (string) ($node['href'] ?? ''), 'is_external' => '', 'nofollow' => ''),
 			), 88);
+		}
+
+		// Plain text links stay editable text (not buttons).
+		if ('a' === $tag && '' !== $text && '' !== (string) ($node['href'] ?? '')) {
+			$href = esc_url((string) $node['href']);
+			$label = esc_html($text);
+			return $this->result('text-editor', array(
+				'editor' => '<p><a href="' . $href . '">' . $label . '</a></p>',
+			), 87);
 		}
 
 		// Font Awesome / icon fonts — native Icon widget.
@@ -149,8 +178,7 @@ final class VisualLeafClassifier
 	}
 
 	/**
-	 * Link that should render as a Button (class/padding/href), even when
-	 * background-image is a CSS gradient rather than a photo.
+	 * Link that should render as a Button — requires button chrome, not mere height.
 	 *
 	 * @param array<string,mixed> $node Node.
 	 * @param string              $text Resolved text.
@@ -172,17 +200,41 @@ final class VisualLeafClassifier
 		if (preg_match('/\b(blog-card|card|post|article)\b/', $cls) && !preg_match('/\b(btn|button|card-link)\b/', $cls)) {
 			return false;
 		}
-		if (preg_match('/\b(btn|button|cta|card-link|nav-link)\b/', $cls)) {
+		// Explicit CTA / button classes.
+		if (preg_match('/\b(btn|button|cta|card-link)\b/', $cls)) {
 			return true;
 		}
-		// Text links (nav, footer) → native Button widgets for editability.
-		if (VisualSignals::has_background($node['s'] ?? array()) && VisualSignals::padding_sum($node['s'] ?? array()) >= 6) {
-			return true;
+		// Visual button chrome: filled background + padding + compact control height.
+		$s = $node['s'] ?? array();
+		$box = Geometry::bbox($node);
+		$h = $box['height'] ?: (float) ($s['h'] ?? 0);
+		$w = $box['width'] ?: (float) ($s['w'] ?? 0);
+		$has_chrome = VisualSignals::has_background($s) && VisualSignals::padding_sum($s) >= 6;
+		return $has_chrome && $h >= 28 && $h <= 72 && $w >= 60 && $w <= 480;
+	}
+
+	/**
+	 * Best-effort address / query extraction from a Google Maps embed URL.
+	 *
+	 * @param string $src  iframe src.
+	 * @param string $html Outer HTML fallback.
+	 */
+	private function maps_address(string $src, string $html = ''): string
+	{
+		$hay = $src !== '' ? $src : $html;
+		if (preg_match('/[?&]q=([^&]+)/i', $hay, $m)) {
+			return rawurldecode(str_replace('+', ' ', $m[1]));
 		}
-		// Short inline links without block layout.
-		$box = \HtmlToElementor\Engine\Geometry::bbox($node);
-		$h = $box['height'] ?: (float) ($node['s']['h'] ?? 0);
-		return $h > 0 && $h <= 80;
+		if (preg_match('/[?&]query=([^&]+)/i', $hay, $m)) {
+			return rawurldecode(str_replace('+', ' ', $m[1]));
+		}
+		if (preg_match('/!2s([^!]+)/', $hay, $m)) {
+			return rawurldecode(str_replace('+', ' ', $m[1]));
+		}
+		if (preg_match('/@(-?\d+\.\d+),(-?\d+\.\d+)/', $hay, $m)) {
+			return $m[1] . ', ' . $m[2];
+		}
+		return '';
 	}
 
 	/**
