@@ -309,6 +309,16 @@ final class LayoutGraphEmitter
 		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding']) {
 			return true;
 		}
+		// Preserve boxes that still carry browser margins or fixed widths —
+		// hoisting them is a primary source of missing frames / wrong sizes.
+		$s = $node['s'] ?? array();
+		$margin_sum = (float) ($s['mt'] ?? 0) + (float) ($s['mb'] ?? 0) + (float) ($s['ml'] ?? 0) + (float) ($s['mr'] ?? 0);
+		if ($margin_sum >= 4) {
+			return true;
+		}
+		if (!empty($s['maxW']) || (!empty($s['w']) && (float) $s['w'] > 0 && (float) $s['w'] < 1100)) {
+			return true;
+		}
 
 		$children = (array) ($node['children'] ?? array());
 		if ($this->all_atomic_leaves($children)) {

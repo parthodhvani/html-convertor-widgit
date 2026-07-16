@@ -449,6 +449,159 @@ add('team-grid', 'marketing', ['team', 'cards', 'images'],
 <div class="grid">${[['Ava', 'CEO'], ['Noah', 'Design'], ['Mia', 'Eng'], ['Leo', 'Sales']].map(([n, r]) => `<div class="card"><div class="avatar"></div><strong>${n}</strong><div style="color:#64748b">${r}</div></div>`).join('')}</div>
 </div></body></html>`);
 
+// --- Expanded corpus toward 100 pages (deterministic variants) ---
+const palettes = [
+  ['#0f172a', '#38bdf8', '#f8fafc'],
+  ['#1c1917', '#f59e0b', '#fffbeb'],
+  ['#052e16', '#4ade80', '#f0fdf4'],
+  ['#3b0764', '#e879f9', '#faf5ff'],
+  ['#111827', '#f43f5e', '#fff1f2'],
+  ['#0c4a6e', '#22d3ee', '#ecfeff'],
+];
+palettes.forEach((p, i) => {
+  const [bg, accent, soft] = p;
+  add(`saas-variant-${i + 1}`, 'marketing', ['saas', 'landing', 'variant'],
+    `marketing/saas-variant-${i + 1}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SaaS ${i + 1}</title>
+<style>body{margin:0;font-family:Georgia,serif;background:${soft};color:${bg}}
+header{display:flex;justify-content:space-between;padding:1.25rem 2rem;background:#fff;border-bottom:1px solid #e5e7eb}
+.hero{padding:5rem 2rem;text-align:center}.hero h1{font-size:3rem;margin:0 0 1rem}
+.hero p{max-width:36rem;margin:0 auto 1.5rem;opacity:.8}
+.btn{display:inline-block;background:${accent};color:${bg};padding:.85rem 1.4rem;border-radius:8px;text-decoration:none;font-weight:700;font-family:system-ui,sans-serif}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;max-width:1000px;margin:0 auto 4rem;padding:0 1.5rem}
+.card{background:#fff;border-radius:14px;padding:1.5rem;box-shadow:0 8px 24px rgba(0,0,0,.06)}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}</style></head><body>
+<header><strong>Brand ${i + 1}</strong><nav>Product · Pricing · Login</nav></header>
+<section class="hero"><h1>Ship with clarity</h1><p>Variant landing page ${i + 1} for fidelity regression.</p><a class="btn" href="#">Start free</a></section>
+<section class="grid">${[1, 2, 3].map((n) => `<div class="card"><h3>Feature ${n}</h3><p>Supporting copy for card ${n}.</p></div>`).join('')}</section>
+</body></html>`);
+});
+
+for (let i = 1; i <= 8; i += 1) {
+  add(`pricing-variant-${i}`, 'marketing', ['pricing', 'cards', 'variant'],
+    `marketing/pricing-variant-${i}.html`,
+    shell(`Pricing ${i}`, `
+<div class="container py-5"><h1 class="text-center mb-4">Plans ${i}</h1>
+<div class="row g-4">${[0, 1, 2].map((n) => `
+<div class="col-md-4"><div class="card h-100 shadow-sm"><div class="card-body">
+<h3 class="h4">Tier ${n + 1}</h3><p class="display-6">$${9 + n * 10 + i}</p>
+<ul class="list-unstyled"><li>${2 + n} seats</li><li>Email support</li><li>Exports</li></ul>
+<button class="btn btn-primary w-100">Choose</button></div></div></div>`).join('')}
+</div></div>`));
+}
+
+for (let i = 1; i <= 8; i += 1) {
+  add(`blog-variant-${i}`, 'marketing', ['blog', 'typography', 'variant'],
+    `marketing/blog-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog ${i}</title>
+<style>body{margin:0;font-family:Georgia,serif;background:#fff;color:#111;line-height:1.7}
+.wrap{max-width:720px;margin:0 auto;padding:3rem 1.25rem}h1{font-size:2.4rem;font-weight:400}
+article{margin:2.5rem 0;padding-bottom:2rem;border-bottom:1px solid #e5e7eb}.meta{color:#6b7280;font-size:.9rem}</style></head><body>
+<div class="wrap"><h1>Journal ${i}</h1>
+${[1, 2, 3].map((n) => `<article><h2>Entry ${n}</h2><div class="meta">Day ${n + i} · Notes</div><p>${'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(2 + (n % 2))}</p></article>`).join('')}
+</div></body></html>`);
+}
+
+for (let i = 1; i <= 6; i += 1) {
+  add(`flex-variant-${i}`, 'layouts', ['flexbox', 'nested', 'variant'],
+    `layouts/flex-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flex ${i}</title>
+<style>body{margin:0;font-family:system-ui,sans-serif}.bar{display:flex;justify-content:space-between;padding:1rem 1.5rem;background:#111;color:#fff}
+.row{display:flex;gap:${8 + i * 4}px;padding:1.5rem;align-items:stretch}
+.main{flex:1;background:#f1f5f9;padding:1rem;border-radius:8px}.side{flex:0 0 ${160 + i * 20}px;background:#e2e8f0;padding:1rem;border-radius:8px}
+.inner{display:flex;gap:12px}.card{flex:1;background:#fff;border:1px solid #cbd5e1;padding:12px;border-radius:6px}
+@media(max-width:768px){.row{flex-direction:column}.side{flex-basis:auto}}</style></head><body>
+<div class="bar"><strong>Flex ${i}</strong><span>Docs · API</span></div>
+<div class="row"><div class="main"><h2>Main</h2><div class="inner"><div class="card"><h3>A</h3><p>Card A</p></div><div class="card"><h3>B</h3><p>Card B</p></div></div></div>
+<aside class="side"><h3>Sidebar</h3><p>Filters ${i}</p></aside></div></body></html>`);
+}
+
+for (let i = 1; i <= 6; i += 1) {
+  add(`grid-variant-${i}`, 'layouts', ['grid', 'complex', 'variant'],
+    `layouts/grid-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grid ${i}</title>
+<style>body{margin:0;font-family:system-ui,sans-serif;background:#fafafa}
+.grid{display:grid;grid-template-columns:repeat(${2 + (i % 3)},1fr);gap:${12 + i * 2}px;padding:1.5rem;max-width:1100px;margin:0 auto}
+.cell{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:1.25rem;min-height:${100 + i * 10}px}
+.cell.wide{grid-column:span 2}@media(max-width:700px){.grid{grid-template-columns:1fr}.cell.wide{grid-column:span 1}}</style></head><body>
+<div class="grid"><div class="cell wide"><h1>Featured ${i}</h1><p>Wide tile</p></div>
+${[1, 2, 3, 4].map((n) => `<div class="cell"><h3>Cell ${n}</h3></div>`).join('')}</div></body></html>`);
+}
+
+for (let i = 1; i <= 6; i += 1) {
+  add(`absolute-variant-${i}`, 'layouts', ['absolute', 'overlay', 'variant'],
+    `layouts/absolute-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Absolute ${i}</title>
+<style>body{margin:0;font-family:system-ui,sans-serif}.hero{position:relative;height:${420 + i * 20}px;background:#0f172a;color:#fff;overflow:hidden}
+.bg{position:absolute;inset:0;background:linear-gradient(${100 + i * 20}deg,#1e293b,#0f172a 60%);opacity:.95}
+.content{position:absolute;left:${8 + i}%;top:${28 + i}%;max-width:480px;z-index:2}
+h1{font-size:${2.4 + i * 0.1}rem;margin:0 0 .75rem}.btn{display:inline-block;background:#f59e0b;color:#111;padding:.75rem 1.1rem;border-radius:6px;text-decoration:none;font-weight:700}
+.badge{position:absolute;right:8%;top:12%;background:rgba(255,255,255,.12);padding:.5rem .8rem;border-radius:999px;z-index:2}</style></head><body>
+<section class="hero"><div class="bg"></div><div class="badge">Edition ${i}</div>
+<div class="content"><h1>Overlay Hero ${i}</h1><p>Absolute layers must survive compilation.</p><a class="btn" href="#">Register</a></div></section>
+<section style="padding:2.5rem 10%"><h2>Below</h2><p>In-flow content after the hero.</p></section></body></html>`);
+}
+
+for (let i = 1; i <= 4; i += 1) {
+  add(`form-variant-${i}`, 'forms', ['form', 'contact', 'variant'],
+    `forms/form-variant-${i}.html`,
+    shell(`Form ${i}`, `
+<div class="container py-5"><div class="row justify-content-center"><div class="col-md-6">
+<h1 class="mb-3">Contact ${i}</h1><p class="text-muted">We reply within ${i} day(s).</p>
+<form><div class="mb-3"><label class="form-label">Name</label><input class="form-control" value="User ${i}"></div>
+<div class="mb-3"><label class="form-label">Email</label><input class="form-control" type="email" value="u${i}@example.com"></div>
+<div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" rows="4">Hello ${i}</textarea></div>
+<button class="btn btn-dark">Send</button></form></div></div></div>`));
+}
+
+for (let i = 1; i <= 4; i += 1) {
+  add(`dark-variant-${i}`, 'themes', ['dark', 'gradient', 'variant'],
+    `themes/dark-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dark ${i}</title>
+<style>body{margin:0;background:#050505;color:#f5f5f5;font-family:system-ui,sans-serif}
+.hero{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;
+background:radial-gradient(ellipse at top,#${(20 + i * 10).toString(16)}1033,#050505 60%)}
+h1{font-size:clamp(2rem,5vw,3.5rem);margin:0 0 1rem}p{color:#a1a1aa;max-width:32rem}
+.btn{margin-top:1.25rem;padding:.8rem 1.3rem;border-radius:999px;background:#8b5cf6;color:#fff;text-decoration:none;font-weight:600}</style></head><body>
+<section class="hero"><h1>Dark surface ${i}</h1><p>Gradient paint reconstruction check.</p><a class="btn" href="#">Start</a></section>
+</body></html>`);
+}
+
+for (let i = 1; i <= 4; i += 1) {
+  add(`ecommerce-variant-${i}`, 'marketing', ['shopify', 'ecommerce', 'variant'],
+    `marketing/ecommerce-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shop ${i}</title>
+<style>body{margin:0;font-family:Helvetica,Arial,sans-serif}.top{display:flex;justify-content:space-between;padding:1rem 1.5rem;border-bottom:1px solid #eee}
+.wrap{max-width:1100px;margin:2rem auto;display:grid;grid-template-columns:1.1fr 1fr;gap:2rem;padding:0 1rem}
+.gallery{background:#e8e0d4;min-height:420px;display:flex;align-items:center;justify-content:center}
+.btn{display:inline-block;background:#111;color:#fff;padding:1rem 1.5rem;text-decoration:none;text-transform:uppercase;font-size:.8rem;letter-spacing:.08em}
+@media(max-width:800px){.wrap{grid-template-columns:1fr}}</style></head><body>
+<div class="top"><span>Maison ${i}</span><span>Cart (0)</span></div>
+<div class="wrap"><div class="gallery">Product ${i}</div>
+<div><h1>Item ${i}</h1><p class="price" style="font-size:1.4rem">$${80 + i * 12}.00</p>
+<p>Soft goods description for ecommerce fidelity.</p><a class="btn" href="#">Add to cart</a></div></div>
+</body></html>`);
+}
+
+for (let i = 1; i <= 6; i += 1) {
+  add(`agency-variant-${i}`, 'marketing', ['agency', 'webflow', 'variant'],
+    `marketing/agency-variant-${i}.html`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agency ${i}</title>
+<style>body{margin:0;font-family:system-ui,sans-serif;background:#0b0d10;color:#f4f1ea}
+.nav{display:flex;justify-content:space-between;padding:1.25rem 2rem}
+.hero{position:relative;min-height:70vh;padding:4rem 2rem;overflow:hidden}
+.hero-bg{position:absolute;inset:0;background:radial-gradient(circle at 70% 30%,#2a3344,transparent 55%),#0b0d10}
+.hero-content{position:relative;z-index:1;max-width:560px;margin-top:10vh}
+h1{font-size:clamp(2.5rem,6vw,4.5rem);font-weight:500;margin:0 0 1rem}
+.cta{display:inline-block;margin-top:1.25rem;padding:.85rem 1.3rem;background:#f4f1ea;color:#0b0d10;border-radius:999px;text-decoration:none;font-weight:700}
+.services{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;padding:3rem 2rem}
+@media(max-width:800px){.services{grid-template-columns:1fr}}</style></head><body>
+<div class="nav"><strong>Studio ${i}</strong><span>Work · Contact</span></div>
+<section class="hero"><div class="hero-bg"></div><div class="hero-content"><h1>Craft ${i}</h1><p>Agency surface for absolute paint fidelity.</p><a class="cta" href="#">View work</a></div></section>
+<section class="services">${[1, 2, 3].map((n) => `<div><h3>Service ${n}</h3><p>Description ${n}</p></div>`).join('')}</section>
+</body></html>`);
+}
+
 // Rewrite fetched Bootstrap docs examples to use CDN + strip scripts that break offline
 function localizeBootstrapExample(srcPath, outRel, id, tags) {
   if (!fs.existsSync(srcPath)) return;

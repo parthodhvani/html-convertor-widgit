@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-16T09:22:50.454Z",
-  "count": 42,
+  "generated_at": "2026-07-16T10:29:04.948Z",
+  "count": 100,
   "pages": [
     {
       "id": "bs-hero-features",
@@ -250,6 +250,586 @@
         "images"
       ],
       "path": "marketing/team-grid.html"
+    },
+    {
+      "id": "saas-variant-1",
+      "category": "marketing",
+      "tags": [
+        "saas",
+        "landing",
+        "variant"
+      ],
+      "path": "marketing/saas-variant-1.html"
+    },
+    {
+      "id": "saas-variant-2",
+      "category": "marketing",
+      "tags": [
+        "saas",
+        "landing",
+        "variant"
+      ],
+      "path": "marketing/saas-variant-2.html"
+    },
+    {
+      "id": "saas-variant-3",
+      "category": "marketing",
+      "tags": [
+        "saas",
+        "landing",
+        "variant"
+      ],
+      "path": "marketing/saas-variant-3.html"
+    },
+    {
+      "id": "saas-variant-4",
+      "category": "marketing",
+      "tags": [
+        "saas",
+        "landing",
+        "variant"
+      ],
+      "path": "marketing/saas-variant-4.html"
+    },
+    {
+      "id": "saas-variant-5",
+      "category": "marketing",
+      "tags": [
+        "saas",
+        "landing",
+        "variant"
+      ],
+      "path": "marketing/saas-variant-5.html"
+    },
+    {
+      "id": "saas-variant-6",
+      "category": "marketing",
+      "tags": [
+        "saas",
+        "landing",
+        "variant"
+      ],
+      "path": "marketing/saas-variant-6.html"
+    },
+    {
+      "id": "pricing-variant-1",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-1.html"
+    },
+    {
+      "id": "pricing-variant-2",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-2.html"
+    },
+    {
+      "id": "pricing-variant-3",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-3.html"
+    },
+    {
+      "id": "pricing-variant-4",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-4.html"
+    },
+    {
+      "id": "pricing-variant-5",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-5.html"
+    },
+    {
+      "id": "pricing-variant-6",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-6.html"
+    },
+    {
+      "id": "pricing-variant-7",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-7.html"
+    },
+    {
+      "id": "pricing-variant-8",
+      "category": "marketing",
+      "tags": [
+        "pricing",
+        "cards",
+        "variant"
+      ],
+      "path": "marketing/pricing-variant-8.html"
+    },
+    {
+      "id": "blog-variant-1",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-1.html"
+    },
+    {
+      "id": "blog-variant-2",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-2.html"
+    },
+    {
+      "id": "blog-variant-3",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-3.html"
+    },
+    {
+      "id": "blog-variant-4",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-4.html"
+    },
+    {
+      "id": "blog-variant-5",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-5.html"
+    },
+    {
+      "id": "blog-variant-6",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-6.html"
+    },
+    {
+      "id": "blog-variant-7",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-7.html"
+    },
+    {
+      "id": "blog-variant-8",
+      "category": "marketing",
+      "tags": [
+        "blog",
+        "typography",
+        "variant"
+      ],
+      "path": "marketing/blog-variant-8.html"
+    },
+    {
+      "id": "flex-variant-1",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "variant"
+      ],
+      "path": "layouts/flex-variant-1.html"
+    },
+    {
+      "id": "flex-variant-2",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "variant"
+      ],
+      "path": "layouts/flex-variant-2.html"
+    },
+    {
+      "id": "flex-variant-3",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "variant"
+      ],
+      "path": "layouts/flex-variant-3.html"
+    },
+    {
+      "id": "flex-variant-4",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "variant"
+      ],
+      "path": "layouts/flex-variant-4.html"
+    },
+    {
+      "id": "flex-variant-5",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "variant"
+      ],
+      "path": "layouts/flex-variant-5.html"
+    },
+    {
+      "id": "flex-variant-6",
+      "category": "layouts",
+      "tags": [
+        "flexbox",
+        "nested",
+        "variant"
+      ],
+      "path": "layouts/flex-variant-6.html"
+    },
+    {
+      "id": "grid-variant-1",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex",
+        "variant"
+      ],
+      "path": "layouts/grid-variant-1.html"
+    },
+    {
+      "id": "grid-variant-2",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex",
+        "variant"
+      ],
+      "path": "layouts/grid-variant-2.html"
+    },
+    {
+      "id": "grid-variant-3",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex",
+        "variant"
+      ],
+      "path": "layouts/grid-variant-3.html"
+    },
+    {
+      "id": "grid-variant-4",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex",
+        "variant"
+      ],
+      "path": "layouts/grid-variant-4.html"
+    },
+    {
+      "id": "grid-variant-5",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex",
+        "variant"
+      ],
+      "path": "layouts/grid-variant-5.html"
+    },
+    {
+      "id": "grid-variant-6",
+      "category": "layouts",
+      "tags": [
+        "grid",
+        "complex",
+        "variant"
+      ],
+      "path": "layouts/grid-variant-6.html"
+    },
+    {
+      "id": "absolute-variant-1",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "variant"
+      ],
+      "path": "layouts/absolute-variant-1.html"
+    },
+    {
+      "id": "absolute-variant-2",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "variant"
+      ],
+      "path": "layouts/absolute-variant-2.html"
+    },
+    {
+      "id": "absolute-variant-3",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "variant"
+      ],
+      "path": "layouts/absolute-variant-3.html"
+    },
+    {
+      "id": "absolute-variant-4",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "variant"
+      ],
+      "path": "layouts/absolute-variant-4.html"
+    },
+    {
+      "id": "absolute-variant-5",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "variant"
+      ],
+      "path": "layouts/absolute-variant-5.html"
+    },
+    {
+      "id": "absolute-variant-6",
+      "category": "layouts",
+      "tags": [
+        "absolute",
+        "overlay",
+        "variant"
+      ],
+      "path": "layouts/absolute-variant-6.html"
+    },
+    {
+      "id": "form-variant-1",
+      "category": "forms",
+      "tags": [
+        "form",
+        "contact",
+        "variant"
+      ],
+      "path": "forms/form-variant-1.html"
+    },
+    {
+      "id": "form-variant-2",
+      "category": "forms",
+      "tags": [
+        "form",
+        "contact",
+        "variant"
+      ],
+      "path": "forms/form-variant-2.html"
+    },
+    {
+      "id": "form-variant-3",
+      "category": "forms",
+      "tags": [
+        "form",
+        "contact",
+        "variant"
+      ],
+      "path": "forms/form-variant-3.html"
+    },
+    {
+      "id": "form-variant-4",
+      "category": "forms",
+      "tags": [
+        "form",
+        "contact",
+        "variant"
+      ],
+      "path": "forms/form-variant-4.html"
+    },
+    {
+      "id": "dark-variant-1",
+      "category": "themes",
+      "tags": [
+        "dark",
+        "gradient",
+        "variant"
+      ],
+      "path": "themes/dark-variant-1.html"
+    },
+    {
+      "id": "dark-variant-2",
+      "category": "themes",
+      "tags": [
+        "dark",
+        "gradient",
+        "variant"
+      ],
+      "path": "themes/dark-variant-2.html"
+    },
+    {
+      "id": "dark-variant-3",
+      "category": "themes",
+      "tags": [
+        "dark",
+        "gradient",
+        "variant"
+      ],
+      "path": "themes/dark-variant-3.html"
+    },
+    {
+      "id": "dark-variant-4",
+      "category": "themes",
+      "tags": [
+        "dark",
+        "gradient",
+        "variant"
+      ],
+      "path": "themes/dark-variant-4.html"
+    },
+    {
+      "id": "ecommerce-variant-1",
+      "category": "marketing",
+      "tags": [
+        "shopify",
+        "ecommerce",
+        "variant"
+      ],
+      "path": "marketing/ecommerce-variant-1.html"
+    },
+    {
+      "id": "ecommerce-variant-2",
+      "category": "marketing",
+      "tags": [
+        "shopify",
+        "ecommerce",
+        "variant"
+      ],
+      "path": "marketing/ecommerce-variant-2.html"
+    },
+    {
+      "id": "ecommerce-variant-3",
+      "category": "marketing",
+      "tags": [
+        "shopify",
+        "ecommerce",
+        "variant"
+      ],
+      "path": "marketing/ecommerce-variant-3.html"
+    },
+    {
+      "id": "ecommerce-variant-4",
+      "category": "marketing",
+      "tags": [
+        "shopify",
+        "ecommerce",
+        "variant"
+      ],
+      "path": "marketing/ecommerce-variant-4.html"
+    },
+    {
+      "id": "agency-variant-1",
+      "category": "marketing",
+      "tags": [
+        "agency",
+        "webflow",
+        "variant"
+      ],
+      "path": "marketing/agency-variant-1.html"
+    },
+    {
+      "id": "agency-variant-2",
+      "category": "marketing",
+      "tags": [
+        "agency",
+        "webflow",
+        "variant"
+      ],
+      "path": "marketing/agency-variant-2.html"
+    },
+    {
+      "id": "agency-variant-3",
+      "category": "marketing",
+      "tags": [
+        "agency",
+        "webflow",
+        "variant"
+      ],
+      "path": "marketing/agency-variant-3.html"
+    },
+    {
+      "id": "agency-variant-4",
+      "category": "marketing",
+      "tags": [
+        "agency",
+        "webflow",
+        "variant"
+      ],
+      "path": "marketing/agency-variant-4.html"
+    },
+    {
+      "id": "agency-variant-5",
+      "category": "marketing",
+      "tags": [
+        "agency",
+        "webflow",
+        "variant"
+      ],
+      "path": "marketing/agency-variant-5.html"
+    },
+    {
+      "id": "agency-variant-6",
+      "category": "marketing",
+      "tags": [
+        "agency",
+        "webflow",
+        "variant"
+      ],
+      "path": "marketing/agency-variant-6.html"
     },
     {
       "id": "real-bs-features",

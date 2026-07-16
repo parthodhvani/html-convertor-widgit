@@ -92,7 +92,7 @@ final class CssMappingEngine implements EngineInterface
 	}
 
 	/**
-	 * Map container-level styles using constraint-based spacing only (no margins).
+	 * Map container-level styles: flex/paint + padding/gap + preserved margins.
 	 *
 	 * @param array<string,mixed> $node       Tree node.
 	 * @param bool                $is_section Top-level section flag.
@@ -114,7 +114,7 @@ final class CssMappingEngine implements EngineInterface
 	}
 
 	/**
-	 * Padding and gap from geometry constraints — never margins.
+	 * Padding, gap, and (when still present) margins from browser IR.
 	 *
 	 * @param array<string,mixed> $node       Tree node.
 	 * @param bool                $is_section Top-level section flag.
@@ -126,12 +126,11 @@ final class CssMappingEngine implements EngineInterface
 		$whitespace = $node['whitespace'] ?? array();
 		$constraint = $node['layoutConstraint'] ?? array();
 
-		// Padding from measured whitespace or computed padding (not margin).
-		$padding = $this->mapper->spacing($node, false);
-		unset($padding['margin']);
-		$out = array_merge($out, $padding);
+		// Prefer CSS padding; allow whitespace to fill missing sides only.
+		$spacing = $this->mapper->spacing($node, true);
+		$out = array_merge($out, $spacing);
 
-		if (!empty($whitespace['padding']) && is_array($whitespace['padding'])) {
+		if (!empty($whitespace['padding']) && is_array($whitespace['padding']) && empty($out['padding'])) {
 			$p = $whitespace['padding'];
 			$out['padding'] = array(
 				'unit' => 'px',
@@ -143,13 +142,25 @@ final class CssMappingEngine implements EngineInterface
 			);
 		}
 
-		$gap = (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0);
-		if ($gap > 0) {
+		// Only emit flex_gap when constraint/CSS gap exists — not margin-invented gaps.
+		$gap = (float) ($constraint['gap'] ?? 0);
+		if ($gap <= 0 && !empty($node['s']['gap']) && empty($node['whitespace']['gap_from_margins'])) {
+			$gap = (float) preg_replace('/[^\d.]/', '', (string) $node['s']['gap']);
+		}
+		if ($gap > 0 && empty($constraint['gap_from_margins']) && empty($whitespace['gap_from_margins'])) {
 			$g = (string) round($gap);
+			$row_gap = $gap;
+			$col_gap = $gap;
+			if (!empty($node['s']['rgap'])) {
+				$row_gap = (float) preg_replace('/[^\d.]/', '', (string) $node['s']['rgap']);
+			}
+			if (!empty($node['s']['cgap'])) {
+				$col_gap = (float) preg_replace('/[^\d.]/', '', (string) $node['s']['cgap']);
+			}
 			$out['flex_gap'] = array(
-				'column' => $g,
-				'row' => $g,
-				'isLinked' => true,
+				'column' => (string) round($col_gap),
+				'row' => (string) round($row_gap),
+				'isLinked' => abs($row_gap - $col_gap) < 0.5,
 				'unit' => 'px',
 				'size' => round($gap),
 			);

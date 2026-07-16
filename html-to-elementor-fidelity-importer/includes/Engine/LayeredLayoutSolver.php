@@ -51,10 +51,12 @@ final class LayeredLayoutSolver
 			return null;
 		}
 
+		$box = Geometry::bbox($node);
 		$content_elements = array();
 		foreach ((array) ($layers['content'] ?? array()) as $content_node) {
 			foreach ($convert_content($content_node) as $el) {
-				$content_elements[] = $el;
+				// Preserve absolute insets relative to the layered containing block.
+				$content_elements[] = $this->apply_absolute_insets($el, $content_node, $box);
 			}
 		}
 		foreach ((array) ($layers['in_flow'] ?? array()) as $flow_node) {
@@ -63,11 +65,11 @@ final class LayeredLayoutSolver
 			}
 		}
 
-		$box = Geometry::bbox($node);
 		$settings = array_merge(
 			array(
 				'content_width' => 'full',
 				'flex_direction' => 'column',
+				'position' => 'relative',
 				'min_height' => array(
 					'unit' => 'px',
 					'size' => max(120, (float) ($box['height'] ?: ($node['s']['h'] ?? 0))),
@@ -142,6 +144,50 @@ final class LayeredLayoutSolver
 			'elements' => array_values($content_elements),
 			'isInner' => false,
 		);
+	}
+
+	/**
+	 * Apply absolute positioning offsets from the source IR onto an emitted element.
+	 *
+	 * @param array<string,mixed>            $el          Emitted Elementor element.
+	 * @param array<string,mixed>            $source      Source IR node.
+	 * @param array{x:float,y:float,width:float,height:float} $parent_box Parent bbox.
+	 * @return array<string,mixed>
+	 */
+	private function apply_absolute_insets(array $el, array $source, array $parent_box): array
+	{
+		$pos = strtolower((string) ($source['s']['pos'] ?? ''));
+		if (!in_array($pos, array('absolute', 'fixed'), true)) {
+			return $el;
+		}
+		$settings = (array) ($el['settings'] ?? array());
+		$settings['position'] = 'absolute' === $pos ? 'absolute' : 'fixed';
+
+		$child = Geometry::bbox($source);
+		$top = $child['y'] - $parent_box['y'];
+		$left = $child['x'] - $parent_box['x'];
+		$width = $child['width'];
+		$height = $child['height'];
+
+		if ($top >= 0) {
+			$settings['top'] = array('unit' => 'px', 'size' => round($top));
+		}
+		if ($left >= 0) {
+			$settings['_offset_x'] = array('unit' => 'px', 'size' => round($left));
+			$settings['left'] = array('unit' => 'px', 'size' => round($left));
+		}
+		if ($width > 0) {
+			$settings['width'] = array('unit' => 'px', 'size' => round($width));
+		}
+		if ($height > 0) {
+			$settings['min_height'] = array('unit' => 'px', 'size' => round($height));
+		}
+		if (isset($source['s']['z']) && is_numeric($source['s']['z'])) {
+			$settings['z_index'] = (int) $source['s']['z'];
+		}
+
+		$el['settings'] = $settings;
+		return $el;
 	}
 
 	/**

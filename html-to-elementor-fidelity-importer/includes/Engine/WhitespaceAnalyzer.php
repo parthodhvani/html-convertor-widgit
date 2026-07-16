@@ -78,13 +78,23 @@ final class WhitespaceAnalyzer implements EngineInterface
 			$constraint_gap = (float) ($node['layoutConstraint']['gap'] ?? 0);
 			$measured_gap = (float) ($whitespace['gap'] ?? 0);
 
+			// Constraint gap is authoritative when present. Never invent a gap from
+			// pure margin geometry and wipe child margins — that is the earliest
+			// cause of spacing → wrap → height cascade failures.
+			$had_css_gap = $this->node_has_css_gap($node);
+			$margins_already_collapsed = !empty($node['s']['_gap_geometry']) && $constraint_gap > 0;
+			$direction = (string) ($node['layoutConstraint']['direction'] ?? $whitespace['direction'] ?? 'column');
+
 			if ($constraint_gap > 0) {
 				$gap = round($constraint_gap, 0);
 				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
 				$node['s']['gap'] = $gap . 'px';
 				$node['s']['_gap_source'] = 'constraint';
-				$this->clear_child_margins($node);
-			} elseif ($measured_gap > 0) {
+				// Only strip margins when CSS gap existed or a horizontal collapse ran.
+				if ($had_css_gap || $margins_already_collapsed || 'row' === $direction) {
+					$this->clear_child_margins($node);
+				}
+			} elseif ($measured_gap > 0 && $had_css_gap) {
 				$gap = round($measured_gap, 0);
 				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
 				$node['s']['gap'] = $gap . 'px';
@@ -98,6 +108,9 @@ final class WhitespaceAnalyzer implements EngineInterface
 				}
 				$node['layoutConstraint']['gap'] = $gap;
 				$this->clear_child_margins($node);
+			} elseif ($measured_gap > 0) {
+				// Diagnostic only — preserve child margins as the spacing model.
+				$node['whitespace']['gap_from_margins'] = round($measured_gap, 0);
 			}
 
 			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0
@@ -196,6 +209,28 @@ final class WhitespaceAnalyzer implements EngineInterface
 		}
 
 		return 'column';
+	}
+
+	/**
+	 * True when the browser computed style already declared a gap.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function node_has_css_gap(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		if (!empty($s['cgap']) || !empty($s['rgap'])) {
+			return true;
+		}
+		$gap = trim((string) ($s['gap'] ?? ''));
+		if ('' === $gap || 'normal' === $gap || '0px' === $gap || '0' === $gap) {
+			return false;
+		}
+		// Ignore gaps we ourselves invented earlier in the pipeline.
+		if (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace']) || !empty($s['_gap_source'])) {
+			return false;
+		}
+		return true;
 	}
 
 	/**
