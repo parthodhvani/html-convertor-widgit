@@ -818,4 +818,41 @@ final class EngineTest extends TestCase
 		$this->assertSame(20.0, (float) ($padding['top'] ?? 0));
 		$this->assertSame(20.0, (float) ($padding['left'] ?? 0));
 	}
+
+	public function test_whitespace_analyzer_does_not_invent_padding_over_computed_zero(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'ul',
+					'cls' => 'd-flex list-unstyled',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 1400, 'height' => 40),
+					's' => array('pt' => 0, 'pr' => 0, 'pb' => 0, 'pl' => 0, 'disp' => 'flex', 'fd' => 'row'),
+					'children' => array(
+						array(
+							'tag' => 'li',
+							'cls' => 'd-flex align-items-center',
+							'bbox' => array('x' => 0, 'y' => 0, 'width' => 48, 'height' => 18),
+							's' => array('pt' => 0, 'pr' => 0, 'pb' => 0, 'pl' => 0),
+							'children' => array(),
+						),
+						array(
+							'tag' => 'li',
+							'cls' => 'd-flex align-items-center',
+							'bbox' => array('x' => 56, 'y' => 0, 'width' => 48, 'height' => 18),
+							's' => array('pt' => 0, 'pr' => 0, 'pb' => 0, 'pl' => 0),
+							'children' => array(),
+						),
+					),
+					'layoutConstraint' => array('direction' => 'row'),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$this->assertSame(0.0, (float) ($out[0]['tree']['s']['pr'] ?? 0));
+		$this->assertTrue($out[0]['tree']['whitespace']['padding_residual_ignored'] ?? false);
+		// Residual is still measured for diagnostics.
+		$this->assertGreaterThan(1000, (float) ($out[0]['tree']['whitespace']['padding']['right'] ?? 0));
+	}
 }

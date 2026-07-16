@@ -332,10 +332,17 @@ final class ConstraintLayoutSolver implements EngineInterface
 		$row_votes = 0;
 		$col_votes = 0;
 		for ($i = 0; $i < count($boxes) - 1; ++$i) {
-			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1])) {
+			$a = $boxes[$i];
+			$b = $boxes[$i + 1];
+			$stacked = ($b['y'] >= $a['y'] + $a['height'] - 1) || ($a['y'] >= $b['y'] + $b['height'] - 1);
+			if ($stacked) {
+				++$col_votes;
+				continue;
+			}
+			if (Geometry::overlaps_y($a, $b)) {
 				++$row_votes;
 			}
-			if (Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 4) {
+			if (Geometry::vertical_gap($a, $b) > 4) {
 				++$col_votes;
 			}
 		}

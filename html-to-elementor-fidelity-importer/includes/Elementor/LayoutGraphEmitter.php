@@ -36,7 +36,7 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($tree['layoutRole'] ?? '');
 
-		if (in_array($role, array('layered_block', 'hero'), true)) {
+		if (in_array($role, array('layered_block', 'hero'), true) && VisualSignals::is_layered($tree)) {
 			$layered = $this->builder->emit_layered_block($tree);
 			if (null !== $layered) {
 				return $layered;
@@ -227,7 +227,7 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($node['layoutRole'] ?? '');
 
-		if (in_array($role, array('layered_block', 'hero'), true)) {
+		if (in_array($role, array('layered_block', 'hero'), true) && VisualSignals::is_layered($node)) {
 			$layered = $this->builder->emit_layered_block($node);
 			return null !== $layered ? array($layered) : $this->emit_children($node, $is_section, $parent_row, $parent_width);
 		}

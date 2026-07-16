@@ -113,12 +113,18 @@ final class WhitespaceAnalyzer implements EngineInterface
 				$node['whitespace']['gap_from_margins'] = round($measured_gap, 0);
 			}
 
-			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0
-				|| $whitespace['padding']['right'] > 0 || $whitespace['padding']['bottom'] > 0) {
-				$node['s']['pt'] = max((float) ($node['s']['pt'] ?? 0), $whitespace['padding']['top']);
-				$node['s']['pl'] = max((float) ($node['s']['pl'] ?? 0), $whitespace['padding']['left']);
-				$node['s']['pr'] = max((float) ($node['s']['pr'] ?? 0), $whitespace['padding']['right']);
-				$node['s']['pb'] = max((float) ($node['s']['pb'] ?? 0), $whitespace['padding']['bottom']);
+			// Geometry residual (parent box minus children union) is diagnostic only.
+			// Chromium computed padding is authoritative — writing residual into s.pr/pt
+			// invented 1000px+ "padding" on under-filled flex/list rows and blew width.
+			if ($this->computed_padding_absent($node)) {
+				foreach (array('top' => 'pt', 'right' => 'pr', 'bottom' => 'pb', 'left' => 'pl') as $side => $key) {
+					$residual = (float) ($whitespace['padding'][$side] ?? 0);
+					if ($residual > 0 && $residual <= 160) {
+						$node['s'][$key] = $residual;
+					}
+				}
+			} else {
+				$node['whitespace']['padding_residual_ignored'] = true;
 			}
 		}
 
@@ -229,6 +235,22 @@ final class WhitespaceAnalyzer implements EngineInterface
 		// Ignore gaps we ourselves invented earlier in the pipeline.
 		if (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace']) || !empty($s['_gap_source'])) {
 			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * True when Chromium padding keys were never extracted (legacy / synthetic nodes).
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function computed_padding_absent(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		foreach (array('pt', 'pr', 'pb', 'pl') as $key) {
+			if (array_key_exists($key, $s)) {
+				return false;
+			}
 		}
 		return true;
 	}

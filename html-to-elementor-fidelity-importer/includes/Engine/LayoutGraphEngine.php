@@ -155,7 +155,10 @@ final class LayoutGraphEngine implements EngineInterface
 		$wide = $box['width'] >= 900;
 		$tall = $box['height'] >= 360;
 
-		if ($wide && $tall && $count >= 2 && $this->has_large_heading($node)) {
+		// Flex/grid multi-column tracks are never heroes — mislabeling them
+		// routes emission through LayeredLayoutSolver and flattens columns.
+		if ($wide && $tall && $count >= 2 && $this->has_large_heading($node)
+			&& !in_array($layout, array('row', 'grid'), true)) {
 			return 'hero';
 		}
 		if (in_array($layout, array('row', 'grid'), true) && $count >= 3 && $this->cards_like_children($children)) {
@@ -196,18 +199,24 @@ final class LayoutGraphEngine implements EngineInterface
 		$row_votes = 0;
 		$col_votes = 0;
 		for ($i = 0; $i < count($boxes) - 1; ++$i) {
-			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1]) && Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1]) >= 0) {
+			$a = $boxes[$i];
+			$b = $boxes[$i + 1];
+			$side_by_side = Geometry::overlaps_y($a, $b) && Geometry::horizontal_gap($a, $b) >= 0;
+			$stacked = ($b['y'] >= $a['y'] + $a['height'] - 1) || ($a['y'] >= $b['y'] + $b['height'] - 1);
+			if ($side_by_side && !$stacked) {
 				++$row_votes;
 			}
-			if (Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 4) {
+			if ($stacked) {
+				++$col_votes;
+			} elseif (Geometry::vertical_gap($a, $b) > 4) {
 				++$col_votes;
 			}
 		}
+		if ($col_votes > $row_votes) {
+			return 'stack';
+		}
 		if ($row_votes > $col_votes) {
 			return 'row';
-		}
-		if ($col_votes > 0) {
-			return 'stack';
 		}
 
 		$s = $node['s'] ?? array();
@@ -248,23 +257,35 @@ final class LayoutGraphEngine implements EngineInterface
 	 */
 	private function children_are_columns(array $children): bool
 	{
-		$widths = array();
-		foreach ($children as $child) {
-			$w = (float) ($child['s']['w'] ?? 0);
-			if ($w > 50) {
-				$widths[] = $w;
-			}
-		}
-		if (count($widths) < 2) {
+		if (count($children) < 2) {
 			return false;
 		}
-		$avg = array_sum($widths) / count($widths);
-		foreach ($widths as $w) {
-			if (abs($w - $avg) / max(1, $avg) > 0.6) {
-				return true;
+		$boxes = array_map(array(Geometry::class, 'bbox'), $children);
+		$max_w = 0.0;
+		foreach ($boxes as $box) {
+			$max_w = max($max_w, $box['width']);
+		}
+		if ($max_w <= 0) {
+			return false;
+		}
+		// Full-bleed stacked bands are not columns.
+		$full_bleed = 0;
+		foreach ($boxes as $box) {
+			if ($box['width'] / $max_w >= 0.85) {
+				++$full_bleed;
 			}
 		}
-		return count($widths) >= 2;
+		if ($full_bleed >= count($boxes) - 1) {
+			return false;
+		}
+		$side_by_side = 0;
+		for ($i = 0; $i < count($boxes) - 1; ++$i) {
+			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1])
+				&& Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1]) >= 0) {
+				++$side_by_side;
+			}
+		}
+		return $side_by_side >= max(1, (int) floor((count($boxes) - 1) / 2));
 	}
 
 	/**

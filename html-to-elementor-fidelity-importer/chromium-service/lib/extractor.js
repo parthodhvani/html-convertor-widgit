@@ -86,6 +86,10 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
     // Desktop pass — full extraction + segmentation.
     await page.setViewport({ width: config.breakpoints.desktop, height: 900, deviceScaleFactor: 1 });
     await page.goto(fileUrl, { waitUntil: config.waitUntil, timeout: config.timeout });
+    // Recover stylesheets blocked by bad SRI hashes or transient CDN errors.
+    // Without this, Bootstrap/Tailwind pages extract as display:block + stacked
+    // columns — the earliest geometry information-loss in the pipeline.
+    await recoverFailedStylesheets(page);
     await waitForStable(page, config);
 
     // Expand collapsed FAQ/accordion panels so answer content is extractable.
@@ -210,6 +214,55 @@ async function waitForStable(page, config) {
       console.error('waitForStable warning:', e.message);
     }
   }
+}
+
+/**
+ * Reload stylesheet <link>s that failed (commonly bad SRI integrity hashes).
+ * Chromium rejects the sheet entirely when integrity mismatches — computed
+ * styles then look like unstyled HTML (display:block rows, 100% columns).
+ *
+ * @param {import('puppeteer').Page} page
+ */
+async function recoverFailedStylesheets(page) {
+  await page.evaluate(async () => {
+    const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
+    const reloads = [];
+    for (const link of links) {
+      const href = link.href || link.getAttribute('href') || '';
+      if (!href) continue;
+      let failed = !link.sheet;
+      if (!failed && link.sheet) {
+        try {
+          // Accessing cssRules throws for cross-origin sheets that DID load.
+          // empty cssRules length with same-origin usually means blocked/empty.
+          const n = link.sheet.cssRules ? link.sheet.cssRules.length : 0;
+          if (!link.sheet.href && n === 0) failed = true;
+        } catch (e) {
+          failed = false; // CORS — stylesheet applied
+        }
+      }
+      if (!failed) continue;
+
+      reloads.push(new Promise((resolve) => {
+        const next = link.cloneNode(true);
+        next.removeAttribute('integrity');
+        next.removeAttribute('crossorigin');
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve(href);
+        };
+        next.onload = done;
+        next.onerror = done;
+        link.replaceWith(next);
+        setTimeout(done, 8000);
+      }));
+    }
+    if (reloads.length) {
+      await Promise.all(reloads);
+    }
+  });
 }
 
 /**

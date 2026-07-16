@@ -19,8 +19,29 @@ function write(rel, html) {
   return rel;
 }
 
-const BS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+// Local vendor copy — CDN + bad SRI hashes previously caused Chromium to
+// render Bootstrap pages as unstyled block layout (earliest geometry loss).
+const BS = '../vendor/bootstrap.min.css';
 const FA = 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css';
+
+function ensureVendorBootstrap() {
+  const dest = path.join(CORPUS, 'vendor', 'bootstrap.min.css');
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  // Prefer copying from repo vendor; fall back to empty marker if absent.
+  const candidates = [
+    path.join(CORPUS, 'vendor', 'bootstrap.min.css'),
+    path.join(ROOT, '..', 'fixtures', 'vendor', 'bootstrap.min.css'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && c !== dest && fs.statSync(c).size > 1000) {
+      fs.copyFileSync(c, dest);
+      return;
+    }
+  }
+}
+
+ensureVendorBootstrap();
 
 function shell(title, body, extraHead = '') {
   return `<!DOCTYPE html>
@@ -602,14 +623,16 @@ h1{font-size:clamp(2.5rem,6vw,4.5rem);font-weight:500;margin:0 0 1rem}
 </body></html>`);
 }
 
-// Rewrite fetched Bootstrap docs examples to use CDN + strip scripts that break offline
+// Rewrite fetched Bootstrap docs examples to use local vendor CSS (no SRI/CDN).
 function localizeBootstrapExample(srcPath, outRel, id, tags) {
   if (!fs.existsSync(srcPath)) return;
   let html = fs.readFileSync(srcPath, 'utf8');
-  // Bootstrap docs examples often link ../assets - replace with CDN and inline minimal body extraction
+  html = html.replace(/href="https?:\/\/[^"]*bootstrap(\.min)?\.css"[^>]*>/g, `href="${BS}" rel="stylesheet">`);
   html = html.replace(/href="[^"]*bootstrap(\.min)?\.css"/g, `href="${BS}"`);
+  html = html.replace(/\sintegrity="[^"]*"/g, '');
+  html = html.replace(/\scrossorigin="[^"]*"/g, '');
   html = html.replace(/<script[\s\S]*?<\/script>/gi, '');
-  if (!/bootstrap@5/.test(html)) {
+  if (!/vendor\/bootstrap\.min\.css/.test(html) && !/bootstrap\.min\.css/.test(html)) {
     html = html.replace('</head>', `<link href="${BS}" rel="stylesheet"></head>`);
   }
   // Fix relative asset roots that 404

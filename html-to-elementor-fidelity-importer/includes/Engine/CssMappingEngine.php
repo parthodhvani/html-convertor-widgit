@@ -130,16 +130,30 @@ final class CssMappingEngine implements EngineInterface
 		$spacing = $this->mapper->spacing($node, true);
 		$out = array_merge($out, $spacing);
 
-		if (!empty($whitespace['padding']) && is_array($whitespace['padding']) && empty($out['padding'])) {
+		// Residual bbox padding is only a fallback when Chromium never emitted
+		// padding keys. Cap each side so under-filled rows cannot invent 1000px+.
+		$s = $node['s'] ?? array();
+		$has_computed_pad = array_key_exists('pt', $s) || array_key_exists('pr', $s)
+			|| array_key_exists('pb', $s) || array_key_exists('pl', $s);
+		if (!$has_computed_pad && !empty($whitespace['padding']) && is_array($whitespace['padding']) && empty($out['padding'])) {
 			$p = $whitespace['padding'];
-			$out['padding'] = array(
-				'unit' => 'px',
-				'top' => (string) round((float) ($p['top'] ?? 0)),
-				'right' => (string) round((float) ($p['right'] ?? 0)),
-				'bottom' => (string) round((float) ($p['bottom'] ?? 0)),
-				'left' => (string) round((float) ($p['left'] ?? 0)),
-				'isLinked' => false,
+			$sides = array(
+				'top' => (float) ($p['top'] ?? 0),
+				'right' => (float) ($p['right'] ?? 0),
+				'bottom' => (float) ($p['bottom'] ?? 0),
+				'left' => (float) ($p['left'] ?? 0),
 			);
+			$max_side = max($sides);
+			if ($max_side > 0 && $max_side <= 160) {
+				$out['padding'] = array(
+					'unit' => 'px',
+					'top' => (string) round($sides['top']),
+					'right' => (string) round($sides['right']),
+					'bottom' => (string) round($sides['bottom']),
+					'left' => (string) round($sides['left']),
+					'isLinked' => false,
+				);
+			}
 		}
 
 		// Only emit flex_gap when constraint/CSS gap exists — not margin-invented gaps.
