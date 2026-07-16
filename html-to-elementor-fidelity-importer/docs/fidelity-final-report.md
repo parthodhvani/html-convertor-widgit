@@ -2,7 +2,7 @@
 
 ## Verdict
 
-The conversion pipeline is a **Browser Rendering → Elementor Compiler**. Forensic audit + earliest-loss fixes lifted the 100-page accuracy suite from **~84.1%** (42-page prior) to **89.1%** (forensic-v1), then targeted geometry flatteners that still crushed Bootstrap/multi-column pages.
+The conversion pipeline is a **Browser Rendering → Elementor Compiler**. Forensic audit + earliest-loss fixes lifted accuracy from **~84.1%** (42 pages) to **89.0–89.1%** on a **100-page** corpus. The accuracy loop is **stopped** (forensic-v3 vs forensic-v1 Δ ≤ 0.5%).
 
 ## Architecture (unchanged foundation)
 
