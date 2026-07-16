@@ -222,6 +222,30 @@ final class EngineTest extends TestCase
 		);
 		$out = $analyzer->analyze($sections);
 		$this->assertGreaterThan(0, $out[0]['tree']['whitespace']['gap'] ?? 0);
+		$this->assertSame('constraint', $out[0]['tree']['s']['_gap_source'] ?? '');
+		$this->assertSame('24px', $out[0]['tree']['s']['gap'] ?? '');
+	}
+
+	public function test_whitespace_analyzer_uses_parent_row_direction(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 220),
+					's' => array('disp' => 'flex', 'fd' => 'row'),
+					'layoutConstraint' => array('direction' => 'row'),
+					'children' => array(
+						array('tag' => 'div', 'bbox' => array('x' => 0, 'y' => 0, 'width' => 300, 'height' => 200), 's' => array(), 'children' => array()),
+						array('tag' => 'div', 'bbox' => array('x' => 324, 'y' => 0, 'width' => 300, 'height' => 200), 's' => array(), 'children' => array()),
+					),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$this->assertSame('row', $out[0]['tree']['whitespace']['direction'] ?? '');
+		$this->assertEqualsWithDelta(24.0, (float) ($out[0]['tree']['whitespace']['gap'] ?? 0), 0.5);
 	}
 
 	public function test_alignment_engine_detects_shared_left(): void
