@@ -425,6 +425,51 @@ final class EngineTest extends TestCase
 		$this->assertGreaterThan(0, $result['geometry_similarity']);
 	}
 
+	public function test_visual_validation_prioritizes_geometry_over_widget_coverage(): void
+	{
+		$engine = new VisualValidationEngine(95);
+		// Empty Elementor tree vs a real source section → low geometry.
+		$sections = array(
+			array(
+				'bbox' => array('x' => 0, 'y' => 0, 'width' => 1200, 'height' => 800),
+				'tree' => array(
+					'tag' => 'section',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 1200, 'height' => 800),
+					'layoutConstraint' => array('direction' => 'row', 'gap' => 40),
+					'children' => array(
+						array(
+							'tag' => 'div',
+							'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 800),
+							'children' => array(),
+						),
+						array(
+							'tag' => 'div',
+							'bbox' => array('x' => 640, 'y' => 0, 'width' => 560, 'height' => 800),
+							'children' => array(),
+						),
+					),
+				),
+			),
+		);
+		$score = $engine->score(
+			array(),
+			array(
+				'sections' => $sections,
+				'report' => array(
+					'native_widgets' => 100,
+					'html_widgets' => 0,
+				),
+			)
+		);
+
+		$this->assertSame('geometry_primary', $score['scoring_mode']);
+		$this->assertSame(100, $score['widget_coverage']);
+		// Perfect widget coverage must not alone push fidelity to the old 90%+ floor.
+		$this->assertLessThan(90, $score['fidelity']);
+		$this->assertSame(0, $score['matched_frames']);
+		$this->assertGreaterThan(0, $score['source_frames']);
+	}
+
 	public function test_layout_graph_emitter_hoists_transparent_wrapper(): void
 	{
 		$converter = new \HtmlToElementor\Elementor\LayoutTreeConverter();

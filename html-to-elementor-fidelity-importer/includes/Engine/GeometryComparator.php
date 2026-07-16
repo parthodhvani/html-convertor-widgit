@@ -48,18 +48,22 @@ final class GeometryComparator implements EngineInterface
 		$source_total = 0;
 
 		$section_count = max(count($sections), count($elementor_data));
+		$missing_sections = 0;
 		for ($i = 0; $i < $section_count; ++$i) {
 			$section = $sections[$i] ?? array();
 			$element = $elementor_data[$i] ?? null;
+
+			// Always count source frames so missing Elementor emission is penalized.
+			$source = $this->extract_source_frames(array($section));
+			$source_total += count($source);
+
 			if (!is_array($element)) {
+				++$missing_sections;
 				continue;
 			}
 
-			$source = $this->extract_source_frames(array($section));
 			$emitted = $this->estimate_emitted_frames(array($element), array($section));
 			$matched = $this->match_frames($source, $emitted);
-
-			$source_total += count($source);
 			$matched_total += count($matched);
 
 			foreach ($matched as $pair) {
@@ -82,7 +86,14 @@ final class GeometryComparator implements EngineInterface
 		$position_rmse = $this->rmse($all_position);
 		$size_rmse = $this->rmse($all_size);
 		$bbox_delta = round(($position_rmse + $size_rmse) / 2, 2);
-		$match_ratio = $source_total > 0 ? $matched_total / $source_total : 1.0;
+		// Empty/mismatched emission must not default to a perfect match ratio.
+		if ($source_total <= 0 && $missing_sections > 0) {
+			$match_ratio = 0.0;
+		} elseif ($source_total > 0) {
+			$match_ratio = $matched_total / $source_total;
+		} else {
+			$match_ratio = empty($elementor_data) && !empty($sections) ? 0.0 : 1.0;
+		}
 
 		$geometry_similarity = $this->similarity_from_rmse($position_rmse, $size_rmse, $match_ratio);
 		$layout_similarity = $this->layout_structure_similarity($sections, $elementor_data, $geometry_similarity);
