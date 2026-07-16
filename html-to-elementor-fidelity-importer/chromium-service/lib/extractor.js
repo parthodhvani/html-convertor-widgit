@@ -57,11 +57,15 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
   }
   fs.mkdirSync(outDir, { recursive: true });
 
-  const browser = await puppeteer.launch({
+  if (config.debug) {
+    // eslint-disable-next-line no-console
     console.log('Launching Chrome from:', '/usr/bin/google-chrome');
+    // eslint-disable-next-line no-console
     console.log('Puppeteer version:', require('puppeteer/package.json').version);
-    executablePath: '/usr/bin/google-chrome',
+  }
 
+  const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/google-chrome',
     headless: 'new',
     args: [
       '--no-sandbox',
