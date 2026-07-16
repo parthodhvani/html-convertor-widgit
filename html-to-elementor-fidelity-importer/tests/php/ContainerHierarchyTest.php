@@ -23,6 +23,49 @@ final class ContainerHierarchyTest extends TestCase
 {
 	use RegressionFixtures;
 
+	public function test_container_optimizer_splits_oversized_widget_stack(): void
+	{
+		$widgets = array();
+		for ($i = 0; $i < 4; ++$i) {
+			$widgets[] = array(
+				'id' => 'h' . $i,
+				'elType' => 'widget',
+				'widgetType' => 'heading',
+				'settings' => array('title' => 'H' . $i),
+				'elements' => array(),
+			);
+			$widgets[] = array(
+				'id' => 't' . $i,
+				'elType' => 'widget',
+				'widgetType' => 'text-editor',
+				'settings' => array('editor' => 'Body ' . $i),
+				'elements' => array(),
+			);
+		}
+
+		$elements = array(
+			array(
+				'id' => 'root',
+				'elType' => 'container',
+				'isInner' => false,
+				'settings' => array('content_width' => 'full', 'flex_direction' => 'column'),
+				'elements' => $widgets,
+			),
+		);
+
+		$optimizer = new ContainerTreeOptimizer();
+		$optimized = $optimizer->optimize($elements);
+		$stats = $optimizer->stats();
+
+		$this->assertGreaterThan(0, $stats['oversized_containers_split']);
+		$this->assertGreaterThan(1, count($optimized[0]['elements']));
+		foreach ($optimized[0]['elements'] as $child) {
+			if ('container' === ($child['elType'] ?? '')) {
+				$this->assertSame(1, (int) ($child['settings']['_h2e_designer_group'] ?? 0));
+			}
+		}
+	}
+
 	public function test_container_optimizer_removes_redundant_single_child_chain(): void
 	{
 		$elements = array(

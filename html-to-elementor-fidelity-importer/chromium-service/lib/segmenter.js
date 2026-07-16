@@ -153,6 +153,13 @@ function browserPageSegmenter() {
     if (cs.clipPath && cs.clipPath !== 'none') s.clip = cs.clipPath;
     if (cs.maskImage && cs.maskImage !== 'none') s.mask = cs.maskImage;
     if (cs.mixBlendMode && cs.mixBlendMode !== 'normal') s.blend = cs.mixBlendMode;
+    if (cs.isolation && cs.isolation !== 'auto') s.isolation = cs.isolation;
+    if (cs.backdropFilter && cs.backdropFilter !== 'none') s.bdFilter = cs.backdropFilter;
+    else if (cs.webkitBackdropFilter && cs.webkitBackdropFilter !== 'none') s.bdFilter = cs.webkitBackdropFilter;
+    if (cs.contain && cs.contain !== 'none') s.contain = cs.contain;
+    if (cs.willChange && cs.willChange !== 'auto') s.willChange = cs.willChange;
+    if (cs.paintOrder && cs.paintOrder !== 'normal') s.paintOrder = cs.paintOrder;
+    if (cs.perspective && cs.perspective !== 'none') s.perspective = cs.perspective;
     if (cs.transition && cs.transition !== 'all 0s ease 0s') s.transition = cs.transition;
     if (cs.animationName && cs.animationName !== 'none') s.animation = cs.animationName;
     if (cs.textShadow && cs.textShadow !== 'none') s.tsh = cs.textShadow;
@@ -409,9 +416,49 @@ function browserPageSegmenter() {
         filter: cs.filter,
         mixBlendMode: cs.mixBlendMode,
         isolation: cs.isolation,
+        backdropFilter: cs.backdropFilter || cs.webkitBackdropFilter || 'none',
+        overflow: cs.overflow,
+        clipPath: cs.clipPath,
+        contain: cs.contain,
+        willChange: cs.willChange,
+        pointerEvents: cs.pointerEvents,
+        visibility: cs.visibility,
       },
       cssVars: vars,
     };
+
+    // Phase 12 — capture measured text metrics for atomic/text leaves.
+    const direct = node.text;
+    if (direct && (ATOMIC.has(tag) || tag === 'span' || tag === 'a' || tag === 'li')) {
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const tr = range.getBoundingClientRect();
+        const fontPx = num(cs.fontSize) || 16;
+        let lineHeightPx = num(cs.lineHeight);
+        // CSS "normal" parses to 0 — recover from measured box / font size.
+        if (lineHeightPx <= 0) {
+          lineHeightPx = tr.height > 0 ? num(tr.height) : Math.round(fontPx * 1.2 * 100) / 100;
+        }
+        const lineCount = Math.max(1, Math.round(tr.height / Math.max(1, lineHeightPx || fontPx)));
+        node.typography = {
+          textWidth: num(tr.width),
+          textHeight: num(tr.height),
+          lineCount,
+          fontSizePx: fontPx,
+          lineHeightPx,
+          letterSpacingPx: num(cs.letterSpacing),
+          wordSpacingPx: num(cs.wordSpacing),
+          fontAscentApprox: Math.round(fontPx * 0.8 * 100) / 100,
+          fontDescentApprox: Math.round(fontPx * 0.2 * 100) / 100,
+          whiteSpace: cs.whiteSpace,
+          wordBreak: cs.wordBreak,
+          overflowWrap: cs.overflowWrap,
+        };
+      } catch (e) {
+        // ignore measurement failures
+      }
+    }
 
     if (tag === 'img') {
       node.src = el.currentSrc || el.getAttribute('src') || '';
@@ -527,6 +574,97 @@ function browserPageSegmenter() {
     return node;
   }
 
+  function bgKey(cs) {
+    const img = cs.backgroundImage && cs.backgroundImage !== 'none' ? cs.backgroundImage : '';
+    const color = transparent(cs.backgroundColor) ? 'transparent' : cs.backgroundColor;
+    return color + '|' + img;
+  }
+
+  /**
+   * Visual segmentation: prefer whitespace gaps + background continuity over
+   * raw DOM siblings. Groups consecutive siblings that share background and
+   * have small vertical gaps; splits on large whitespace or bg changes.
+   *
+   * @param {Element[]} els Visible sibling candidates.
+   * @returns {Element[]} Section roots (may be original els or wrappers).
+   */
+  function visualSegment(els) {
+    if (els.length <= 1) return els;
+
+    const meta = els.map((el) => {
+      const cs = window.getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        el,
+        y: r.y,
+        bottom: r.y + r.height,
+        h: r.height,
+        bg: bgKey(cs),
+        semantic: isSemantic(el),
+      };
+    });
+
+    // Sort by visual top (DOM order usually matches, but absolute siblings may not).
+    meta.sort((a, b) => {
+      if (Math.abs(a.y - b.y) > 1) return a.y - b.y;
+      return (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+    });
+
+    const gaps = [];
+    for (let i = 0; i < meta.length - 1; i += 1) {
+      gaps.push(Math.max(0, meta[i + 1].y - meta[i].bottom));
+    }
+    const medianGap = gaps.length
+      ? gaps.slice().sort((a, b) => a - b)[Math.floor(gaps.length / 2)]
+      : 0;
+    // Large whitespace separator: max(48px, 2.5× median inter-sibling gap).
+    const splitGap = Math.max(48, medianGap * 2.5);
+
+    const groups = [];
+    let current = [meta[0]];
+    for (let i = 1; i < meta.length; i += 1) {
+      const prev = meta[i - 1];
+      const cur = meta[i];
+      const gap = Math.max(0, cur.y - prev.bottom);
+      const bgBreak = prev.bg !== cur.bg && prev.bg !== 'transparent|' && cur.bg !== 'transparent|';
+      const semanticBreak = cur.semantic && prev.semantic && gap >= 16;
+      if (gap >= splitGap || bgBreak || semanticBreak) {
+        groups.push(current);
+        current = [cur];
+      } else {
+        current.push(cur);
+      }
+    }
+    groups.push(current);
+
+    // Flatten groups: single-element groups stay as-is; multi-element groups
+    // that already share a common parent keep the first as section root only
+    // when they were already separate — prefer emitting each semantic block.
+    const out = [];
+    groups.forEach((group) => {
+      if (group.length === 1) {
+        out.push(group[0].el);
+        return;
+      }
+      // If every member is semantic, keep them separate for editability.
+      if (group.every((g) => g.semantic)) {
+        group.forEach((g) => out.push(g.el));
+        return;
+      }
+      // Non-semantic cluster → tag every member with the same visual group id
+      // so PHP VisualTreeBuilder can merge them into one visual section.
+      const gid = 'vg-' + String(out.length);
+      const primary = group.reduce((best, g) => (g.h > best.h ? g : best), group[0]);
+      group.forEach((g) => {
+        g.el.setAttribute('data-h2e-visual-group', gid);
+      });
+      primary.el.setAttribute('data-h2e-visual-section', '1');
+      group.forEach((g) => out.push(g.el));
+    });
+
+    return out.length ? out : els;
+  }
+
   // 1. Find the content container by descending single non-semantic wrappers.
   let container = document.body;
   let guard = 0;
@@ -544,6 +682,9 @@ function browserPageSegmenter() {
   if (candidates.length === 0) {
     candidates = [container];
   }
+
+  // Phase 8: visual segmentation overrides pure DOM sibling order.
+  candidates = visualSegment(candidates);
 
   const sections = [];
   candidates.forEach((el, index) => {
@@ -568,6 +709,8 @@ function browserPageSegmenter() {
       bbox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       styles,
       background: cs.backgroundColor,
+      visualGroup: el.getAttribute('data-h2e-visual-group') || '',
+      visualSection: el.hasAttribute('data-h2e-visual-section'),
       tree,
     });
   });

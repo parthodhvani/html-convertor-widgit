@@ -91,6 +91,29 @@ final class CssMapper
             }
         }
 
+        // Phase 12 — prefer measured line-height / letter-spacing from typography bag.
+        $typo = $node['typography'] ?? array();
+        if (is_array($typo)) {
+            if (empty($out['typography_line_height']) && !empty($typo['lineHeightPx']) && !empty($typo['fontSizePx'])) {
+                $ratio = ((float) $typo['lineHeightPx']) / max(1.0, (float) $typo['fontSizePx']);
+                if ($ratio > 0.8 && $ratio < 3.5) {
+                    $out['typography_typography'] = 'custom';
+                    $out['typography_line_height'] = array('unit' => 'em', 'size' => round($ratio, 2));
+                }
+            }
+            if (empty($out['typography_letter_spacing']) && isset($typo['letterSpacingPx'])
+                && abs((float) $typo['letterSpacingPx']) > 0.01) {
+                $out['typography_typography'] = 'custom';
+                $out['typography_letter_spacing'] = array(
+                    'unit' => 'px',
+                    'size' => round((float) $typo['letterSpacingPx'], 2),
+                );
+            }
+            if (!empty($typo['textWidth'])) {
+                $out['_h2e_text_width'] = (float) $typo['textWidth'];
+            }
+        }
+
         return $out;
     }
 
@@ -369,9 +392,21 @@ final class CssMapper
             $css[] = 'mix-blend-mode:' . $s['blend'];
             $unsupported[] = 'mix-blend-mode';
         }
+        if (!empty($s['isolation']) && 'auto' !== $s['isolation']) {
+            $css[] = 'isolation:' . $s['isolation'];
+            $unsupported[] = 'isolation';
+        }
+        if (!empty($s['bdFilter']) && 'none' !== $s['bdFilter']) {
+            $css[] = 'backdrop-filter:' . $s['bdFilter'];
+            $unsupported[] = 'backdrop-filter';
+        }
         if (!empty($s['ov']) && 'visible' !== $s['ov']) {
             $css[] = 'overflow:' . $s['ov'];
             $unsupported[] = 'overflow';
+        }
+        if (!empty($s['contain']) && 'none' !== $s['contain']) {
+            $css[] = 'contain:' . $s['contain'];
+            $unsupported[] = 'contain';
         }
         if (!empty($s['z'])) {
             // Elementor containers support z_index in advanced; map when numeric.

@@ -21,6 +21,7 @@ final class SemanticComponentRecognizer implements EngineInterface
 {
 
 	private VisualLeafClassifier $leaf;
+	private CompilerConfidence $confidence_engine;
 	private int $threshold;
 
 	/** @var array<string,int> */
@@ -33,7 +34,9 @@ final class SemanticComponentRecognizer implements EngineInterface
 	/** @var array<int,string> */
 	private const NATIVE_CONTAINER_ROLES = array(
 		'layered_block',
+		'hero',
 		'horizontal_bar',
+		'header',
 		'footer_band',
 		'row_group',
 		'column_group',
@@ -48,11 +51,18 @@ final class SemanticComponentRecognizer implements EngineInterface
 		'icon_box',
 		'social_icons',
 		'pricing',
+		'gallery',
+		'logo_cloud',
+		'team',
+		'statistics',
+		'timeline',
+		'contact',
 	);
 
 	public function __construct(?VisualLeafClassifier $leaf = null, int $threshold = 95)
 	{
 		$this->leaf = $leaf ?? new VisualLeafClassifier();
+		$this->confidence_engine = new CompilerConfidence();
 		$this->threshold = $threshold;
 	}
 
@@ -113,13 +123,28 @@ final class SemanticComponentRecognizer implements EngineInterface
 			}
 
 			if ('widget' === ($leaf['kind'] ?? '')) {
-				return array(
+				$result = array(
 					'kind' => 'widget',
 					'type' => (string) ($leaf['type'] ?? ''),
 					'settings' => $leaf['settings'] ?? array(),
 					'confidence' => $confidence,
 					'role' => $role,
 				);
+				// Phase 14 — gate low-confidence composite/interactive widgets.
+				$gated = $this->confidence_engine->gate($result, $node);
+				if ('fallback' === ($gated['kind'] ?? '')) {
+					$this->record_fallback($node, $role, (int) ($gated['confidence'] ?? $confidence));
+					return array(
+						'kind' => 'fallback',
+						'confidence' => (int) ($gated['confidence'] ?? $confidence),
+						'role' => $role,
+						'fallback_reason' => (string) ($gated['fallback_reason'] ?? 'low_confidence'),
+					);
+				}
+				return array_merge($result, array(
+					'confidence' => (int) ($gated['confidence'] ?? $confidence),
+					'confidence_reasons' => $gated['confidence_reasons'] ?? array(),
+				));
 			}
 		}
 

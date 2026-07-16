@@ -36,13 +36,13 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($tree['layoutRole'] ?? '');
 
-		if ('layered_block' === $role) {
+		if (in_array($role, array('layered_block', 'hero'), true)) {
 			$layered = $this->builder->emit_layered_block($tree);
 			if (null !== $layered) {
 				return $layered;
 			}
 		}
-		if ('horizontal_bar' === $role) {
+		if (in_array($role, array('horizontal_bar', 'header'), true)) {
 			$bar = $this->builder->emit_horizontal_bar($tree);
 			if (null !== $bar) {
 				return $bar;
@@ -226,9 +226,15 @@ final class LayoutGraphEmitter
 	{
 		$role = (string) ($node['layoutRole'] ?? '');
 
-		if ('layered_block' === $role) {
+		if (in_array($role, array('layered_block', 'hero'), true)) {
 			$layered = $this->builder->emit_layered_block($node);
 			return null !== $layered ? array($layered) : $this->emit_children($node, $is_section, $parent_row, $parent_width);
+		}
+		if (in_array($role, array('horizontal_bar', 'header'), true)) {
+			$bar = $this->builder->emit_horizontal_bar($node);
+			if (null !== $bar) {
+				return array($bar);
+			}
 		}
 
 		$composite = $this->builder->emit_composite_widget($node);
@@ -268,7 +274,9 @@ final class LayoutGraphEmitter
 		$role = (string) ($node['layoutRole'] ?? '');
 		if (in_array($role, array(
 			'layered_block',
+			'hero',
 			'horizontal_bar',
+			'header',
 			'footer_band',
 			'row_group',
 			'column_group',
@@ -277,6 +285,12 @@ final class LayoutGraphEmitter
 			'form_block',
 			'faq',
 			'testimonial',
+			'gallery',
+			'logo_cloud',
+			'team',
+			'statistics',
+			'timeline',
+			'contact',
 			'icon_box',
 			'social_icons',
 			'pricing',

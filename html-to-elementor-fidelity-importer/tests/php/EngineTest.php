@@ -20,6 +20,7 @@ use HtmlToElementor\Engine\PixelRepairEngine;
 use HtmlToElementor\Engine\SemanticComponentGraph;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
 use HtmlToElementor\Engine\VisualLeafClassifier;
+use HtmlToElementor\Engine\CompilerConfidence;
 use HtmlToElementor\Engine\VisualTreeBuilder;
 use HtmlToElementor\Engine\WhitespaceAnalyzer;
 use HtmlToElementor\Engine\DesignTokenExtractor;
@@ -120,7 +121,8 @@ final class EngineTest extends TestCase
 		);
 		$sections = $solver->solve($sections);
 		$out = $graph->build($sections);
-		$this->assertSame('layered_block', $out[0]['tree']['layoutRole']);
+		// Tall first layered section with image → hero (Phase 10 semantic upgrade).
+		$this->assertSame('hero', $out[0]['tree']['layoutRole']);
 		$this->assertSame('horizontal_bar', $out[1]['tree']['layoutRole']);
 	}
 
@@ -292,6 +294,67 @@ final class EngineTest extends TestCase
 		);
 		$out = $builder->build($sections);
 		$this->assertSame('card', $out[0]['tree']['cls'] ?? '');
+	}
+
+	public function test_visual_tree_merges_chromium_visual_groups(): void
+	{
+		$builder = new VisualTreeBuilder();
+		$sections = array(
+			array(
+				'visualGroup' => 'vg-0',
+				'visualSection' => true,
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'block-a',
+					's' => array('bg' => 'rgb(255,255,255)'),
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 800, 'height' => 120),
+					'children' => array(),
+				),
+			),
+			array(
+				'visualGroup' => 'vg-0',
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'block-b',
+					's' => array('bg' => 'rgb(255,255,255)'),
+					'bbox' => array('x' => 0, 'y' => 140, 'width' => 800, 'height' => 100),
+					'children' => array(),
+				),
+			),
+			array(
+				'visualGroup' => '',
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'solo',
+					's' => array('bg' => 'rgb(0,0,0)'),
+					'bbox' => array('x' => 0, 'y' => 300, 'width' => 800, 'height' => 80),
+					'children' => array(),
+				),
+			),
+		);
+		$out = $builder->build($sections);
+		$this->assertCount(2, $out);
+		$this->assertSame('h2e-visual-section', $out[0]['tree']['cls'] ?? '');
+		$this->assertCount(2, $out[0]['tree']['children'] ?? array());
+		$this->assertSame('solo', $out[1]['tree']['cls'] ?? '');
+	}
+
+	public function test_compiler_confidence_gates_ambiguous_button(): void
+	{
+		$engine = new CompilerConfidence();
+		$node = array(
+			'tag' => 'a',
+			'text' => 'x',
+			's' => array(),
+		);
+		$scored = $engine->score($node, 'button', array(), array('ambiguous_link'));
+		$this->assertTrue($scored['prefer_html']);
+		$gated = $engine->gate(array(
+			'kind' => 'widget',
+			'type' => 'button',
+			'confidence' => 40,
+		), $node);
+		$this->assertSame('fallback', $gated['kind']);
 	}
 
 	public function test_pixel_repair_applies_flex_gap(): void

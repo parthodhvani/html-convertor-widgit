@@ -46,6 +46,15 @@ if (!function_exists('sanitize_html_class')) {
 		return preg_replace('/[^A-Za-z0-9_-]/', '', $class) ?? '';
 	}
 }
+if (!function_exists('wp_json_encode')) {
+	/**
+	 * @param mixed $data Data.
+	 */
+	function wp_json_encode(mixed $data, int $options = 0, int $depth = 512): string|false
+	{
+		return json_encode($data, $options | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE, $depth);
+	}
+}
 
 $composer = H2E_PLUGIN_DIR . 'vendor/autoload.php';
 if (is_readable($composer)) {

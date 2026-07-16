@@ -550,13 +550,18 @@ final class LayoutTreeConverter
                 'size' => round($gap),
             );
         }
-        if (!empty($alignment['justify'])) {
+        // Prefer inferred constraint intents (Phase 9) over raw CSS alignment.
+        if (!empty($constraint['justify'])) {
+            $out['flex_justify_content'] = (string) $constraint['justify'];
+        } elseif (!empty($alignment['justify'])) {
             $out['flex_justify_content'] = (string) $alignment['justify'];
         }
-        if (!empty($alignment['align_items'])) {
+        if (!empty($constraint['align_items'])) {
+            $out['flex_align_items'] = (string) $constraint['align_items'];
+        } elseif (!empty($alignment['align_items'])) {
             $out['flex_align_items'] = (string) $alignment['align_items'];
         }
-		if (!empty($constraint['stretch'])) {
+		if (!empty($constraint['stretch']) && empty($constraint['align_items'])) {
 			$out['flex_align_items'] = 'stretch';
 		}
 		if (!empty($constraint['fill'])) {
@@ -564,6 +569,15 @@ final class LayoutTreeConverter
 		}
 		if (!empty($constraint['auto_width'])) {
 			$out['width'] = array('unit' => '%', 'size' => 100);
+		}
+		if (!empty($constraint['intents']['sticky']) || 'sticky' === ($node['s']['pos'] ?? '')) {
+			$out['position'] = 'sticky';
+		}
+		if (!empty($constraint['intents']['aspect_locked']) && !empty($node['s']['ar']) && 'auto' !== $node['s']['ar']) {
+			$out['_h2e_custom_css'] = trim(
+				((string) ($out['_h2e_custom_css'] ?? '')) . ';aspect-ratio:' . $node['s']['ar'],
+				" \t\n\r\0\x0B;"
+			);
 		}
 
 		$responsive = (array) ($node['responsiveLayout'] ?? array());

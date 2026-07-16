@@ -125,6 +125,40 @@ final class ConstraintLayoutSolver implements EngineInterface
 		$shared_center_y = Geometry::aligned($centers_y, 8.0);
 		$shared_baseline = Geometry::aligned($baseline, 6.0);
 
+		$parent_box = Geometry::bbox($parent);
+		$intents = $this->infer_intents(
+			$children,
+			$boxes,
+			$parent,
+			$parent_box,
+			$direction,
+			array(
+				'equal_width' => $equal_width,
+				'equal_height' => $equal_height,
+				'shared_center_x' => $shared_center_x,
+				'shared_left' => $shared_left,
+				'shared_right' => $shared_right,
+			)
+		);
+
+		$justify = 'flex-start';
+		if (!empty($intents['space_between'])) {
+			$justify = 'space-between';
+		} elseif (!empty($intents['centered'])) {
+			$justify = 'center';
+		} elseif ($shared_right && !$shared_left) {
+			$justify = 'flex-end';
+		}
+
+		$align_items = 'stretch';
+		if (!empty($intents['align_center'])) {
+			$align_items = 'center';
+		} elseif ($shared_top && !$equal_height) {
+			$align_items = 'flex-start';
+		} elseif ($shared_bottom && !$equal_height) {
+			$align_items = 'flex-end';
+		}
+
 		return array(
 			'type' => 'row' === $direction ? 'horizontal_stack' : 'vertical_stack',
 			'direction' => $direction,
@@ -142,7 +176,91 @@ final class ConstraintLayoutSolver implements EngineInterface
 			'auto_height' => !$equal_height && 'row' === $direction,
 			'stretch' => ('row' === $direction && !$equal_width) || ('column' === $direction && !$equal_height),
 			'fill' => $this->children_fill_parent($boxes),
+			// Phase 9 — layout intents for Elementor generation.
+			'intents' => $intents,
+			'justify' => $justify,
+			'align_items' => $align_items,
+			'centered' => !empty($intents['centered']),
+			'space_between' => !empty($intents['space_between']),
+			'overlay' => !empty($intents['overlay']),
+			'aspect_locked' => !empty($intents['aspect_locked']),
 		);
+	}
+
+	/**
+	 * Infer high-level layout intents from geometry + position.
+	 *
+	 * @param array<int,array<string,mixed>> $children Children.
+	 * @param array<int,array<string,float>> $boxes    Boxes.
+	 * @param array<string,mixed>            $parent   Parent.
+	 * @param array<string,float>            $parent_box Parent bbox.
+	 * @param string                         $direction row|column.
+	 * @param array<string,bool>             $flags    Alignment flags.
+	 * @return array<string,bool>
+	 */
+	private function infer_intents(array $children, array $boxes, array $parent, array $parent_box, string $direction, array $flags): array
+	{
+		$intents = array(
+			'centered' => false,
+			'space_between' => false,
+			'align_start' => !empty($flags['shared_left']) || !empty($flags['shared_top']),
+			'align_end' => !empty($flags['shared_right']),
+			'align_center' => !empty($flags['shared_center_x']) && 'column' === $direction,
+			'equal_width' => !empty($flags['equal_width']),
+			'equal_height' => !empty($flags['equal_height']),
+			'stretch' => false,
+			'overlay' => false,
+			'background_layer' => false,
+			'floating' => false,
+			'sticky' => false,
+			'absolute_layer' => false,
+			'aspect_locked' => false,
+			'pinned' => false,
+		);
+
+		if (!empty($flags['shared_center_x']) && 'column' === $direction) {
+			$intents['centered'] = true;
+		}
+
+		// Space-between: first near start edge, last near end edge, uneven gaps.
+		if ('row' === $direction && count($boxes) >= 2 && $parent_box['width'] > 0) {
+			$first = $boxes[0];
+			$last = $boxes[count($boxes) - 1];
+			$start_inset = abs($first['x'] - $parent_box['x']);
+			$end_inset = abs(($parent_box['x'] + $parent_box['width']) - ($last['x'] + $last['width']));
+			if ($start_inset <= 12 && $end_inset <= 12 && empty($flags['equal_width'])) {
+				$intents['space_between'] = true;
+			}
+		}
+
+		$absolute = 0;
+		$sticky = 0;
+		foreach ($children as $i => $child) {
+			$pos = strtolower((string) ($child['s']['pos'] ?? 'static'));
+			if (in_array($pos, array('absolute', 'fixed'), true)) {
+				++$absolute;
+				$intents['absolute_layer'] = true;
+				$intents['floating'] = true;
+			}
+			if ('sticky' === $pos) {
+				++$sticky;
+				$intents['sticky'] = true;
+				$intents['pinned'] = true;
+			}
+			$ar = trim((string) ($child['s']['ar'] ?? ''));
+			if ('' !== $ar && 'auto' !== $ar) {
+				$intents['aspect_locked'] = true;
+			}
+		}
+		if ($absolute >= 1) {
+			$intents['overlay'] = VisualSignals::is_layered($parent);
+			$intents['background_layer'] = $intents['overlay'];
+		}
+
+		$intents['stretch'] = ('row' === $direction && empty($flags['equal_width']))
+			|| ('column' === $direction && empty($flags['equal_height']));
+
+		return $intents;
 	}
 
 	/**
