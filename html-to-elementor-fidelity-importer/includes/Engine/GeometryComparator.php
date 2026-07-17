@@ -326,37 +326,52 @@ final class GeometryComparator implements EngineInterface
 		$matched = array();
 		$used = array();
 
-		foreach ($source as $si => $s) {
+		foreach ($source as $s) {
 			$best = null;
 			$best_score = PHP_FLOAT_MAX;
 			$best_ei = -1;
 
-			foreach ($emitted as $ei => $e) {
-				if (isset($used[$ei])) {
-					continue;
-				}
-				if ('' !== $s['cls'] && $s['cls'] === $e['cls']) {
-					$best = $e;
-					$best_ei = $ei;
-					$best_score = 0;
-					break;
-				}
-			}
-
-			if (null === $best) {
+			// Same CSS class: pick the nearest instance (not the first).
+			if ('' !== ($s['cls'] ?? '')) {
 				foreach ($emitted as $ei => $e) {
 					if (isset($used[$ei])) {
 						continue;
 					}
-					if ($s['type'] !== $e['type']) {
+					if ($s['cls'] !== ($e['cls'] ?? '')) {
 						continue;
 					}
-					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.5;
+					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.25;
 					if ($score < $best_score) {
 						$best_score = $score;
 						$best = $e;
 						$best_ei = $ei;
 					}
+				}
+			}
+
+			// Fall back to nearest same-type frame when class match is absent/far.
+			if (null === $best || $best_score > 480.0) {
+				$fallback_best = null;
+				$fallback_score = PHP_FLOAT_MAX;
+				$fallback_ei = -1;
+				foreach ($emitted as $ei => $e) {
+					if (isset($used[$ei])) {
+						continue;
+					}
+					if (($s['type'] ?? '') !== ($e['type'] ?? '')) {
+						continue;
+					}
+					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.5;
+					if ($score < $fallback_score) {
+						$fallback_score = $score;
+						$fallback_best = $e;
+						$fallback_ei = $ei;
+					}
+				}
+				if (null !== $fallback_best && (null === $best || $fallback_score < $best_score)) {
+					$best = $fallback_best;
+					$best_ei = $fallback_ei;
+					$best_score = $fallback_score;
 				}
 			}
 

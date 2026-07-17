@@ -168,7 +168,7 @@ function scoreFixture(name) {
 
   const gradientPreserve =
     paintSrc.gradients > 0
-      ? Math.round((paintOut.grads / paintSrc.gradients) * 100)
+      ? Math.min(100, Math.round((paintOut.grads / paintSrc.gradients) * 100))
       : 100;
 
   return {
