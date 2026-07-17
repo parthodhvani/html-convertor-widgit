@@ -702,6 +702,113 @@ p  { color: var(--text-muted); }
   transition: all .2s;
 }
 .chip:hover, .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ================= DARK THEME OVERRIDE (Petra final) ================= */
+/* ================= DARK THEME OVERRIDE ================= */
+:root {
+  --bg: #05070F;
+  --bg-alt: #0a1020;
+  --text: #e6ecf5;
+  --text-muted: #a3b0c7;
+  --border: rgba(255,255,255,0.08);
+  --shadow-sm: 0 4px 14px rgba(0,0,0,0.35);
+  --shadow-md: 0 12px 32px rgba(0,0,0,0.45);
+  --shadow-lg: 0 24px 60px rgba(0,0,0,0.6);
+  --grad-glass: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+}
+body { background: var(--bg); color: var(--text); }
+h1, h2, h3, h4, h5 { color: #f4ecd6; }
+p { color: var(--text-muted); }
+a { color: var(--secondary-soft); }
+a:hover { color: var(--secondary); }
+
+.site-header {
+  background: rgba(5,7,15,0.75);
+  border-bottom: 1px solid var(--border);
+}
+.logo, .logo-text { color: #f4ecd6; }
+.logo-text small { color: var(--text-muted); }
+.nav-list a { color: #d7deec; }
+.nav-list a:hover { color: #fff; }
+
+.section-alt { background: #080c17; }
+
+.card, .testimonial, .event-card, .contact-card, .blog-card, .faq-item, .reviews {
+  background: #0d1424;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.card h3, .testimonial .who strong, .event-card h3, .contact-card h3,
+.blog-body h3, .faq-q, .toc h4, .service-card .price {
+  color: #f4ecd6;
+}
+.testimonial p { color: var(--text); }
+
+.reviews { background: linear-gradient(135deg, #0d1424, #0a1020); }
+.reviews-score .rate { color: #f4ecd6; }
+.google-logo { background: #0a1020; color: #8ab4f8; }
+
+.faq-q .plus { background: rgba(255,255,255,0.06); color: #f4ecd6; }
+.faq-a p { color: var(--text-muted); }
+
+.field input, .field textarea, .field select {
+  background: #0d1424; color: var(--text); border-color: var(--border);
+}
+.field label { background: #0d1424; color: var(--text-muted); }
+.field input:focus, .field textarea:focus, .field select:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 4px rgba(201,162,39,0.15);
+}
+.field input:focus + label,
+.field input:not(:placeholder-shown) + label,
+.field textarea:focus + label,
+.field textarea:not(:placeholder-shown) + label { color: var(--secondary-soft); }
+
+.search-bar input { background: #0d1424; color: var(--text); }
+.chip { background: #0d1424; color: var(--text); border-color: var(--border); }
+.chip:hover, .chip.active { background: var(--secondary); color: #2a1f00; border-color: var(--secondary); }
+
+.btn-primary { background: var(--secondary); color: #2a1f00; }
+.btn-primary:hover { background: var(--secondary-soft); color: #2a1f00; }
+.btn-outline { color: #f4ecd6; border-color: rgba(255,255,255,0.35); }
+.btn-outline:hover { background: #f4ecd6; color: #05070F; }
+
+.article p { color: var(--text); }
+.article blockquote { background: #0d1424; color: #f4ecd6; }
+.toc { background: #0d1424; }
+.toc a { color: var(--text); }
+
+.map-placeholder {
+  background-image:
+    radial-gradient(circle at 30% 40%, rgba(142,125,190,.25), transparent 40%),
+    radial-gradient(circle at 70% 60%, rgba(201,162,39,.18), transparent 40%),
+    linear-gradient(135deg, #0a1020, #0d1424);
+  color: #f4ecd6;
+  border-color: var(--border);
+}
+
+.hero-badge { color: #f4ecd6; }
+.hero-badge.bot { color: #2a1f00; }
+
+.timeline-item h4 { color: #f4ecd6; }
+
+/* Logo image */
+.logo-img {
+  height: 30px; width: 100%; max-width: 350px; display: block;
+  filter: brightness(0) invert(1);
+}
+
+/* Hero background image override */
+.hero {
+  background: linear-gradient(180deg, rgba(5,7,15,0.55) 0%, rgba(5,7,15,0.85) 100%),
+              url(assets/img/hero-bg.jpg) center / cover no-repeat,
+              linear-gradient(160deg, #05070F 0%, #0B1024 55%, #05070F 100%);
+}
+.page-hero {
+  background: linear-gradient(180deg, rgba(5,7,15,0.6) 0%, rgba(5,7,15,0.9) 100%),
+              url(assets/img/hero-bg.jpg) center / cover no-repeat,
+              linear-gradient(160deg, #05070F 0%, #0B1024 55%, #05070F 100%);
+}
 </style>
 </head>
 <body>
