@@ -80,4 +80,27 @@ final class CssMapperGradientTest extends TestCase
 		$this->assertSame('#C9A227', $parsed['color_a']);
 		$this->assertSame('#e6c15a', $parsed['color_b']);
 	}
+
+	public function test_max_width_maps_to_elementor_sizing(): void
+	{
+		$mapper = new CssMapper();
+		$node = array(
+			's' => array(
+				'maxW' => '1200px',
+				'minH' => '0px',
+				'minW' => '0px',
+				'maxH' => 'none',
+			),
+		);
+
+		$sizing = $mapper->sizing($node);
+
+		$this->assertSame(1200.0, (float) $sizing['max_width']['size']);
+		$this->assertSame('px', $sizing['max_width']['unit']);
+		$this->assertSame(100.0, (float) $sizing['width']['size']);
+		$this->assertSame('%', $sizing['width']['unit']);
+		$this->assertSame('center', $sizing['align_self']);
+		$this->assertArrayNotHasKey('min_width', $sizing);
+		$this->assertArrayNotHasKey('max_height', $sizing);
+	}
 }

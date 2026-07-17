@@ -435,7 +435,10 @@ final class CssMapper
     }
 
     /**
-     * Minimum-height / opacity sizing controls for a container.
+     * Width / height / max-width / min-* sizing controls for a container.
+     *
+     * Browser computed max-width (and related constraints) are mapped to
+     * Elementor size controls so centered content columns keep their measure.
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -444,17 +447,75 @@ final class CssMapper
     {
         $s = $node['s'] ?? array();
         $out = array();
-        $min_h = $this->size($s['minH'] ?? null);
-        if ($min_h && $min_h['size'] > 0) {
+
+		$max_w = $this->constrained_size($s['maxW'] ?? null);
+        if (null !== $max_w) {
+            $out['max_width'] = $max_w;
+            // Fill available width up to the browser max-width constraint.
+            if (empty($out['width'])) {
+                $out['width'] = array('unit' => '%', 'size' => 100);
+            }
+            // Center constrained measure boxes (margin:auto equivalent in flex).
+            $out['align_self'] = 'center';
+        }
+
+        $min_w = $this->constrained_size($s['minW'] ?? null);
+        if (null !== $min_w && $min_w['size'] > 0) {
+            $out['min_width'] = $min_w;
+        }
+
+        $min_h = $this->constrained_size($s['minH'] ?? null);
+        if (null !== $min_h && $min_h['size'] > 0) {
             $out['min_height'] = $min_h;
         }
+
+        $max_h = $this->constrained_size($s['maxH'] ?? null);
+        if (null !== $max_h) {
+            $out['max_height'] = $max_h;
+        }
+
+        // Explicit non-auto aspect-ratio when Chromium reports one.
+        $ar = trim((string) ($s['ar'] ?? ''));
+        if ('' !== $ar && 'auto' !== strtolower($ar)) {
+            if (preg_match('/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/', $ar, $m)) {
+                $out['aspect_ratio'] = round(((float) $m[1]) / max(0.0001, (float) $m[2]), 4);
+            } elseif (is_numeric($ar)) {
+                $out['aspect_ratio'] = (float) $ar;
+            }
+        }
+
         if (isset($s['op']) && (float) $s['op'] < 1) {
             $out['_opacity'] = array(
                 'unit' => 'px',
                 'size' => round((float) $s['op'], 2),
             );
         }
+
         return $out;
+    }
+
+    /**
+     * Parse a constraining CSS length, ignoring none/auto/0.
+     *
+     * @param mixed $value Raw CSS size.
+     * @return array{unit:string,size:float}|null
+     */
+    private function constrained_size($value): ?array
+    {
+        if (null === $value || '' === $value) {
+            return null;
+        }
+        if (is_string($value)) {
+            $lower = strtolower(trim($value));
+            if (in_array($lower, array('none', 'auto', 'initial', 'unset', '0', '0px'), true)) {
+                return null;
+            }
+        }
+        $parsed = $this->size($value);
+        if (null === $parsed || $parsed['size'] <= 0) {
+            return null;
+        }
+        return $parsed;
     }
 
     /* --------------------------------------------------------------------- */
