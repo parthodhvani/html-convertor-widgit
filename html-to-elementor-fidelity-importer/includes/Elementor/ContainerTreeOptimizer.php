@@ -115,7 +115,29 @@ final class ContainerTreeOptimizer
 			return $element;
 		}
 
-		return $this->compress_container_chain($element);
+		$element = $this->compress_container_chain($element);
+		return $this->drop_noop_flex_gap($element);
+	}
+
+	/**
+	 * flex_gap with fewer than 2 children has no layout effect and poisons
+	 * spacing comparisons when composites absorb their children.
+	 *
+	 * @param array<string,mixed> $container Container.
+	 * @return array<string,mixed>
+	 */
+	private function drop_noop_flex_gap(array $container): array
+	{
+		$kids = (array) ($container['elements'] ?? array());
+		if (count($kids) >= 2) {
+			return $container;
+		}
+		$gap = $container['settings']['flex_gap'] ?? null;
+		$size = is_array($gap) ? (float) ($gap['size'] ?? 0) : 0.0;
+		if ($size > 0) {
+			unset($container['settings']['flex_gap']);
+		}
+		return $container;
 	}
 
 	/**

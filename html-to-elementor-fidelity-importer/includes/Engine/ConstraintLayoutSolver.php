@@ -120,16 +120,34 @@ final class ConstraintLayoutSolver implements EngineInterface
 			return $constraint;
 		}
 
-		if ($geometry_gap > 0) {
+		// Geometry gap is only safe for flex/grid parents. On block/flow layouts the
+		// sibling distance is usually child margin — converting it to flex_gap and
+		// stripping margins invents spacing (often ~48px section rhythm).
+		if ($geometry_gap > 0 && $this->is_flex_or_grid($node)) {
 			$constraint['gap'] = $geometry_gap;
 			$constraint['gap_source'] = 'geometry';
 			$node['s']['gap'] = $geometry_gap . 'px';
 			$node['s']['_gap_geometry'] = true;
 			$spacing_values[(string) $geometry_gap] = ($spacing_values[(string) $geometry_gap] ?? 0) + 1;
 			$this->strip_child_margins($node);
+		} elseif ($geometry_gap > 0) {
+			$constraint['gap'] = 0;
+			$constraint['gap_source'] = 'none';
+			if (!empty($node['s']['_gap_geometry'])) {
+				unset($node['s']['gap'], $node['s']['_gap_geometry']);
+			}
 		}
 
 		return $constraint;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function is_flex_or_grid(array $node): bool
+	{
+		$disp = strtolower((string) ($node['s']['disp'] ?? ''));
+		return false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
 	}
 
 	/**

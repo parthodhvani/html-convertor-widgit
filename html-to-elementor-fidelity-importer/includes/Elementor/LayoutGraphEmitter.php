@@ -109,6 +109,11 @@ final class LayoutGraphEmitter
 		if ($pure_pattern) {
 			$composite = $this->builder->emit_composite_widget($node);
 			if (null !== $composite) {
+				// Keep a layout container so CSS gap / flex alignment survive
+				// composite collapse (FAQ, CTA, socials).
+				if ($this->should_emit_container($node, $is_section, $parent_row)) {
+					return array($this->builder->emit_container($node, array($composite), $is_section, $parent_row, $parent_width));
+				}
 				return array($composite);
 			}
 		}
@@ -242,6 +247,9 @@ final class LayoutGraphEmitter
 
 		$composite = $this->builder->emit_composite_widget($node);
 		if (null !== $composite) {
+			if ($this->should_emit_container($node, $is_section, $parent_row)) {
+				return array($this->builder->emit_container($node, array($composite), $is_section, $parent_row, $parent_width));
+			}
 			return array($composite);
 		}
 

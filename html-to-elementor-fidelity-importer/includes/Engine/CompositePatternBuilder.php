@@ -140,7 +140,36 @@ final class CompositePatternBuilder implements EngineInterface
 			'role' => 'faq',
 			'settings' => array_merge(
 				array('tabs' => $tabs),
+				$this->accordion_spacing_settings($node),
 				$this->accordion_paint_settings($node)
+			),
+		);
+	}
+
+	/**
+	 * Map FAQ flex/CSS gap onto Elementor accordion item spacing.
+	 *
+	 * @param array<string,mixed> $node FAQ root.
+	 * @return array<string,mixed>
+	 */
+	private function accordion_spacing_settings(array $node): array
+	{
+		$gap = (float) ($node['layoutConstraint']['gap'] ?? $node['whitespace']['gap'] ?? 0);
+		if ($gap <= 0) {
+			$raw = $node['s']['gap'] ?? null;
+			if (is_numeric($raw)) {
+				$gap = (float) $raw;
+			} elseif (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+				$gap = (float) $m[1];
+			}
+		}
+		if ($gap <= 0) {
+			return array();
+		}
+		return array(
+			'space_between' => array(
+				'unit' => 'px',
+				'size' => round($gap),
 			),
 		);
 	}

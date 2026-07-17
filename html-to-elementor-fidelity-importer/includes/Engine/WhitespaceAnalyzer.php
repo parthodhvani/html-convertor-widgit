@@ -95,13 +95,22 @@ final class WhitespaceAnalyzer implements EngineInterface
 				unset($node['s']['_gap_whitespace']);
 				$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
 			} elseif ($whitespace['gap'] > 0) {
-				$gap = round((float) $whitespace['gap'], 0);
-				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
-				$node['s']['gap'] = $gap . 'px';
-				$node['s']['_gap_whitespace'] = true;
-				$whitespace['gap_source'] = 'geometry';
-				$node['whitespace'] = $whitespace;
-				$this->clear_child_margins($node);
+				$disp = strtolower((string) ($node['s']['disp'] ?? ''));
+				$is_flex_or_grid = false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
+				if ($is_flex_or_grid) {
+					$gap = round((float) $whitespace['gap'], 0);
+					$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
+					$node['s']['gap'] = $gap . 'px';
+					$node['s']['_gap_whitespace'] = true;
+					$whitespace['gap_source'] = 'geometry';
+					$node['whitespace'] = $whitespace;
+					$this->clear_child_margins($node);
+				} else {
+					// Block/flow: sibling distance is margin, not gap.
+					$whitespace['gap'] = 0;
+					$whitespace['gap_source'] = 'none';
+					$node['whitespace'] = $whitespace;
+				}
 			}
 
 			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0) {

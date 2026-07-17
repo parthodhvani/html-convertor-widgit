@@ -163,7 +163,11 @@ final class GeometryComparator implements EngineInterface
 				'width' => $box['width'],
 				'height' => $box['height'],
 				'direction' => (string) ($constraint['direction'] ?? ''),
-				'gap' => (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0),
+				// Atomic leaves may carry flex gap (icon+label buttons); that is
+				// widget-internal, not a layout-container spacing signal.
+				'gap' => !empty($node['atomic'])
+					? 0.0
+					: $this->source_gap_px($node, $constraint, $whitespace),
 				'role' => (string) ($node['layoutRole'] ?? ''),
 			);
 		}
@@ -625,6 +629,42 @@ final class GeometryComparator implements EngineInterface
 		$gap = $settings['flex_gap'] ?? null;
 		if (is_array($gap)) {
 			return (float) ($gap['size'] ?? $gap['row'] ?? 0);
+		}
+		return 0.0;
+	}
+
+	/**
+	 * Authoritative gap for a source frame: constraint → whitespace → CSS gap.
+	 *
+	 * @param array<string,mixed> $node        Node.
+	 * @param array<string,mixed> $constraint  Layout constraint.
+	 * @param array<string,mixed> $whitespace  Whitespace analysis.
+	 */
+	private function source_gap_px(array $node, array $constraint, array $whitespace): float
+	{
+		if (isset($constraint['gap']) && is_numeric($constraint['gap']) && (float) $constraint['gap'] > 0) {
+			return (float) $constraint['gap'];
+		}
+		if (isset($whitespace['gap']) && is_numeric($whitespace['gap']) && (float) $whitespace['gap'] > 0) {
+			return (float) $whitespace['gap'];
+		}
+
+		$s = $node['s'] ?? array();
+		// Skip gaps stamped from geometry inference — those are not CSS.
+		if (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace'])) {
+			return 0.0;
+		}
+		// CSS gap only matters when multiple element children are spaced.
+		// Icon+label buttons often expose gap with a single element child.
+		if (count((array) ($node['children'] ?? array())) < 2) {
+			return 0.0;
+		}
+		$raw = $s['gap'] ?? $s['rowGap'] ?? $s['columnGap'] ?? $s['colGap'] ?? null;
+		if (is_numeric($raw)) {
+			return (float) $raw;
+		}
+		if (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+			return (float) $m[1];
 		}
 		return 0.0;
 	}
