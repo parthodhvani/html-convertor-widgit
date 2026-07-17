@@ -225,17 +225,196 @@ final class WhitespaceAnalyzer implements EngineInterface
 		$max_r = max(array_map(fn($b) => $b['x'] + $b['width'], $boxes));
 		$max_b = max(array_map(fn($b) => $b['y'] + $b['height'], $boxes));
 
+		$pad_top = max(0, $min_y - $parent_box['y']);
+		$pad_left = max(0, $min_x - $parent_box['x']);
+		$pad_right = max(0, $parent_box['x'] + $parent_box['width'] - $max_r);
+		$pad_bottom = max(0, $parent_box['y'] + $parent_box['height'] - $max_b);
+
+		// Centering free-space (margin:auto / justify-center / max-width columns)
+		// must NOT become Elementor padding — that collapses content width and
+		// roughly doubles page height under box-sizing:border-box.
+		if ($this->looks_like_horizontal_centering($pad_left, $pad_right, $parent, $parent_box, $boxes)) {
+			$pad_left = (float) ($parent['s']['pl'] ?? 0);
+			$pad_right = (float) ($parent['s']['pr'] ?? 0);
+		}
+
+		// Equal-height grid/flex stretch leaves empty space under short columns —
+		// that is alignment free-space, not padding-bottom.
+		if ($this->looks_like_stretch_gutter($pad_bottom, $parent, $boxes, $parent_box, 'bottom')) {
+			$pad_bottom = (float) ($parent['s']['pb'] ?? 0);
+		}
+		if ($this->looks_like_stretch_gutter($pad_top, $parent, $boxes, $parent_box, 'top')) {
+			$pad_top = (float) ($parent['s']['pt'] ?? 0);
+		}
+
+		// One-sided L/R remainder (flex-start row / short logo in wide cell).
+		if ($this->looks_like_one_sided_gutter($pad_left, $pad_right, $parent)) {
+			$css_pl = (float) ($parent['s']['pl'] ?? 0);
+			$css_pr = (float) ($parent['s']['pr'] ?? 0);
+			if ($pad_left > max(24.0, $css_pl * 2 + 8) && $pad_left > $pad_right + 24) {
+				$pad_left = $css_pl;
+			}
+			if ($pad_right > max(24.0, $css_pr * 2 + 8) && $pad_right > $pad_left + 24) {
+				$pad_right = $css_pr;
+			}
+		}
+
 		return array(
 			'gap' => Geometry::median($gaps),
 			'gaps' => $gaps,
 			'direction' => $direction,
 			'padding' => array(
-				'top' => max(0, $min_y - $parent_box['y']),
-				'left' => max(0, $min_x - $parent_box['x']),
-				'right' => max(0, $parent_box['x'] + $parent_box['width'] - $max_r),
-				'bottom' => max(0, $parent_box['y'] + $parent_box['height'] - $max_b),
+				'top' => max(0, $pad_top),
+				'left' => max(0, $pad_left),
+				'right' => max(0, $pad_right),
+				'bottom' => max(0, $pad_bottom),
 			),
 		);
+	}
+
+	/**
+	 * True when a large inset is stretch free-space inside an equal-size track.
+	 *
+	 * @param float                            $inset      Measured inset.
+	 * @param array<string,mixed>              $parent     Parent.
+	 * @param array<int,array<string,float>>   $boxes      Child boxes.
+	 * @param array<string,float>              $parent_box Parent bbox.
+	 * @param string                           $side       top|bottom.
+	 */
+	private function looks_like_stretch_gutter(
+		float $inset,
+		array $parent,
+		array $boxes,
+		array $parent_box,
+		string $side
+	): bool {
+		if ($inset < 24) {
+			return false;
+		}
+		$css_key = 'bottom' === $side ? 'pb' : 'pt';
+		$css = (float) ($parent['s'][$css_key] ?? 0);
+		if ($inset <= max(16.0, $css * 2 + 8)) {
+			return false;
+		}
+
+		$disp = strtolower((string) ($parent['s']['disp'] ?? ''));
+		$ai = strtolower((string) ($parent['s']['ai'] ?? ''));
+		$parent_is_grid = false !== strpos($disp, 'grid');
+		$parent_is_flex = false !== strpos($disp, 'flex');
+		if (!$parent_is_grid && !$parent_is_flex) {
+			// Child of a grid/flex equal-height track: still drop large pb/pt
+			// when CSS padding is ~0 and content does not fill the box.
+			if ($css > 8) {
+				return false;
+			}
+			$content_h = 0.0;
+			foreach ($boxes as $b) {
+				$content_h = max($content_h, (float) ($b['height'] ?? 0));
+			}
+			return $parent_box['height'] > $content_h + 24;
+		}
+
+		if ($parent_is_flex && !in_array($ai, array('', 'stretch', 'normal'), true)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * True when L/R free space is a one-sided start-aligned gutter.
+	 *
+	 * @param float               $left   Left inset.
+	 * @param float               $right  Right inset.
+	 * @param array<string,mixed> $parent Parent.
+	 */
+	private function looks_like_one_sided_gutter(float $left, float $right, array $parent): bool
+	{
+		if ($left < 24 && $right < 24) {
+			return false;
+		}
+		$jc = strtolower((string) ($parent['s']['jc'] ?? ''));
+		$ai = strtolower((string) ($parent['s']['ai'] ?? ''));
+		$fd = strtolower((string) ($parent['s']['fd'] ?? ''));
+		if (in_array($jc, array('center', 'space-around', 'space-evenly'), true)) {
+			return false;
+		}
+		// Row flex-start / space-between with a short cluster leaves a large right gutter.
+		if (false !== strpos($fd, 'row') || false !== strpos(strtolower((string) ($parent['s']['disp'] ?? '')), 'grid')) {
+			return abs($left - $right) > 24;
+		}
+		if (in_array($ai, array('flex-start', 'start', 'left'), true)) {
+			return abs($left - $right) > 24;
+		}
+		return abs($left - $right) > 48;
+	}
+
+	/**
+	 * True when L/R free space is centering gutter, not real padding.
+	 *
+	 * @param float                            $left       Left inset.
+	 * @param float                            $right      Right inset.
+	 * @param array<string,mixed>              $parent     Parent node.
+	 * @param array<string,float>              $parent_box Parent bbox.
+	 * @param array<int,array<string,float>>   $boxes      Child boxes.
+	 */
+	private function looks_like_horizontal_centering(
+		float $left,
+		float $right,
+		array $parent,
+		array $parent_box,
+		array $boxes
+	): bool {
+		if ($left < 16 && $right < 16) {
+			return false;
+		}
+
+		$jc = strtolower((string) ($parent['s']['jc'] ?? ''));
+		if (in_array($jc, array('center', 'space-between', 'space-around', 'space-evenly'), true)
+			&& abs($left - $right) <= max(8.0, 0.15 * max($left, $right, 1.0))
+		) {
+			return true;
+		}
+
+		$css_pl = (float) ($parent['s']['pl'] ?? 0);
+		$css_pr = (float) ($parent['s']['pr'] ?? 0);
+		// Geometry L/R dwarfs declared CSS padding → free space, not padding.
+		if ($left > max(24.0, $css_pl * 2 + 8) && $right > max(24.0, $css_pr * 2 + 8)
+			&& abs($left - $right) <= max(12.0, 0.2 * max($left, $right, 1.0))
+		) {
+			return true;
+		}
+
+		$max_w = $this->css_px($parent['s']['maxW'] ?? null);
+		$content_w = 0.0;
+		foreach ($boxes as $b) {
+			$content_w = max($content_w, (float) ($b['width'] ?? 0));
+		}
+		if ($max_w > 0 && $parent_box['width'] > $max_w + 16
+			&& $content_w <= $max_w + 8
+			&& abs($left - $right) <= max(12.0, 0.25 * max($left, $right, 1.0))
+		) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * @param mixed $value CSS size.
+	 */
+	private function css_px($value): float
+	{
+		if (null === $value || '' === $value) {
+			return 0.0;
+		}
+		if (is_numeric($value)) {
+			return (float) $value;
+		}
+		if (is_string($value) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($value), $m)) {
+			return (float) $m[1];
+		}
+		return 0.0;
 	}
 
 	/**

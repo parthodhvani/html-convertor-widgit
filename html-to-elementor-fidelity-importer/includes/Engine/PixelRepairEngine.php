@@ -470,16 +470,38 @@ final class PixelRepairEngine implements EngineInterface
 				$cls = (string) ($el['settings']['_css_classes'] ?? '');
 				if ('' !== $cls && isset($map[$cls]) && empty($el['settings']['padding'])) {
 					$p = $map[$cls];
-					$elements[$i]['settings']['padding'] = array(
-						'unit' => 'px',
-						'top' => (string) round((float) ($p['top'] ?? 0)),
-						'right' => (string) round((float) ($p['right'] ?? 0)),
-						'bottom' => (string) round((float) ($p['bottom'] ?? 0)),
-						'left' => (string) round((float) ($p['left'] ?? 0)),
-						'isLinked' => false,
-					);
-					$changed = true;
-					$repairs[] = 'padding:' . $cls;
+					$left = round((float) ($p['left'] ?? 0));
+					$right = round((float) ($p['right'] ?? 0));
+					$top = round((float) ($p['top'] ?? 0));
+					$bottom = round((float) ($p['bottom'] ?? 0));
+					// Never re-apply centering free-space as Elementor padding.
+					if ($left > 48 && $right > 48
+						&& abs($left - $right) <= max(12.0, 0.2 * max($left, $right))
+					) {
+						$left = 0;
+						$right = 0;
+					}
+					if ($right > 48 && $right > $left + 24) {
+						$right = 0;
+					}
+					if ($left > 48 && $left > $right + 24) {
+						$left = 0;
+					}
+					if ($bottom > 48) {
+						$bottom = 0;
+					}
+					if ($top > 0 || $right > 0 || $bottom > 0 || $left > 0) {
+						$elements[$i]['settings']['padding'] = array(
+							'unit' => 'px',
+							'top' => (string) $top,
+							'right' => (string) $right,
+							'bottom' => (string) $bottom,
+							'left' => (string) $left,
+							'isLinked' => false,
+						);
+						$changed = true;
+						$repairs[] = 'padding:' . $cls;
+					}
 				}
 			}
 			$elements[$i]['elements'] = $this->set_padding_recursive(

@@ -45,25 +45,38 @@ final class ElementorPreviewRenderer implements EngineInterface
 			}
 		}
 
+		$fonts = $this->collect_font_families($elements);
+		$font_link = $this->google_fonts_link($fonts);
+		$font_stack = !empty($fonts)
+			? implode(', ', array_map(static fn($f) => '"' . str_replace('"', '', $f) . '"', $fonts)) . ', system-ui, sans-serif'
+			: 'system-ui, sans-serif';
+
 		return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>{$title}</title>
+{$font_link}
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{width:{$width}px;max-width:100%;font-family:system-ui,sans-serif}
+body{width:{$width}px;max-width:100%;font-family:{$font_stack}}
+/* Neutralize UA heading/body defaults so mapped typography on .e-widget wins. */
+h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit;line-height:inherit;letter-spacing:inherit;margin:0;padding:0}
+p,ul,ol,figure,blockquote{margin:0}
 .e-con{display:flex;flex-direction:column;width:100%;position:relative}
 .e-con.e-con-full{width:100%}
+.e-con[style*="display:grid"] > .e-con,
+.e-con[style*="display: grid"] > .e-con{width:auto !important;max-width:100% !important;min-width:0}
 .e-con img{max-width:100%;height:auto;display:block}
-.e-widget{width:100%}
+.e-widget{max-width:100%}
+.e-con[style*="flex-direction:column"] > .e-widget{width:100%}
 .e-widget-heading{margin:0}
-.e-widget-text p{margin:0 0 .5em}
+.e-widget-text p{margin:0}
 .e-widget-button a{
   display:inline-flex;align-items:center;justify-content:center;
-  text-decoration:none;padding:.6em 1.2em;border-radius:3px
+  text-decoration:none;padding:0;border-radius:0;background:transparent
 }
 {$extra_css}
 </style>
@@ -73,6 +86,67 @@ body{width:{$width}px;max-width:100%;font-family:system-ui,sans-serif}
 </body>
 </html>
 HTML;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $elements Tree.
+	 * @return array<int,string>
+	 */
+	private function collect_font_families(array $elements): array
+	{
+		$fonts = array();
+		$walk = function ($els) use (&$walk, &$fonts): void {
+			foreach ($els as $el) {
+				if (!is_array($el)) {
+					continue;
+				}
+				$s = (array) ($el['settings'] ?? array());
+				$family = trim((string) ($s['typography_font_family'] ?? ''));
+				if ('' !== $family) {
+					$first = trim(explode(',', $family)[0], " \t\"'");
+					if ('' !== $first && !in_array($first, $fonts, true)) {
+						$fonts[] = $first;
+					}
+				}
+				$walk((array) ($el['elements'] ?? array()));
+			}
+		};
+		$walk($elements);
+		return $fonts;
+	}
+
+	/**
+	 * @param array<int,string> $fonts Font family names.
+	 */
+	private function google_fonts_link(array $fonts): string
+	{
+		$allowed = array(
+			'Inter' => 'Inter:wght@400;500;600;700',
+			'Playfair Display' => 'Playfair+Display:wght@400;600;700',
+			'Roboto' => 'Roboto:wght@400;500;700',
+			'Open Sans' => 'Open+Sans:wght@400;600;700',
+			'Lato' => 'Lato:wght@400;700',
+			'Montserrat' => 'Montserrat:wght@400;600;700',
+			'Poppins' => 'Poppins:wght@400;500;600;700',
+			'Merriweather' => 'Merriweather:wght@400;700',
+		);
+		$families = array();
+		foreach ($fonts as $font) {
+			if (isset($allowed[$font])) {
+				$families[] = $allowed[$font];
+			}
+		}
+		if (empty($families)) {
+			// Petra/marketing pages almost always need these two.
+			$families = array($allowed['Inter'], $allowed['Playfair Display']);
+		}
+		$query = implode('&family=', array_map('rawurlencode', $families));
+		// rawurlencode would encode colons — build manually.
+		$family_q = implode('&family=', $families);
+		$url = 'https://fonts.googleapis.com/css2?family=' . $family_q . '&display=swap';
+		return '<link rel="preconnect" href="https://fonts.googleapis.com">'
+			. '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+			. '<link href="' . htmlspecialchars($url, ENT_QUOTES) . '" rel="stylesheet">';
 	}
 
 	/**
@@ -108,12 +182,29 @@ HTML;
 				$inner .= $this->render_element($child);
 			}
 		}
-		$custom = trim((string) ($s['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
 		$attr_style = $style;
-		if ('' !== $custom) {
-			$attr_style .= ';' . $custom;
+		foreach (array('_h2e_custom_css', 'custom_css') as $key) {
+			$custom = $this->flatten_custom_css((string) ($s[$key] ?? ''));
+			if ('' !== $custom) {
+				$attr_style .= ';' . $custom;
+			}
 		}
 		return '<div class="' . $cls . '" style="' . htmlspecialchars($attr_style, ENT_QUOTES) . '">' . $inner . '</div>';
+	}
+
+	/**
+	 * Turn Elementor `selector { … }` custom CSS into inline declarations.
+	 */
+	private function flatten_custom_css(string $css): string
+	{
+		$css = trim($css, " \t\n\r\0\x0B;");
+		if ('' === $css) {
+			return '';
+		}
+		if (preg_match('/selector\s*\{([^}]*)\}/i', $css, $m)) {
+			return trim($m[1], " \t\n\r\0\x0B;");
+		}
+		return $css;
 	}
 
 	/**
@@ -122,9 +213,13 @@ HTML;
 	private function container_style(array $s): string
 	{
 		$css = array();
-		$css[] = 'display:flex';
-		$css[] = 'flex-direction:' . ($s['flex_direction'] ?? 'column');
-		if (!empty($s['flex_wrap'])) {
+		$is_grid = 'grid' === ($s['_h2e_display'] ?? '')
+			|| (is_string($s['custom_css'] ?? null) && false !== stripos((string) $s['custom_css'], 'display: grid'));
+		if (!$is_grid) {
+			$css[] = 'display:flex';
+			$css[] = 'flex-direction:' . ($s['flex_direction'] ?? 'column');
+		}
+		if (!$is_grid && !empty($s['flex_wrap'])) {
 			$css[] = 'flex-wrap:' . $s['flex_wrap'];
 		}
 		if (!empty($s['flex_justify_content'])) {
@@ -134,7 +229,7 @@ HTML;
 			$css[] = 'align-items:' . $s['flex_align_items'];
 		}
 		$gap = $s['flex_gap']['size'] ?? null;
-		if (null !== $gap && '' !== $gap) {
+		if (!$is_grid && null !== $gap && '' !== $gap) {
 			$css[] = 'gap:' . (float) $gap . 'px';
 		}
 		$css = array_merge($css, $this->box_styles($s));
@@ -145,7 +240,29 @@ HTML;
 		if (!empty($s['width']['size'])) {
 			$unit = (string) ($s['width']['unit'] ?? '%');
 			$css[] = 'width:' . (float) $s['width']['size'] . $unit;
+		}
+		if (!empty($s['max_width']['size'])) {
+			$max_unit = (string) ($s['max_width']['unit'] ?? 'px');
+			$css[] = 'max-width:' . (float) $s['max_width']['size'] . $max_unit;
+		} elseif (!empty($s['width']['size'])) {
 			$css[] = 'max-width:100%';
+		}
+		if (!empty($s['align_self'])) {
+			$css[] = 'align-self:' . $s['align_self'];
+		}
+		// Center max-width boxes the way browsers treat margin:auto.
+		if (!empty($s['max_width']['size']) && ($s['align_self'] ?? '') === 'center') {
+			$css[] = 'margin-left:auto';
+			$css[] = 'margin-right:auto';
+		}
+		// Apply measured height for empty painted leaves (blog thumbs, marks).
+		$bbox = $s['_h2e_bbox'] ?? null;
+		if (is_array($bbox) && empty($s['min_height']['size'])) {
+			$bh = (float) ($bbox['height'] ?? 0);
+			$kids = (array) ($el['elements'] ?? array());
+			if ($bh >= 24 && empty($kids)) {
+				$css[] = 'min-height:' . round($bh) . 'px';
+			}
 		}
 		if (!empty($s['position'])) {
 			$css[] = 'position:' . $s['position'];

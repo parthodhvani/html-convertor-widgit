@@ -53,4 +53,25 @@ final class CssGridMappingTest extends TestCase
 		$this->assertArrayNotHasKey('_h2e_display', $flex);
 		$this->assertSame('center', $flex['flex_align_items'] ?? '');
 	}
+
+	public function test_asymmetric_grid_preserves_track_ratios(): void
+	{
+		$mapper = new CssMapper();
+		$node = array(
+			'cls' => 'hero-grid',
+			's' => array(
+				'disp' => 'grid',
+				'gap' => '60px',
+				'ai' => 'center',
+				'gtc' => '584.078px 507.906px',
+			),
+		);
+
+		$flex = $mapper->flex($node);
+		$css = (string) ($flex['custom_css'] ?? '');
+
+		$this->assertSame('grid', $flex['_h2e_display'] ?? '');
+		$this->assertStringContainsString('584fr 508fr', $css);
+		$this->assertStringNotContainsString('repeat(2', $css);
+	}
 }
