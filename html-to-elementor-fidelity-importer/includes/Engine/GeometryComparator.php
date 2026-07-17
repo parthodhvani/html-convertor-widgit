@@ -603,11 +603,26 @@ final class GeometryComparator implements EngineInterface
 				}
 				$s = $node['s'] ?? array();
 				$disp = strtolower((string) ($s['disp'] ?? ''));
+				$cls = strtolower((string) ($node['cls'] ?? ''));
+				// Last-section product tiles inherit footer_band — only count
+				// real footer landmarks / multi-column footer grids.
+				if (!preg_match('/\b(footer|site-footer|page-footer|footer-grid|footer-bottom)\b/', $cls)
+					&& 'footer' !== strtolower((string) ($node['tag'] ?? ''))) {
+					// Flex/grid alone is not enough when role bled from is_last.
+					$signals = VisualSignals::analyze($node);
+					if (!($signals['has_background'] || $signals['has_border'] || $signals['has_shadow'])) {
+						return false;
+					}
+				}
 				if (false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid')) {
 					return true;
 				}
 				$signals = VisualSignals::analyze($node);
 				return $signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding'];
+			}
+			if ('card' === $role) {
+				// Empty/atomic cards (e.g. absolute float notes) are widgets, not frames.
+				return count((array) ($node['children'] ?? array())) >= 1;
 			}
 			return true;
 		}

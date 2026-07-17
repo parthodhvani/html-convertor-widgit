@@ -164,7 +164,15 @@ final class WhitespaceAnalyzer implements EngineInterface
 	 */
 	private function measure_sibling_whitespace(array $children, array $parent): array
 	{
-		$boxes = array_map(array(Geometry::class, 'bbox'), $children);
+		$flow = array_values(array_filter($children, function ($child) {
+			if (!is_array($child)) {
+				return false;
+			}
+			$pos = strtolower((string) ($child['s']['pos'] ?? ''));
+			return !in_array($pos, array('absolute', 'fixed'), true);
+		}));
+		$measure = count($flow) >= 2 ? $flow : array_values(array_filter($children, 'is_array'));
+		$boxes = array_map(array(Geometry::class, 'bbox'), $measure);
 		$constraint = $parent['layoutConstraint'] ?? array();
 		$direction = (string) ($constraint['direction'] ?? (($parent['s']['fd'] ?? '') === 'row' ? 'row' : 'column'));
 		if (false !== strpos(strtolower((string) ($parent['s']['fd'] ?? '')), 'row')) {
@@ -174,13 +182,26 @@ final class WhitespaceAnalyzer implements EngineInterface
 		}
 
 		$gaps = array();
-		for ($i = 0; $i < count($boxes) - 1; ++$i) {
-			$g = 'row' === $direction
-				? Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1])
-				: Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]);
-			if ($g > 0) {
-				$gaps[] = $g;
+		// Only invent geometry gap from in-flow siblings.
+		if (count($flow) >= 2) {
+			$flow_boxes = array_map(array(Geometry::class, 'bbox'), $flow);
+			for ($i = 0; $i < count($flow_boxes) - 1; ++$i) {
+				$g = 'row' === $direction
+					? Geometry::horizontal_gap($flow_boxes[$i], $flow_boxes[$i + 1])
+					: Geometry::vertical_gap($flow_boxes[$i], $flow_boxes[$i + 1]);
+				if ($g > 0) {
+					$gaps[] = $g;
+				}
 			}
+		}
+
+		if (empty($boxes)) {
+			return array(
+				'gap' => 0.0,
+				'gaps' => array(),
+				'direction' => $direction,
+				'padding' => array('top' => 0, 'left' => 0, 'right' => 0, 'bottom' => 0),
+			);
 		}
 
 		$parent_box = Geometry::bbox($parent);

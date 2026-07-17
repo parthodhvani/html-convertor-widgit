@@ -169,8 +169,14 @@ final class CssMapper
         $out = array();
         $raw_bg_img = (string) ($s['bgImg'] ?? '');
 
-        // Prefer real image URLs over gradients when both appear.
+        // Prefer real image URLs over gradients when both appear — but keep the
+        // gradient as an Elementor background overlay so multi-layer heroes survive.
         $bg_image = $this->css_url($raw_bg_img);
+        $gradient = $this->parse_gradient($raw_bg_img);
+        if (null === $gradient) {
+            $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
+        }
+
         if ('' !== $bg_image) {
             $out['background_background'] = 'classic';
             $out['background_image'] = array(
@@ -186,14 +192,21 @@ final class CssMapper
             if (!empty($s['bgRepeat'])) {
                 $out['background_repeat'] = (string) $s['bgRepeat'];
             }
-        } else {
-            $gradient = $this->parse_gradient($raw_bg_img);
-            if (null === $gradient) {
-                $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
-            }
             if (null !== $gradient) {
-                $out = array_merge($out, $this->elementor_gradient_settings($gradient));
+                $overlay = $this->elementor_gradient_settings($gradient);
+                $out['background_overlay_background'] = 'gradient';
+                $out['background_overlay_color'] = $overlay['background_color'] ?? '';
+                $out['background_overlay_color_b'] = $overlay['background_color_b'] ?? '';
+                $out['background_overlay_gradient_type'] = $overlay['background_gradient_type'] ?? 'linear';
+                if (isset($overlay['background_gradient_angle'])) {
+                    $out['background_overlay_gradient_angle'] = $overlay['background_gradient_angle'];
+                }
+                if (isset($overlay['background_gradient_position'])) {
+                    $out['background_overlay_gradient_position'] = $overlay['background_gradient_position'];
+                }
             }
+        } elseif (null !== $gradient) {
+            $out = array_merge($out, $this->elementor_gradient_settings($gradient));
         }
 
         $bg_color = (string) ($s['bg'] ?? '');
@@ -599,6 +612,47 @@ final class CssMapper
                 'unit' => 'px',
                 'size' => round((float) $s['op'], 2),
             );
+        }
+
+        return array_merge($out, $this->position($node));
+    }
+
+    /**
+     * Map CSS position:absolute/fixed onto Elementor advanced positioning.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
+    public function position(array $node): array
+    {
+        $s = $node['s'] ?? array();
+        $pos = strtolower((string) ($s['pos'] ?? 'static'));
+        if (!in_array($pos, array('absolute', 'fixed', 'sticky'), true)) {
+            return array();
+        }
+
+        $out = array(
+            'position' => 'fixed' === $pos ? 'fixed' : ('sticky' === $pos ? 'sticky' : 'absolute'),
+        );
+
+        $z = $s['z'] ?? $s['zIndex'] ?? null;
+        if (is_numeric($z)) {
+            $out['z_index'] = (int) $z;
+        }
+
+        foreach (array('top' => 'offset_y', 'left' => 'offset_x') as $css => $control) {
+            if (!isset($s[$css]) || '' === $s[$css] || 'auto' === $s[$css]) {
+                continue;
+            }
+            $size = $this->size($s[$css]);
+            if ($size) {
+                $out[$control] = $size;
+                if ('offset_x' === $control) {
+                    $out['_offset_orientation_h'] = 'start';
+                } else {
+                    $out['_offset_orientation_v'] = 'start';
+                }
+            }
         }
 
         return $out;

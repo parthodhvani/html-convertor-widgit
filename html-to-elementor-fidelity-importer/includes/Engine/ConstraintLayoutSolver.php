@@ -188,15 +188,25 @@ final class ConstraintLayoutSolver implements EngineInterface
 	 */
 	private function infer_constraint(array $children, array $parent): array
 	{
-		$boxes = array();
-		foreach ($children as $child) {
-			$boxes[] = Geometry::bbox($child);
+		$all = array_values(array_filter($children, 'is_array'));
+		$flow_children = array_values(array_filter($all, function ($child) {
+			$pos = strtolower((string) ($child['s']['pos'] ?? ''));
+			return !in_array($pos, array('absolute', 'fixed'), true);
+		}));
+
+		$boxes_all = array_map(array(Geometry::class, 'bbox'), $all);
+		$direction = $this->infer_direction($all, $boxes_all, $parent);
+
+		// Geometry gap only from in-flow siblings — absolute/fixed free space is not gap.
+		$gap = 0.0;
+		if (count($flow_children) >= 2) {
+			$flow_boxes = array_map(array(Geometry::class, 'bbox'), $flow_children);
+			$gap = 'row' === $direction
+				? $this->infer_horizontal_gaps($flow_boxes)
+				: $this->infer_vertical_gaps($flow_boxes);
 		}
 
-		$direction = $this->infer_direction($children, $boxes, $parent);
-		$gap = 'row' === $direction
-			? $this->infer_horizontal_gaps($boxes)
-			: $this->infer_vertical_gaps($boxes);
+		$boxes = $boxes_all;
 
 		$widths = array_map(fn($b) => $b['width'], $boxes);
 		$heights = array_map(fn($b) => $b['height'], $boxes);

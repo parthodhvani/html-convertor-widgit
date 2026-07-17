@@ -98,15 +98,10 @@ final class WidgetClassifier
                 return true;
             }
         }
-        // Absolutely-positioned / layered children (e.g. hero with overlay).
-        foreach ((array) ($node['children'] ?? array()) as $child) {
-            $pos = strtolower((string) ($child['s']['pos'] ?? ''));
-            if ('absolute' === $pos || 'fixed' === $pos || 'sticky' === $pos) {
-                return true;
-            }
-        }
-        return false;
-    }
+		// Absolutely-positioned children are reconstructed via Elementor
+		// position controls — do not force the whole parent into HTML.
+		return false;
+	}
 
     /**
      * Detect a semantic component role from tag + classes (for the report and
