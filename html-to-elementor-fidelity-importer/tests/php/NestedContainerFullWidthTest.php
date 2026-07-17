@@ -1,6 +1,6 @@
 <?php
 /**
- * Nested Elementor containers at depths 2–7 get Full Width + 100% when safe.
+ * Nested Elementor containers at depths 2–10 get Full Width + 100%.
  *
  * @package HtmlToElementor
  */
@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 final class NestedContainerFullWidthTest extends TestCase
 {
 
-	public function test_depths_2_to_7_get_full_width_100_percent(): void
+	public function test_depths_2_to_10_get_full_width_100_percent(): void
 	{
 		$leaf = array(
 			'id' => 'h',
@@ -25,9 +25,9 @@ final class NestedContainerFullWidthTest extends TestCase
 			'elements' => array(),
 		);
 
-		// Build root → d2 → d3 → d4 → d5 → d6 → d7 → widget
+		// Build root → d2 … d10 → widget
 		$node = $leaf;
-		for ($depth = 7; $depth >= 2; --$depth) {
+		for ($depth = 10; $depth >= 2; --$depth) {
 			$node = array(
 				'id' => 'd' . $depth,
 				'elType' => 'container',
@@ -35,6 +35,10 @@ final class NestedContainerFullWidthTest extends TestCase
 				'settings' => array(
 					'content_width' => 2 === $depth ? 'boxed' : 'full',
 					'flex_direction' => 'column',
+					// Simulate a 51% column share that must be forced to 100%.
+					'width' => 5 === $depth
+						? array('unit' => '%', 'size' => 51)
+						: array('unit' => '%', 'size' => 80),
 				),
 				'elements' => array($node),
 			);
@@ -53,7 +57,7 @@ final class NestedContainerFullWidthTest extends TestCase
 		$out = (new ContainerTreeOptimizer())->ensure_nested_full_widths($elements);
 
 		$current = $out[0];
-		for ($depth = 2; $depth <= 7; ++$depth) {
+		for ($depth = 2; $depth <= 10; ++$depth) {
 			$current = $current['elements'][0];
 			$this->assertSame('container', $current['elType'], 'depth ' . $depth);
 			$this->assertSame('full', $current['settings']['content_width'], 'depth ' . $depth . ' content_width');
@@ -62,7 +66,7 @@ final class NestedContainerFullWidthTest extends TestCase
 		}
 	}
 
-	public function test_row_column_shares_and_px_chrome_are_preserved(): void
+	public function test_partial_percent_shares_are_forced_to_100(): void
 	{
 		$elements = array(
 			array(
@@ -127,9 +131,10 @@ final class NestedContainerFullWidthTest extends TestCase
 		$row = $out[0]['elements'][0];
 		$cols = $row['elements'];
 
-		$this->assertSame(51, (int) $cols[0]['settings']['width']['size']);
+		$this->assertSame(100, (int) $cols[0]['settings']['width']['size']);
 		$this->assertSame('%', $cols[0]['settings']['width']['unit']);
-		$this->assertSame(49, (int) $cols[1]['settings']['width']['size']);
+		$this->assertSame(100, (int) $cols[1]['settings']['width']['size']);
+		// Tiny px chrome stays measured.
 		$this->assertSame(56, (int) $cols[2]['settings']['width']['size']);
 		$this->assertSame('px', $cols[2]['settings']['width']['unit']);
 		$this->assertSame('full', $cols[0]['settings']['content_width']);

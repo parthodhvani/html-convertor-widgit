@@ -129,7 +129,7 @@ final class ElementorJsonGenerator
 		);
 
 		// Re-apply after validation repairs so Elementor always receives
-		// Full Width + 100% on nested levels 2–7 where structure allows.
+		// Full Width + 100% on nested levels 2–10 (overrides partial % shares).
 		$data = $optimizer->ensure_nested_full_widths($validated['data']);
 
 		$report['validation'] = $validated['validation'];

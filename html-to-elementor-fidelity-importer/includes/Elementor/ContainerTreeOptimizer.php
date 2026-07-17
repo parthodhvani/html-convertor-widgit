@@ -57,11 +57,11 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
-	 * Ensure nesting levels 2–7 fill their parent in Elementor (Full Width + 100%).
+	 * Ensure nesting levels 2–10 fill their parent in Elementor (Full Width + 100%).
 	 *
-	 * Elementor nested containers often omit an explicit width, so the editor
-	 * shrink-wraps them. Apply 100% only when it will not break row column shares
-	 * or intrinsic (px) chrome boxes.
+	 * Nested containers (including former column shares like 51%) are forced to
+	 * width 100% through depth 10. Tiny px chrome boxes and absolute/fixed layers
+	 * are left alone so icons/overlays keep their measure.
 	 *
 	 * @param array<int,array<string,mixed>> $elements Root elements.
 	 * @return array<int,array<string,mixed>>
@@ -664,22 +664,15 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
-	 * Walk containers and set content_width=full + width=100% at depths 2–7 when safe.
+	 * Walk containers and set content_width=full + width=100% at depths 2–10.
 	 *
-	 * @param array<int,array<string,mixed>> $elements        Elements.
-	 * @param int                            $depth           Container depth (1 = section root).
+	 * @param array<int,array<string,mixed>> $elements         Elements.
+	 * @param int                            $depth            Container depth (1 = section root).
 	 * @param string                         $parent_direction Parent flex direction.
 	 * @return array<int,array<string,mixed>>
 	 */
 	private function apply_nested_full_widths(array $elements, int $depth, string $parent_direction): array
 	{
-		$container_siblings = 0;
-		foreach ($elements as $el) {
-			if ('container' === ($el['elType'] ?? '')) {
-				++$container_siblings;
-			}
-		}
-
 		foreach ($elements as $i => $element) {
 			if (!is_array($element)) {
 				continue;
@@ -690,9 +683,7 @@ final class ContainerTreeOptimizer
 				$settings = (array) ($element['settings'] ?? array());
 				$settings['content_width'] = 'full';
 
-				if ($depth >= 2 && $depth <= 7
-					&& $this->should_force_full_percent_width($settings, $parent_direction, $container_siblings)
-				) {
+				if ($depth >= 2 && $depth <= 10 && $this->should_force_full_percent_width($settings)) {
 					$settings['width'] = array(
 						'unit' => '%',
 						'size' => 100,
@@ -727,13 +718,15 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
-	 * Whether forcing width:100% preserves layout structure.
+	 * Whether this nested container should be forced to width:100%.
 	 *
-	 * @param array<string,mixed> $settings            Container settings.
-	 * @param string              $parent_direction    Parent flex direction.
-	 * @param int                 $container_siblings  Container siblings at this level.
+	 * Percentage column shares (e.g. 51%) are overridden — Elementor nested
+	 * containers must fill their parent through depth 10. Only absolute/fixed
+	 * layers and tiny intrinsic px chrome are skipped.
+	 *
+	 * @param array<string,mixed> $settings Container settings.
 	 */
-	private function should_force_full_percent_width(array $settings, string $parent_direction, int $container_siblings): bool
+	private function should_force_full_percent_width(array $settings): bool
 	{
 		$position = strtolower(trim((string) ($settings['position'] ?? '')));
 		if (in_array($position, array('absolute', 'fixed'), true)) {
@@ -748,20 +741,10 @@ final class ContainerTreeOptimizer
 			if ('px' === $unit && $size > 0 && $size <= 160) {
 				return false;
 			}
-			// Keep intentional flex-row column shares (e.g. 32% / 51% cards).
-			if ('%' === $unit && $size > 0 && $size < 100) {
-				return false;
-			}
-			// Already full width.
+			// Already full width — nothing to do.
 			if ('%' === $unit && 100.0 === $size) {
 				return false;
 			}
-		}
-
-		$parent_direction = strtolower(trim($parent_direction));
-		// Do not blow up multi-column rows — siblings already own a share or flex_grow.
-		if ('row' === $parent_direction && $container_siblings > 1) {
-			return false;
 		}
 
 		return true;
