@@ -153,7 +153,12 @@ final class CssMapper
     }
 
     /**
-     * Background controls for a container (colour + image).
+     * Background controls for a container (colour, image, or CSS gradient).
+     *
+     * Gradients from Chromium computed styles are mapped to Elementor's native
+     * gradient background controls. Multi-layer backgrounds use the dominant
+     * linear (or radial) layer as the primary fill; additional layers cannot
+     * be expressed as native Elementor stops and rely on source-CSS reinjection.
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -162,8 +167,10 @@ final class CssMapper
     {
         $s = $node['s'] ?? array();
         $out = array();
+        $raw_bg_img = (string) ($s['bgImg'] ?? '');
 
-        $bg_image = $this->css_url((string) ($s['bgImg'] ?? ''));
+        // Prefer real image URLs over gradients when both appear.
+        $bg_image = $this->css_url($raw_bg_img);
         if ('' !== $bg_image) {
             $out['background_background'] = 'classic';
             $out['background_image'] = array(
@@ -179,17 +186,139 @@ final class CssMapper
             if (!empty($s['bgRepeat'])) {
                 $out['background_repeat'] = (string) $s['bgRepeat'];
             }
+        } else {
+            $gradient = $this->parse_gradient($raw_bg_img);
+            if (null === $gradient) {
+                $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
+            }
+            if (null !== $gradient) {
+                $out = array_merge($out, $this->elementor_gradient_settings($gradient));
+            }
         }
 
         $bg_color = (string) ($s['bg'] ?? '');
-        if ('' !== $bg_color && !$this->is_transparent($bg_color)) {
+        if ('' !== $bg_color && !$this->is_transparent($bg_color) && false === stripos($bg_color, 'gradient')) {
             if (empty($out['background_background'])) {
                 $out['background_background'] = 'classic';
             }
-            $out['background_color'] = $bg_color;
+            // Do not overwrite gradient color A with a solid fill when gradient won.
+            if ('gradient' !== ($out['background_background'] ?? '')) {
+                $out['background_color'] = $bg_color;
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * Convert a parsed gradient into Elementor background controls.
+     *
+     * @param array{type:string,angle:float,color_a:string,color_b:string,position:string} $gradient Parsed gradient.
+     * @return array<string,mixed>
+     */
+    public function elementor_gradient_settings(array $gradient): array
+    {
+        $out = array(
+            'background_background' => 'gradient',
+            'background_color' => $gradient['color_a'],
+            'background_color_b' => $gradient['color_b'],
+            'background_gradient_type' => $gradient['type'],
+        );
+        if ('linear' === $gradient['type']) {
+            $out['background_gradient_angle'] = array(
+                'unit' => 'deg',
+                'size' => $gradient['angle'],
+            );
+        } else {
+            $out['background_gradient_position'] = $gradient['position'] ?: 'center center';
+        }
+        return $out;
+    }
+
+    /**
+     * Parse a CSS background-image value containing linear/radial gradients.
+     *
+     * Supports multi-layer lists: prefers the last linear-gradient (base fill),
+     * then the first linear, then the first radial. Elementor only exposes two
+     * colour stops, so first and last stops of the chosen layer are used.
+     *
+     * @param string $value CSS background-image (may include url() and gradients).
+     * @return array{type:string,angle:float,color_a:string,color_b:string,position:string}|null
+     */
+    public function parse_gradient(string $value): ?array
+    {
+        $value = trim($value);
+        if ('' === $value || false === stripos($value, 'gradient')) {
+            return null;
+        }
+
+        $layers = $this->split_background_layers($value);
+        $linear = null;
+        $radial = null;
+        foreach ($layers as $layer) {
+            $layer = trim($layer);
+            if (preg_match('/^linear-gradient\s*\(/i', $layer)) {
+                $linear = $layer; // keep last linear as base.
+            } elseif (null === $radial && preg_match('/^radial-gradient\s*\(/i', $layer)) {
+                $radial = $layer;
+            }
+        }
+
+        $chosen = $linear ?? $radial;
+        if (null === $chosen) {
+            // Fallback: whole value may be a single gradient without clean split.
+            if (preg_match('/((?:repeating-)?(?:linear|radial)-gradient\s*\([^;]*)/i', $value, $m)) {
+                $chosen = $m[1];
+            } else {
+                return null;
+            }
+        }
+
+        $type = (false !== stripos($chosen, 'radial-gradient')) ? 'radial' : 'linear';
+        $inner = $this->gradient_inner($chosen);
+        if ('' === $inner) {
+            return null;
+        }
+
+        $angle = 180.0;
+        $position = 'center center';
+        $stop_source = $inner;
+
+        if ('linear' === $type) {
+            if (preg_match('/^(\d+(?:\.\d+)?)\s*deg\s*,/i', $inner, $m)) {
+                $angle = (float) $m[1];
+                $stop_source = trim(substr($inner, strlen($m[0])));
+            } elseif (preg_match('/^to\s+([\w\s]+)\s*,/i', $inner, $m)) {
+                $angle = $this->to_direction_angle(trim($m[1]));
+                $stop_source = trim(substr($inner, strlen($m[0])));
+            }
+        } else {
+            // Drop size/shape/at-position prefix before colour stops.
+            if (preg_match('/^(.*?\bat\s+([^,]+))\s*,/i', $inner, $m)) {
+                $position = $this->bg_position(trim($m[2]));
+                $stop_source = trim(substr($inner, strlen($m[1]) + 1));
+            } elseif (preg_match('/^(circle|ellipse|closest-side|closest-corner|farthest-side|farthest-corner|[\d.]+(?:px|%|em)?(?:\s+[\d.]+(?:px|%|em)?)?)\s*,/i', $inner, $m)) {
+                $stop_source = trim(substr($inner, strlen($m[0])));
+            }
+        }
+
+        $colors = $this->extract_gradient_colors($stop_source);
+        if (count($colors) < 1) {
+            return null;
+        }
+        $color_a = $colors[0];
+        $color_b = $colors[count($colors) - 1];
+        if ($color_a === $color_b && count($colors) > 2) {
+            $color_b = $colors[(int) floor(count($colors) / 2)];
+        }
+
+        return array(
+            'type' => $type,
+            'angle' => $angle,
+            'color_a' => $color_a,
+            'color_b' => $color_b,
+            'position' => $position,
+        );
     }
 
     /**
@@ -535,19 +664,135 @@ final class CssMapper
     }
 
     /**
-     * Extract a URL from a CSS url(...) value (ignores gradients).
+     * Extract a URL from a CSS url(...) value (ignores gradients — use parse_gradient).
      *
      * @param string $value background-image value.
      */
     private function css_url(string $value): string
     {
-        if ('' === $value || false !== strpos($value, 'gradient')) {
+        if ('' === $value || false !== stripos($value, 'gradient')) {
+            // url(...) may coexist with gradients; still try to pull a URL first.
+            if (preg_match('/url\((["\']?)(.*?)\1\)/', $value, $m) && '' !== trim($m[2])) {
+                return $m[2];
+            }
             return '';
         }
         if (preg_match('/url\((["\']?)(.*?)\1\)/', $value, $m)) {
             return $m[2];
         }
         return '';
+    }
+
+    /**
+     * Split a CSS background-image list into layers (comma-aware of nested parens).
+     *
+     * @param string $value Raw background-image.
+     * @return array<int,string>
+     */
+    private function split_background_layers(string $value): array
+    {
+        $layers = array();
+        $depth = 0;
+        $current = '';
+        $len = strlen($value);
+        for ($i = 0; $i < $len; ++$i) {
+            $ch = $value[$i];
+            if ('(' === $ch) {
+                ++$depth;
+                $current .= $ch;
+            } elseif (')' === $ch) {
+                $depth = max(0, $depth - 1);
+                $current .= $ch;
+            } elseif (',' === $ch && 0 === $depth) {
+                if ('' !== trim($current)) {
+                    $layers[] = trim($current);
+                }
+                $current = '';
+            } else {
+                $current .= $ch;
+            }
+        }
+        if ('' !== trim($current)) {
+            $layers[] = trim($current);
+        }
+        return $layers;
+    }
+
+    /**
+     * Inner contents of a gradient(...) function.
+     *
+     * @param string $gradient Gradient CSS function call.
+     */
+    private function gradient_inner(string $gradient): string
+    {
+        $start = strpos($gradient, '(');
+        if (false === $start) {
+            return '';
+        }
+        $depth = 0;
+        $len = strlen($gradient);
+        for ($i = $start; $i < $len; ++$i) {
+            if ('(' === $gradient[$i]) {
+                ++$depth;
+            } elseif (')' === $gradient[$i]) {
+                --$depth;
+                if (0 === $depth) {
+                    return trim(substr($gradient, $start + 1, $i - $start - 1));
+                }
+            }
+        }
+        return trim(substr($gradient, $start + 1));
+    }
+
+    /**
+     * Extract colour tokens from a gradient colour-stop list.
+     *
+     * @param string $stops Colour-stop source.
+     * @return array<int,string>
+     */
+    private function extract_gradient_colors(string $stops): array
+    {
+        $colors = array();
+        if (preg_match_all('/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8}|\b(?:transparent|currentColor)\b)/i', $stops, $m)) {
+            foreach ($m[1] as $c) {
+                $c = trim($c);
+                if ('' === $c || $this->is_transparent($c)) {
+                    continue;
+                }
+                $colors[] = $c;
+            }
+        }
+        // If every stop was transparent, keep the first transparent as a soft fade.
+        if (!$colors && preg_match('/(rgba?\([^)]+\))/i', $stops, $m)) {
+            $colors[] = $m[1];
+            $colors[] = 'rgba(0, 0, 0, 0)';
+        }
+        return $colors;
+    }
+
+    /**
+     * Map CSS "to …" direction keywords to degrees.
+     *
+     * @param string $dir Direction keywords.
+     */
+    private function to_direction_angle(string $dir): float
+    {
+        $dir = strtolower(preg_replace('/\s+/', ' ', trim($dir)) ?? '');
+        $map = array(
+            'top' => 0.0,
+            'right' => 90.0,
+            'bottom' => 180.0,
+            'left' => 270.0,
+            'top right' => 45.0,
+            'right top' => 45.0,
+            'bottom right' => 135.0,
+            'right bottom' => 135.0,
+            'bottom left' => 225.0,
+            'left bottom' => 225.0,
+            'top left' => 315.0,
+            'left top' => 315.0,
+        );
+        return $map[$dir] ?? 180.0;
     }
 
     /**

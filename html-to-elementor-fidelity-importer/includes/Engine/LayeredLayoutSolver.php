@@ -85,7 +85,10 @@ final class LayeredLayoutSolver
 				$settings['background_image'] = array('url' => $src, 'id' => '');
 				$settings['background_position'] = 'center center';
 				$settings['background_size'] = 'cover';
-			} elseif (!empty($bg['s']['bgImg']) && !preg_match('/gradient\s*\(/i', (string) $bg['s']['bgImg'])) {
+			} elseif (!empty($bg['s']['bgImg']) && preg_match('/gradient\s*\(/i', (string) $bg['s']['bgImg'])) {
+				// Nested gradient backgrounds — map via CssMapper.
+				$settings = array_merge($settings, $this->css->background($bg));
+			} elseif (!empty($bg['s']['bgImg'])) {
 				$settings['_h2e_layer_bg'] = (string) $bg['s']['bgImg'];
 			} else {
 				// Keep media frames (e.g. founder photo wrappers) as nested content
@@ -97,8 +100,26 @@ final class LayeredLayoutSolver
 		}
 
 		$overlay = $layers['overlay'] ?? null;
-		if (is_array($overlay) && !empty($overlay['s']['bgImg']) && !preg_match('/gradient\s*\(/i', (string) $overlay['s']['bgImg'])) {
-			$settings['_h2e_layer_overlay'] = (string) $overlay['s']['bgImg'];
+		if (is_array($overlay) && !empty($overlay['s']['bgImg'])) {
+			$overlay_img = (string) $overlay['s']['bgImg'];
+			if (preg_match('/gradient\s*\(/i', $overlay_img)) {
+				$parsed = $this->css->parse_gradient($overlay_img);
+				if (null !== $parsed) {
+					$grad = $this->css->elementor_gradient_settings($parsed);
+					$settings['background_overlay_background'] = 'gradient';
+					$settings['background_overlay_color'] = $grad['background_color'] ?? '';
+					$settings['background_overlay_color_b'] = $grad['background_color_b'] ?? '';
+					$settings['background_overlay_gradient_type'] = $grad['background_gradient_type'] ?? 'linear';
+					if (isset($grad['background_gradient_angle'])) {
+						$settings['background_overlay_gradient_angle'] = $grad['background_gradient_angle'];
+					}
+					if (isset($grad['background_gradient_position'])) {
+						$settings['background_overlay_gradient_position'] = $grad['background_gradient_position'];
+					}
+				}
+			} else {
+				$settings['_h2e_layer_overlay'] = $overlay_img;
+			}
 		}
 
 		$on_container('layered_block');

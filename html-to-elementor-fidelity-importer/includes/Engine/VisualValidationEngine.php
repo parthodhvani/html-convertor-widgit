@@ -63,20 +63,18 @@ final class VisualValidationEngine implements EngineInterface
 		$total = max(1, $native + $html);
 		$widget_coverage = (int) round($native / $total * 100);
 
-		// Widgets-only pipeline: native widget coverage is the primary fidelity
-		// signal. Geometry simulation remains informative but is secondary when
-		// Elementor cannot be live-rendered for pixel compare in the harness.
-		$structural = (int) round(
-			$geometry_similarity * 0.45
-			+ $layout * 0.30
+		// Geometry / paint reconstruction is the primary fidelity signal.
+		// Widget coverage is reported separately and must not dominate the score
+		// (native widgets can still look wrong if spacing/paint is lost).
+		$colour = $this->colour_similarity($sections, $elementor_data);
+		$fidelity = (int) round(
+			$geometry_similarity * 0.35
+			+ $layout * 0.20
 			+ $spacing * 0.15
 			+ $typography * 0.10
-		);
-		$fidelity = (int) round(
-			$widget_coverage * 0.90
-			+ $structural * 0.07
-			+ $responsive * 0.02
-			+ $screenshot * 0.01
+			+ $colour * 0.10
+			+ $responsive * 0.05
+			+ $screenshot * 0.05
 		);
 
 		return array_merge($geo, array(
@@ -91,11 +89,13 @@ final class VisualValidationEngine implements EngineInterface
 			'layout' => $layout,
 			'typography' => $typography,
 			'spacing' => $spacing,
-			'colour' => (int) round(($layout + $typography) / 2),
+			'colour' => $colour,
 			'widget_coverage' => $widget_coverage,
 			'html_widget_pct' => (int) round($html / $total * 100),
 			'native_widget_pct' => $widget_coverage,
-			'structural_similarity' => $structural,
+			'structural_similarity' => (int) round(
+				$geometry_similarity * 0.45 + $layout * 0.30 + $spacing * 0.15 + $typography * 0.10
+			),
 			'compare' => $context['compare'] ?? null,
 			'constraint_coverage' => $this->constraint_coverage($sections),
 			'alignment_coverage' => (int) ($geo['alignment_score'] ?? 0),
@@ -147,6 +147,91 @@ final class VisualValidationEngine implements EngineInterface
 			return (int) round(($ssim * 0.6) + ($phash * 0.25) + ($ocr * 0.15));
 		}
 		return 0;
+	}
+
+	/**
+	 * Paint / colour fidelity: share of source painted nodes that retained a
+	 * background colour or gradient in the emitted Elementor tree.
+	 *
+	 * @param array<int,array<string,mixed>> $sections       Source sections.
+	 * @param array<int,array<string,mixed>> $elementor_data Emitted elements.
+	 */
+	private function colour_similarity(array $sections, array $elementor_data): int
+	{
+		$painted = 0;
+		$gradients = 0;
+		foreach ($sections as $section) {
+			$this->count_paint($section['tree'] ?? null, $painted, $gradients);
+		}
+		if ($painted <= 0) {
+			return 70;
+		}
+
+		$emitted_bgs = 0;
+		$emitted_grads = 0;
+		$this->count_emitted_paint($elementor_data, $emitted_bgs, $emitted_grads);
+
+		$bg_ratio = min(1.0, $emitted_bgs / max(1, $painted));
+		$grad_ratio = $gradients > 0 ? min(1.0, $emitted_grads / $gradients) : 1.0;
+
+		return (int) round(40 + ($bg_ratio * 35) + ($grad_ratio * 25));
+	}
+
+	/**
+	 * @param array<string,mixed>|null $node       Node.
+	 * @param int                      $painted    Painted node count.
+	 * @param int                      $gradients  Gradient node count.
+	 */
+	private function count_paint($node, int &$painted, int &$gradients): void
+	{
+		if (!is_array($node)) {
+			return;
+		}
+		$s = $node['s'] ?? array();
+		$bg = (string) ($s['bg'] ?? '');
+		$bg_img = (string) ($s['bgImg'] ?? '');
+		$has_solid = '' !== $bg && 'transparent' !== strtolower($bg) && false === stripos($bg, 'rgba(0, 0, 0, 0)');
+		$has_grad = false !== stripos($bg_img, 'gradient') || false !== stripos($bg, 'gradient');
+		$has_img = (bool) preg_match('/url\(/i', $bg_img);
+		if ($has_solid || $has_grad || $has_img) {
+			++$painted;
+			if ($has_grad) {
+				++$gradients;
+			}
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			$this->count_paint($child, $painted, $gradients);
+		}
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @param int                            $bgs      Background count.
+	 * @param int                            $grads    Gradient count.
+	 */
+	private function count_emitted_paint(array $elements, int &$bgs, int &$grads): void
+	{
+		foreach ($elements as $el) {
+			if (!is_array($el)) {
+				continue;
+			}
+			$settings = $el['settings'] ?? array();
+			$type = (string) ($settings['background_background'] ?? '');
+			$has = '' !== $type
+				|| !empty($settings['background_color'])
+				|| !empty($settings['background_image']['url'])
+				|| !empty($settings['background_overlay_background']);
+			if ($has) {
+				++$bgs;
+			}
+			if ('gradient' === $type || 'gradient' === ($settings['background_overlay_background'] ?? '')) {
+				++$grads;
+			}
+			$kids = $el['elements'] ?? array();
+			if (is_array($kids) && $kids) {
+				$this->count_emitted_paint($kids, $bgs, $grads);
+			}
+		}
 	}
 
 	/**

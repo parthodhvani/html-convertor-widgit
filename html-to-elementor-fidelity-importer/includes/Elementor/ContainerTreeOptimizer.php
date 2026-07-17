@@ -322,7 +322,7 @@ final class ContainerTreeOptimizer
 	{
 		$settings = (array) ($container['settings'] ?? array());
 
-		foreach (array('background_color', 'background_image', 'border_border', 'box_shadow_box_shadow_type') as $key) {
+		foreach (array('background_color', 'background_image', 'background_background', 'background_color_b', 'border_border', 'box_shadow_box_shadow_type') as $key) {
 			if (!empty($settings[$key])) {
 				return true;
 			}
