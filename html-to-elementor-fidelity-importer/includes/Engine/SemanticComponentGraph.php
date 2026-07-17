@@ -156,18 +156,20 @@ final class SemanticComponentGraph implements EngineInterface
 			return 'social_icons';
 		}
 
-		// Service / pricing cards.
-		if (preg_match('/\b(service-card|pricing|price-table|icon-box|feature)\b/', $cls)
-			|| (($signals['has_border'] || $signals['has_shadow']) && $this->has_icon_signal($node))) {
-			if ($this->has_price_text($node)) {
-				return 'pricing';
-			}
-			if ($this->has_icon_signal($node) || preg_match('/\b(service-card|icon-box|feature)\b/', $cls)) {
-				return 'icon_box';
-			}
+		// Explicit price-table widgets only — marketing service cards stay as
+		// structured `card` containers so IR children remain editable.
+		if (preg_match('/\b(pricing|price-table|price-card)\b/', $cls) && $this->has_price_text($node)) {
+			return 'pricing';
+		}
+		if (preg_match('/\b(icon-box|feature-box)\b/', $cls)) {
+			return 'icon_box';
 		}
 
-		// Card — bordered/shadow box among equal siblings.
+		// Card — bordered/shadow box among equal siblings (incl. service-card).
+		if (preg_match('/\b(service-card|feature-card)\b/', $cls)
+			|| (($signals['has_border'] || $signals['has_shadow']) && $this->has_icon_signal($node))) {
+			return 'card';
+		}
 		if (($signals['has_border'] || $signals['has_shadow']) && ($constraint['equal_width'] ?? false)) {
 			return 'card';
 		}

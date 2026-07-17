@@ -104,8 +104,8 @@ final class LayoutGraphEmitter
 		// (e.g. `.faq` wrapper). Mixed sections fall through so headings stay.
 		$role = strtolower((string) ($node['layoutRole'] ?? ''));
 		$cls = strtolower((string) ($node['cls'] ?? ''));
-		$pure_pattern = in_array($role, array('faq', 'form_block', 'testimonial', 'icon_box', 'social_icons', 'pricing', 'cta_block', 'cta'), true)
-			|| (bool) preg_match('/\b(faq|accordion|testimonial|service-card|cta-banner|socials|newsletter-form)\b/', $cls);
+		$pure_pattern = in_array($role, array('faq', 'form_block', 'social_icons', 'pricing', 'cta_block', 'cta'), true)
+			|| (bool) preg_match('/\b(faq|accordion|cta-banner|socials|newsletter-form|price-table|pricing)\b/', $cls);
 		if ($pure_pattern) {
 			$composite = $this->builder->emit_composite_widget($node);
 			if (null !== $composite) {

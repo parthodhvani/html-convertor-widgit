@@ -361,7 +361,20 @@ final class GeometryComparator implements EngineInterface
 					if (($s['type'] ?? '') !== ($e['type'] ?? '')) {
 						continue;
 					}
+					// Empty-class or cross-class fallbacks must be spatially close.
+					$s_cls = (string) ($s['cls'] ?? '');
+					$e_cls = (string) ($e['cls'] ?? '');
+					if ('' !== $s_cls && '' !== $e_cls && $s_cls !== $e_cls) {
+						// Distinct classes are not interchangeable via type fallback.
+						continue;
+					}
 					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.5;
+					if ('' === $s_cls || '' === $e_cls) {
+						// Anonymous nodes: require proximity to avoid random pairing.
+						if ($score > 160.0) {
+							continue;
+						}
+					}
 					if ($score < $fallback_score) {
 						$fallback_score = $score;
 						$fallback_best = $e;
@@ -373,6 +386,11 @@ final class GeometryComparator implements EngineInterface
 					$best_ei = $fallback_ei;
 					$best_score = $fallback_score;
 				}
+			}
+
+			// Reject absurd pairings that would dominate RMSE with noise.
+			if (null !== $best && $best_score > 420.0) {
+				continue;
 			}
 
 			if (null !== $best && $best_ei >= 0) {

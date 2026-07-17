@@ -659,17 +659,15 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_price_table(array $node, string $role, string $cls): ?array
 	{
+		// Only explicit pricing blocks — marketing service cards keep a structured
+		// container + heading/text/button tree so Chromium IR children survive.
 		$hinted = in_array($role, array('pricing', 'price_table'), true)
-			|| (bool) preg_match('/\b(service-card|pricing|price-table)\b/', $cls);
+			|| (bool) preg_match('/\b(pricing|price-table|price-card)\b/', $cls);
+		if (!$hinted) {
+			return null;
+		}
 		$price = $this->extract_price($node);
 		if (null === $price) {
-			return null;
-		}
-		if (!$hinted && 'card' !== $role && !preg_match('/\bcard\b/', $cls)) {
-			return null;
-		}
-		// Bare `.card` only becomes a price table when a price signal is present.
-		if (!$hinted && null === $price) {
 			return null;
 		}
 
@@ -705,11 +703,9 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_icon_box(array $node, string $role, string $cls): ?array
 	{
+		// Explicit icon-box / feature widgets only — not broad service-card trees.
 		$hinted = in_array($role, array('icon_box', 'feature'), true)
-			|| (bool) preg_match('/\b(service-card|icon-box|feature)\b/', $cls);
-		if (!$hinted && in_array($role, array('card'), true) && null !== $this->first_icon($node)) {
-			$hinted = true;
-		}
+			|| (bool) preg_match('/\b(icon-box|feature-box|feature-card)\b/', $cls);
 		if (!$hinted) {
 			return null;
 		}

@@ -39,7 +39,7 @@ final class CompositePaintGradientTest extends TestCase
 		$converter = new LayoutTreeConverter();
 		$node = array(
 			'tag' => 'div',
-			'cls' => 'service-card',
+			'cls' => 'pricing price-table',
 			's' => array(
 				'w' => 320,
 				'h' => 280,
