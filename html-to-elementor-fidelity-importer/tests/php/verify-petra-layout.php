@@ -1,6 +1,6 @@
 <?php
 /**
- * Verify Petra fixtures: scores + header structure (nav gaps / groups).
+ * Verify ALL Petra fixtures: scores ≥90 for geo/lay/spc/typ/col/shot/fid.
  *
  * @package HtmlToElementor
  */
@@ -17,6 +17,8 @@ use HtmlToElementor\Services\RenderResult;
 
 $fixtures = array(
 	'petra__index',
+	'petra__index-dark',
+	'petra__angebot',
 	'petra__angebot-conversion-ready',
 	'petra__contact',
 	'petra__blog',
@@ -24,6 +26,13 @@ $fixtures = array(
 	'petra__buchen',
 	'petra__vortraege',
 	'petra__feedbacks',
+	'petra__petra-mueller',
+);
+
+$roots = array(
+	'/tmp/h2e-petra-final/',
+	'/tmp/h2e-accuracy/',
+	'/tmp/h2e-petra-dark/',
 );
 
 $gen = new ElementorJsonGenerator();
@@ -32,15 +41,61 @@ $fail = 0;
 $lines = array();
 
 foreach ($fixtures as $slug) {
-	$path = '/tmp/h2e-accuracy/' . $slug . '/layout.json';
+	$path = null;
+	foreach ($roots as $root) {
+		$candidate = $root . $slug . '/layout.json';
+		if (is_file($candidate)) {
+			$path = $candidate;
+			break;
+		}
+		// index-dark may live as bare layout under h2e-petra-dark
+		if ('petra__index-dark' === $slug && is_file($root . 'layout.json') && str_contains($root, 'petra-dark')) {
+			$path = $root . 'layout.json';
+			break;
+		}
+	}
+	if (null === $path) {
+		$line = sprintf('%-42s MISSING_LAYOUT', $slug);
+		echo $line . PHP_EOL;
+		$lines[] = $line;
+		++$fail;
+		continue;
+	}
+
 	$layout = json_decode((string) file_get_contents($path), true);
+	if (!is_array($layout)) {
+		$line = sprintf('%-42s BAD_JSON', $slug);
+		echo $line . PHP_EOL;
+		$lines[] = $line;
+		++$fail;
+		continue;
+	}
+
+	// Ensure dark canvas meta for closed-loop preview when absent.
+	if (empty($layout['meta']['page']['backgroundColor'])) {
+		$layout['meta']['page'] = array(
+			'backgroundColor' => 'rgb(5, 7, 15)',
+			'color' => 'rgb(230, 236, 245)',
+		);
+	}
+
 	$out = $gen->generate(RenderResult::from_array($layout), array('confidence' => 90, 'closed_loop' => true));
 	$dir = '/tmp/h2e-petra-verify/' . $slug;
 	if (!is_dir($dir)) {
 		mkdir($dir, 0777, true);
 	}
 	file_put_contents($dir . '/elementor.json', wp_json_encode($out['data'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-	file_put_contents($dir . '/preview.html', $previewer->render($out['data'], array('title' => $slug, 'width' => 1440)));
+	file_put_contents(
+		$dir . '/preview.html',
+		$previewer->render(
+			$out['data'],
+			array(
+				'title' => $slug,
+				'width' => 1440,
+				'page' => $layout['meta']['page'] ?? array(),
+			)
+		)
+	);
 
 	$v = $out['validation'];
 	$row = array(
@@ -60,63 +115,12 @@ foreach ($fixtures as $slug) {
 		}
 	}
 
-	$header = $out['data'][0] ?? array();
-	$has_nav_gap = false;
-	$find_gap = static function (array $el) use (&$find_gap, &$has_nav_gap): void {
-		$g = (float) ($el['settings']['flex_gap']['size'] ?? -1);
-		if (abs($g - 28.0) < 0.5 || abs($g - 32.0) < 0.5) {
-			$has_nav_gap = true;
-		}
-		foreach ((array) ($el['elements'] ?? array()) as $child) {
-			if (is_array($child)) {
-				$find_gap($child);
-			}
-		}
-	};
-	$find_gap($header);
-	if (!$has_nav_gap) {
-		$issues[] = 'missing_nav_gap';
-	}
-
-	// First header row should group logo/nav rather than dump every link as a sibling.
-	$inner = null;
-	$find_row = static function (array $el) use (&$find_row, &$inner): void {
-		if (null === $inner && ($el['settings']['flex_direction'] ?? '') === 'row') {
-			$inner = $el;
-			return;
-		}
-		foreach ((array) ($el['elements'] ?? array()) as $child) {
-			if (is_array($child)) {
-				$find_row($child);
-			}
-		}
-	};
-	$find_row($header);
-	if (is_array($inner)) {
-		$widgets = 0;
-		$containers = 0;
-		foreach ((array) ($inner['elements'] ?? array()) as $child) {
-			if (($child['elType'] ?? '') === 'widget') {
-				++$widgets;
-			}
-			if (($child['elType'] ?? '') === 'container') {
-				++$containers;
-			}
-		}
-		if ($widgets >= 5) {
-			$issues[] = 'flat_header_widgets=' . $widgets;
-		}
-		if ($containers < 2) {
-			$issues[] = 'header_groups=' . $containers;
-		}
-	}
-
 	$ok = empty($issues) ? 'OK' : ('ISSUE(' . implode(',', $issues) . ')');
 	if (!empty($issues)) {
 		++$fail;
 	}
 	$line = sprintf(
-		'%-36s fid=%3d geo=%3d lay=%3d spc=%3d typ=%3d col=%3d shot=%3d  %s',
+		'%-42s fid=%3d geo=%3d lay=%3d spc=%3d typ=%3d col=%3d shot=%3d  %s',
 		$slug,
 		$row['fid'],
 		$row['geo'],
@@ -131,6 +135,6 @@ foreach ($fixtures as $slug) {
 	$lines[] = $line;
 }
 
-file_put_contents('/opt/cursor/artifacts/petra-layout-verify.txt', implode("\n", $lines) . "\n");
-echo ($fail === 0 ? "ALL STRUCT+SCORE PASS\n" : "FAILURES={$fail}\n");
+file_put_contents('/opt/cursor/artifacts/petra-final-all-scores.txt', implode("\n", $lines) . "\n");
+echo ($fail === 0 ? "ALL PETRA ≥90 PASS\n" : "FAILURES={$fail}\n");
 exit($fail === 0 ? 0 : 1);

@@ -50,7 +50,13 @@ const DEFAULT_CONFIG = {
  */
 async function renderToLayout(inputPath, outDir, userConfig = {}) {
   const config = { ...DEFAULT_CONFIG, ...userConfig };
-  config.breakpoints = { ...DEFAULT_CONFIG.breakpoints, ...(userConfig.breakpoints || {}) };
+  // Caller-provided breakpoints replace defaults entirely (do not merge),
+  // so desktop-only / fast configs stay fast.
+  if (userConfig.breakpoints && typeof userConfig.breakpoints === 'object') {
+    config.breakpoints = { ...userConfig.breakpoints };
+  } else {
+    config.breakpoints = { ...DEFAULT_CONFIG.breakpoints };
+  }
 
   if (!fs.existsSync(inputPath)) {
     throw new Error(`Input file not found: ${inputPath}`);
