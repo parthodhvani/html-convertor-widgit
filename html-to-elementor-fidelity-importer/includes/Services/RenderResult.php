@@ -83,4 +83,15 @@ final class RenderResult
 	{
 		return is_array($this->data['assets'] ?? null) ? $this->data['assets'] : array();
 	}
+
+	/**
+	 * Document canvas styles (body/html) captured by Chromium.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function page(): array
+	{
+		$page = $this->data['meta']['page'] ?? ($this->data['assets']['page'] ?? null);
+		return is_array($page) ? $page : array();
+	}
 }

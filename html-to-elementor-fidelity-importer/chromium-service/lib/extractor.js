@@ -106,12 +106,22 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
       });
     });
 
-    const meta = await page.evaluate(() => ({
-      title: document.title || '',
-      url: location.href,
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
-    }));
+    const meta = await page.evaluate(() => {
+      const body = getComputedStyle(document.body);
+      const html = getComputedStyle(document.documentElement);
+      return {
+        title: document.title || '',
+        url: location.href,
+        width: document.documentElement.scrollWidth,
+        height: document.documentElement.scrollHeight,
+        page: {
+          backgroundColor: body.backgroundColor || html.backgroundColor || '',
+          color: body.color || '',
+          fontFamily: body.fontFamily || '',
+          fontSize: body.fontSize || '',
+        },
+      };
+    });
 
     const assets = await page.evaluate(extractAssetsInPage);
     let sections = await page.evaluate(browserPageSegmenter);
