@@ -57,7 +57,7 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
-	 * Ensure nesting levels 2–4 fill their parent in Elementor (Full Width + 100%).
+	 * Ensure nesting levels 2–7 fill their parent in Elementor (Full Width + 100%).
 	 *
 	 * Elementor nested containers often omit an explicit width, so the editor
 	 * shrink-wraps them. Apply 100% only when it will not break row column shares
@@ -664,7 +664,7 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
-	 * Walk containers and set content_width=full + width=100% at depths 2–4 when safe.
+	 * Walk containers and set content_width=full + width=100% at depths 2–7 when safe.
 	 *
 	 * @param array<int,array<string,mixed>> $elements        Elements.
 	 * @param int                            $depth           Container depth (1 = section root).
@@ -690,7 +690,7 @@ final class ContainerTreeOptimizer
 				$settings = (array) ($element['settings'] ?? array());
 				$settings['content_width'] = 'full';
 
-				if ($depth >= 2 && $depth <= 4
+				if ($depth >= 2 && $depth <= 7
 					&& $this->should_force_full_percent_width($settings, $parent_direction, $container_siblings)
 				) {
 					$settings['width'] = array(
