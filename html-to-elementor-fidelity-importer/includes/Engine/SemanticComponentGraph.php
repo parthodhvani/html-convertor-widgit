@@ -196,10 +196,15 @@ final class SemanticComponentGraph implements EngineInterface
 		}
 
 		if ('stack' === $layout || 'column' === ($constraint['direction'] ?? '')) {
-			return 'stack';
+			$children = (array) ($node['children'] ?? array());
+			// Only annotate real multi-child stacks — not every column-ish node.
+			if (count($children) >= 2) {
+				return 'stack';
+			}
+			return '';
 		}
 
-		return 'section';
+		return '';
 	}
 
 	/**

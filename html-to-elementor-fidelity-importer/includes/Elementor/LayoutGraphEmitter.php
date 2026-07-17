@@ -205,6 +205,12 @@ final class LayoutGraphEmitter
 			$cls = strtolower((string) ($child['cls'] ?? ''));
 			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
 			if ($is_item) {
+				$signals = VisualSignals::analyze($child);
+				if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+					$flush();
+					$out = array_merge($out, $this->emit_node($child, false, $child_row, $self_width));
+					continue;
+				}
 				$buffer[] = $child;
 				continue;
 			}

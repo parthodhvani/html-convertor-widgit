@@ -550,12 +550,56 @@ final class GeometryComparator implements EngineInterface
 		if (!is_array($node)) {
 			return;
 		}
-		if (!empty($node['layoutConstraint']) || !empty($node['layoutRole'])) {
+		if ($this->is_significant_layout_node($node)) {
 			++$count;
 		}
 		foreach ((array) ($node['children'] ?? array()) as $child) {
 			$this->count_layout_nodes($child, $count);
 		}
+	}
+
+	/**
+	 * Nodes that warrant an Elementor container — not every inferred constraint.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function is_significant_layout_node(array $node): bool
+	{
+		if (!empty($node['atomic'])) {
+			return false;
+		}
+		if (!empty($node['layoutRole'])) {
+			return true;
+		}
+
+		$s = $node['s'] ?? array();
+		$disp = strtolower((string) ($s['disp'] ?? ''));
+		$child_count = count((array) ($node['children'] ?? array()));
+		$is_flex_or_grid = false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
+
+		// Single-cell centering grids / empty flex wrappers are not layout frames.
+		if ($is_flex_or_grid && $child_count >= 2) {
+			return true;
+		}
+
+		$signals = VisualSignals::analyze($node);
+		$w = (float) ($s['w'] ?? 0);
+		$h = (float) ($s['h'] ?? 0);
+		$substantial = ($w >= 120.0 || $h >= 80.0);
+		if (($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) && $substantial) {
+			return true;
+		}
+		if ($signals['has_padding'] && $substantial && $child_count >= 1) {
+			return true;
+		}
+
+		$gap = $s['gap'] ?? null;
+		if ($child_count >= 2 && null !== $gap && '' !== $gap && '0' !== $gap && '0px' !== $gap
+			&& empty($s['_gap_geometry']) && empty($s['_gap_whitespace'])) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**

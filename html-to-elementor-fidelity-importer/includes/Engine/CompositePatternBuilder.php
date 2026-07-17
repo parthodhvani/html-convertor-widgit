@@ -122,6 +122,11 @@ final class CompositePatternBuilder implements EngineInterface
 			return null;
 		}
 
+		// Painted disclosure cards keep container structure (backgrounds/borders).
+		if ($this->accordion_items_are_painted($node)) {
+			return null;
+		}
+
 		$tabs = array();
 		foreach ($detected['items'] as $item) {
 			$tabs[] = array(
@@ -133,8 +138,61 @@ final class CompositePatternBuilder implements EngineInterface
 		return array(
 			'type' => 'accordion',
 			'role' => 'faq',
-			'settings' => array('tabs' => $tabs),
+			'settings' => array_merge(
+				array('tabs' => $tabs),
+				$this->accordion_paint_settings($node)
+			),
 		);
+	}
+
+	/**
+	 * @param array<string,mixed> $node FAQ root.
+	 */
+	private function accordion_items_are_painted(array $node): bool
+	{
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
+			if (!$is_item) {
+				continue;
+			}
+			$signals = VisualSignals::analyze($child);
+			if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Carry painted FAQ item backgrounds onto the accordion widget.
+	 *
+	 * @param array<string,mixed> $node FAQ root.
+	 * @return array<string,mixed>
+	 */
+	private function accordion_paint_settings(array $node): array
+	{
+		$mapper = new \HtmlToElementor\Elementor\CssMapper();
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
+			if (!$is_item) {
+				continue;
+			}
+			$bg = $mapper->background($child);
+			if (!empty($bg)) {
+				return $bg;
+			}
+		}
+		return array();
 	}
 
 	/**

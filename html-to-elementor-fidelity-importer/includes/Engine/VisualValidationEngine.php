@@ -67,15 +67,31 @@ final class VisualValidationEngine implements EngineInterface
 		// Widget coverage is reported separately and must not dominate the score
 		// (native widgets can still look wrong if spacing/paint is lost).
 		$colour = $this->colour_similarity($sections, $elementor_data);
-		$fidelity = (int) round(
-			$geometry_similarity * 0.35
-			+ $layout * 0.20
-			+ $spacing * 0.15
-			+ $typography * 0.10
-			+ $colour * 0.10
-			+ $responsive * 0.05
-			+ $screenshot * 0.05
-		);
+		$screenshot_available = is_array($context['compare'] ?? null);
+		if ($screenshot_available) {
+			$fidelity = (int) round(
+				$geometry_similarity * 0.35
+				+ $layout * 0.20
+				+ $spacing * 0.15
+				+ $typography * 0.10
+				+ $colour * 0.10
+				+ $responsive * 0.05
+				+ $screenshot * 0.05
+			);
+		} else {
+			// Do not punish for missing WP+Elementor pixel compare — renormalize.
+			$fidelity = (int) round(
+				(
+					$geometry_similarity * 0.35
+					+ $layout * 0.20
+					+ $spacing * 0.15
+					+ $typography * 0.10
+					+ $colour * 0.10
+					+ $responsive * 0.05
+				) / 0.95
+			);
+			$screenshot = -1;
+		}
 
 		return array_merge($geo, array(
 			'fidelity' => min(100, max(0, $fidelity)),
@@ -84,6 +100,7 @@ final class VisualValidationEngine implements EngineInterface
 			'typography_similarity' => $typography,
 			'responsive_similarity' => $responsive,
 			'screenshot' => $screenshot,
+			'screenshot_available' => $screenshot_available,
 			'ocr_similarity' => max(0, min(100, $ocr)),
 			'perceptual_hash_similarity' => max(0, min(100, $phash)),
 			'layout' => $layout,

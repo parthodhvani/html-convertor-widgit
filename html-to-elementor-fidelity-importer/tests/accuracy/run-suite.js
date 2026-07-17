@@ -36,6 +36,8 @@ const DEFAULT_FIXTURES = [
   'petra/angebot-conversion-ready.html',
   'petra/contact.html',
   'petra/blog.html',
+  'bootstrap-grid.html',
+  'dark-saas.html',
 ];
 
 function parseArgs(argv) {

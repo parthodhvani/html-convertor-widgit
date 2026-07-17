@@ -56,7 +56,7 @@ final class PixelRepairEngine implements EngineInterface
 			$elementor_data = $this->promote_simple_html($elementor_data, $round_changed, $repairs);
 			$elementor_data = $this->fix_container_flex($elementor_data, $round_changed, $repairs);
 			// Do not strip browser margins — spacing fidelity requires them.
-			$elementor_data = $this->apply_gap_from_source($elementor_data, $sections, $round_changed, $repairs);
+			// Do not invent median flex_gap on containers that had no CSS/constraint gap.
 			$elementor_data = $this->apply_padding_from_whitespace($elementor_data, $sections, $round_changed, $repairs);
 
 			if (!$round_changed) {
