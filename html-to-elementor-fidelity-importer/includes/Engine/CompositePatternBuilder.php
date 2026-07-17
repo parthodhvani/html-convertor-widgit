@@ -573,6 +573,12 @@ final class CompositePatternBuilder implements EngineInterface
 				'size' => $gap,
 			);
 		}
+		// Keep icons on one row in Elementor (editor uses .elementor-grid which
+		// otherwise stacks when the parent column is narrow).
+		$settings['shape'] = 'rounded';
+		$settings['custom_css'] = 'selector .elementor-social-icons-wrapper, selector .elementor-grid {'
+			. ' display:flex !important; flex-direction:row !important; flex-wrap:nowrap !important;'
+			. ' grid-template-columns:none !important; gap:' . ($gap > 0 ? (int) round($gap) : 10) . 'px; }';
 
 		return array(
 			'type' => 'social-icons',

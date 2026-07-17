@@ -14,6 +14,7 @@ use HtmlToElementor\Engine\CompositePatternBuilder;
 use HtmlToElementor\Engine\CssMappingEngine;
 use HtmlToElementor\Engine\LayeredLayoutSolver;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
+use HtmlToElementor\Engine\VisualSignals;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -434,13 +435,16 @@ final class LayoutTreeConverter
                 $pct = max(5, $pct);
                 $settings['width'] = array('unit' => '%', 'size' => $pct);
                 $settings['flex_grow'] = 0;
-                $settings['flex_shrink'] = 1;
+                // Shrinking %-columns below measure wraps phones/nav labels in
+                // real Elementor even when the preview oracle still looked fine.
+                $settings['flex_shrink'] = 0;
                 // Full-width on mobile only when the parent row actually stacks.
                 if (!empty($node['responsiveConstraints']['full_width_mobile'])) {
                     $settings['width_mobile'] = array('unit' => '%', 'size' => 100);
                 }
             } elseif ($width > 0) {
                 $settings['width'] = array('unit' => 'px', 'size' => round($width, 0));
+                $settings['flex_shrink'] = 0;
             }
         }
 
@@ -672,12 +676,25 @@ final class LayoutTreeConverter
      */
     private function reconstruct_horizontal_bar(array $node): ?array
     {
+        // Nested flex groups (logo + nav, nav-list + CTA) must keep their own
+        // structure and gaps. Flattening every atom into one row is what made
+        // Petra headers render as "HomeAngebotPetra…" with zero spacing.
+        if ($this->has_nested_layout_groups($node)) {
+            return null;
+        }
+
         $widgets = $this->flatten_atomic_widgets($node);
         if (empty($widgets)) {
             return null;
         }
 
-        $constraint = $node['layoutConstraint'] ?? array();
+        // Atomic-only rows with no own gap/paint should hoist into the parent
+        // row (Bootstrap-style nav-links). Rows with a real gap (Petra nav-list
+        // at 28px) keep their container so spacing survives.
+        if (!$this->bar_needs_own_box($node)) {
+            return null;
+        }
+
         $alignment = $node['alignment'] ?? array();
 
         $settings = array_merge(
@@ -705,6 +722,56 @@ final class LayoutTreeConverter
             'elements' => $widgets,
             'isInner' => false,
         );
+    }
+
+    /**
+     * True when a bar contains nested non-atomic groups that own their layout.
+     *
+     * @param array<string,mixed> $node Bar node.
+     */
+    private function has_nested_layout_groups(array $node): bool
+    {
+        foreach ((array) ($node['children'] ?? array()) as $child) {
+            if (!is_array($child) || !empty($child['atomic']) || !empty($child['atomicText'])) {
+                continue;
+            }
+            $grand = array_values(array_filter((array) ($child['children'] ?? array()), 'is_array'));
+            if (count($grand) >= 1) {
+                return true;
+            }
+            $disp = strtolower((string) ($child['s']['disp'] ?? ''));
+            if (false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether an atomic-only bar must keep its own Elementor container.
+     *
+     * @param array<string,mixed> $node Bar node.
+     */
+    private function bar_needs_own_box(array $node): bool
+    {
+        $gap = $node['s']['gap'] ?? 0;
+        if (is_string($gap)) {
+            $gap = (float) $gap;
+        }
+        if ((float) $gap > 0) {
+            return true;
+        }
+
+        // Ignore s.pt/pb — WhitespaceAnalyzer may stamp invented insets there.
+        // Background/image still require an own box.
+        $s = $node['s'] ?? array();
+        $bg = strtolower((string) ($s['bg'] ?? ''));
+        if ('' !== $bg && 'transparent' !== $bg && false === strpos($bg, 'rgba(0, 0, 0, 0)')) {
+            return true;
+        }
+
+        return !empty($s['bgImg']);
     }
 
     /**

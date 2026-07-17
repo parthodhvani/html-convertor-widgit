@@ -288,22 +288,29 @@ final class WhitespaceAnalyzer implements EngineInterface
 		array $parent_box,
 		string $side
 	): bool {
+		$css_key = 'bottom' === $side ? 'pb' : 'pt';
+		$css = (float) ($parent['s'][$css_key] ?? 0);
+		$disp = strtolower((string) ($parent['s']['disp'] ?? ''));
+		$ai = strtolower((string) ($parent['s']['ai'] ?? $parent['layoutConstraint']['align_items'] ?? ''));
+		$parent_is_grid = false !== strpos($disp, 'grid');
+		$parent_is_flex = false !== strpos($disp, 'flex');
+
+		// Flex vertical alignment free-space (center/start/end) is not padding —
+		// Petra headers were gaining ~12px T/B and growing from 79→93px.
+		if ($parent_is_flex && in_array($ai, array('center', 'flex-end', 'end', 'flex-start', 'start'), true)
+			&& $css <= 8 && $inset >= 4
+		) {
+			return true;
+		}
+
 		if ($inset < 24) {
 			return false;
 		}
-		$css_key = 'bottom' === $side ? 'pb' : 'pt';
-		$css = (float) ($parent['s'][$css_key] ?? 0);
 		if ($inset <= max(16.0, $css * 2 + 8)) {
 			return false;
 		}
 
-		$disp = strtolower((string) ($parent['s']['disp'] ?? ''));
-		$ai = strtolower((string) ($parent['s']['ai'] ?? ''));
-		$parent_is_grid = false !== strpos($disp, 'grid');
-		$parent_is_flex = false !== strpos($disp, 'flex');
 		if (!$parent_is_grid && !$parent_is_flex) {
-			// Child of a grid/flex equal-height track: still drop large pb/pt
-			// when CSS padding is ~0 and content does not fill the box.
 			if ($css > 8) {
 				return false;
 			}
@@ -369,7 +376,7 @@ final class WhitespaceAnalyzer implements EngineInterface
 			return false;
 		}
 
-		$jc = strtolower((string) ($parent['s']['jc'] ?? ''));
+		$jc = strtolower((string) ($parent['s']['jc'] ?? $parent['layoutConstraint']['justify'] ?? ''));
 		if (in_array($jc, array('center', 'space-between', 'space-around', 'space-evenly'), true)
 			&& abs($left - $right) <= max(8.0, 0.15 * max($left, $right, 1.0))
 		) {

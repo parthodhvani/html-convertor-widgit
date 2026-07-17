@@ -290,9 +290,11 @@ HTML;
 		$type = (string) ($el['widgetType'] ?? 'html');
 		$id = htmlspecialchars((string) ($el['id'] ?? ''), ENT_QUOTES);
 		$style = implode(';', array_merge($this->box_styles($s), $this->typography_styles($s), $this->background_styles($s)));
-		$custom = trim((string) ($s['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
-		if ('' !== $custom) {
-			$style .= ('' === $style ? '' : ';') . $custom;
+		foreach (array('_h2e_custom_css', 'custom_css') as $key) {
+			$custom = $this->flatten_custom_css((string) ($s[$key] ?? ''));
+			if ('' !== $custom) {
+				$style .= ('' === $style ? '' : ';') . $custom;
+			}
 		}
 		$cls = 'e-widget e-widget-' . preg_replace('/[^a-z0-9_-]/i', '', $type) . ' elementor-element-' . $id;
 		if (!empty($s['_css_classes'])) {
@@ -393,6 +395,18 @@ HTML;
 						. '</summary><div>' . (string) ($tab['tab_content'] ?? '') . '</div></details>';
 				}
 				return $html;
+			case 'social-icons':
+				$items = '';
+				$gap = (float) ($s['gap']['size'] ?? 10);
+				foreach ((array) ($s['social_icon_list'] ?? array()) as $item) {
+					$icon = (string) ($item['social_icon']['value'] ?? 'fa fa-link');
+					$label = htmlspecialchars(preg_replace('/^fa-\w+\s+/', '', $icon) ?? $icon, ENT_QUOTES);
+					$items .= '<span style="display:inline-flex;align-items:center;justify-content:center;'
+						. 'width:40px;height:40px;border-radius:999px;background:rgba(13,59,102,.08);font-size:12px">'
+						. $label . '</span>';
+				}
+				return '<div class="e-social-icons" style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:'
+					. $gap . 'px;align-items:center">' . $items . '</div>';
 			default:
 				$title = htmlspecialchars((string) ($s['title'] ?? $type), ENT_QUOTES);
 				return '<div data-widget="' . htmlspecialchars($type, ENT_QUOTES) . '">' . $title . '</div>';

@@ -95,7 +95,39 @@ final class CssMappingEngine implements EngineInterface
 			),
 		};
 
+		if (in_array($widget_type, array('text-editor', 'heading'), true)) {
+			$settings = array_merge($settings, $this->single_line_text_guard($node));
+		}
+
 		return $this->apply_token_references($settings);
+	}
+
+	/**
+	 * Keep short contact lines (phones, emails) from wrapping mid-token in Elementor.
+	 *
+	 * @param array<string,mixed> $node Tree node.
+	 * @return array<string,mixed>
+	 */
+	private function single_line_text_guard(array $node): array
+	{
+		$text = trim(preg_replace('/\s+/', ' ', (string) ($node['text'] ?? '')) ?? '');
+		if ('' === $text || strlen($text) > 48) {
+			return array();
+		}
+		// Only contact tokens (phones / emails / short locale lines). Do NOT
+		// nowrap ordinary nav labels — that forces header flex rows to wrap and
+		// doubles header height.
+		$looks_contact = (bool) preg_match(
+			'/^(\+\d[\d\s\/-]{6,}|\S+@\S+\.\S+|\d{4,}\s+\w+)/u',
+			$text
+		);
+		if (!$looks_contact) {
+			return array();
+		}
+
+		return array(
+			'custom_css' => 'selector, selector * { white-space: nowrap !important; }',
+		);
 	}
 
 	/**
