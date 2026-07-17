@@ -696,7 +696,12 @@ final class CssMapper
         if (!empty($s['ai'])) {
             $out['flex_align_items'] = $this->flex_align((string) $s['ai']);
         }
-        if ('row' === $direction || $is_grid) {
+        $wrap = strtolower((string) ($s['fw_wrap'] ?? ''));
+        if (in_array($wrap, array('nowrap', 'wrap', 'wrap-reverse'), true)) {
+            $out['flex_wrap'] = $wrap;
+        } elseif ('row' === $direction || $is_grid) {
+            // Default row containers to wrap only when the source did not say
+            // nowrap — Petra headers are nowrap and must stay a single line.
             $out['flex_wrap'] = 'wrap';
         }
         // Always set the gap explicitly (0 when the source has none) so it
@@ -756,7 +761,9 @@ final class CssMapper
 
         $out = array(
             'flex_direction' => 'row',
-            'flex_wrap' => 'wrap',
+            'flex_wrap' => in_array(strtolower((string) ($s['fw_wrap'] ?? '')), array('nowrap', 'wrap', 'wrap-reverse'), true)
+                ? strtolower((string) $s['fw_wrap'])
+                : 'wrap',
             '_h2e_display' => 'grid',
             'custom_css' => sprintf(
                 'selector { display: grid !important; grid-template-columns: %s; gap: %s; align-items: %s; }',

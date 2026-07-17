@@ -131,9 +131,9 @@ final class LayoutGraphEmitter
 		$child_row = 'row' === $this->builder->flex_direction($node);
 		$self_width = (float) ($node['s']['w'] ?? 0);
 		$is_grid = false !== strpos((string) ($node['s']['disp'] ?? ''), 'grid');
-		// CSS Grid needs percentage (or fr) children for Elementor free / flex
-		// fallback when custom_css display:grid is unavailable. Equal tracks
-		// without child widths become width:100% stacks (~3× page height).
+		// CSS Grid needs percentage children for Elementor free / flex fallback
+		// when custom_css display:grid is unavailable. flex_shrink stays 0 so
+		// equal card tracks cannot collapse and wrap phone numbers.
 		$parent_row_for_children = $child_row || $is_grid;
 
 		// Group consecutive accordion/details children into one widget.
@@ -326,6 +326,15 @@ final class LayoutGraphEmitter
 			'stack',
 			'section',
 		), true)) {
+			// Nested header/nav fragments that are only atomic links must hoist
+			// into the parent row (Bootstrap navbar). Keep a box when the node
+			// owns CSS gap/paint (Petra .nav-list gap:28px).
+			if ($parent_row && in_array($role, array('header', 'horizontal_bar'), true)) {
+				$kids = (array) ($node['children'] ?? array());
+				if ($this->all_atomic_leaves($kids) && !$this->css_declared_bar_chrome($node)) {
+					return false;
+				}
+			}
 			return true;
 		}
 
@@ -339,6 +348,18 @@ final class LayoutGraphEmitter
 		}
 
 		$children = (array) ($node['children'] ?? array());
+		// logo-text style stacks (own text + child line) inside a row parent must
+		// stay a column box — otherwise "Petra Müller" and the tagline sit in the
+		// logo row as siblings of the mark.
+		if ($parent_row) {
+			$text = trim((string) ($node['text'] ?? ''));
+			$pieces = count(array_filter($children, 'is_array')) + ('' !== $text ? 1 : 0);
+			$fd = strtolower((string) ($node['s']['fd'] ?? 'column'));
+			if ($pieces >= 2 && false === strpos($fd, 'row')) {
+				return true;
+			}
+		}
+
 		if ($this->all_atomic_leaves($children)) {
 			if ($parent_row) {
 				return $this->column_stack_in_row($node, $children);
@@ -395,6 +416,29 @@ final class LayoutGraphEmitter
 		}
 
 		return true;
+	}
+
+	/**
+	 * CSS-declared gap/padding/background on a bar (ignores invented whitespace).
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function css_declared_bar_chrome(array $node): bool
+	{
+		$s = $node['s'] ?? array();
+		$gap = $s['gap'] ?? 0;
+		if (is_string($gap)) {
+			$gap = (float) $gap;
+		}
+		if ((float) $gap > 0) {
+			return true;
+		}
+		// Do not treat WhitespaceAnalyzer-stamped pt/pb as real chrome.
+		$bg = strtolower((string) ($s['bg'] ?? ''));
+		if ('' !== $bg && 'transparent' !== $bg && false === strpos($bg, 'rgba(0, 0, 0, 0)')) {
+			return true;
+		}
+		return !empty($s['bgImg']);
 	}
 
 	/**

@@ -160,17 +160,23 @@ final class ContainerHierarchyTest extends TestCase
 		$this->assertCount(2, $result['data'][0]['elements']);
 	}
 
-	public function test_row_nav_hoists_atomic_links_without_wrapper_containers(): void
+	public function test_row_nav_preserves_link_group_gap(): void
 	{
 		$gen = new ElementorJsonGenerator();
 		$result = $gen->generate(RenderResult::from_array($this->bootstrap_layout()), array('mode' => 'native'));
 
 		$navbar = $result['data'][0];
 		$this->assertSame('container', $navbar['elType']);
-		$this->assertCount(3, $navbar['elements']);
-		foreach ($navbar['elements'] as $child) {
+		// Brand + nav-links group (measured sibling gap survives as flex_gap).
+		$this->assertCount(2, $navbar['elements']);
+		$this->assertSame('widget', $navbar['elements'][0]['elType']);
+		$this->assertSame('container', $navbar['elements'][1]['elType']);
+		$this->assertCount(2, $navbar['elements'][1]['elements']);
+		foreach ($navbar['elements'][1]['elements'] as $child) {
 			$this->assertSame('widget', $child['elType']);
 		}
+		$gap = (float) ($navbar['elements'][1]['settings']['flex_gap']['size'] ?? 0);
+		$this->assertGreaterThan(0, $gap);
 	}
 
 	public function test_regression_fixtures_respect_max_container_depth(): void
