@@ -131,8 +131,10 @@ final class LayoutGraphEmitter
 		$child_row = 'row' === $this->builder->flex_direction($node);
 		$self_width = (float) ($node['s']['w'] ?? 0);
 		$is_grid = false !== strpos((string) ($node['s']['disp'] ?? ''), 'grid');
-		// CSS Grid places tracks itself — do not force flex percentage column widths.
-		$parent_row_for_children = $child_row && !$is_grid;
+		// CSS Grid needs percentage (or fr) children for Elementor free / flex
+		// fallback when custom_css display:grid is unavailable. Equal tracks
+		// without child widths become width:100% stacks (~3× page height).
+		$parent_row_for_children = $child_row || $is_grid;
 
 		// Group consecutive accordion/details children into one widget.
 		$grouped = $this->emit_children_with_accordion_groups(
@@ -210,11 +212,17 @@ final class LayoutGraphEmitter
 			$cls = strtolower((string) ($child['cls'] ?? ''));
 			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
 			if ($is_item) {
-				$signals = VisualSignals::analyze($child);
-				if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
-					$flush();
-					$out = array_merge($out, $this->emit_node($child, false, $child_row, $self_width));
-					continue;
+				// Painted FAQ cards still collapse to accordion — chrome moves onto
+				// the widget. Only bail for non-FAQ painted siblings mis-tagged.
+				$explicit_faq = 'details' === $tag
+					|| (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
+				if (!$explicit_faq) {
+					$signals = VisualSignals::analyze($child);
+					if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+						$flush();
+						$out = array_merge($out, $this->emit_node($child, false, $child_row, $self_width));
+						continue;
+					}
 				}
 				$buffer[] = $child;
 				continue;
@@ -253,8 +261,12 @@ final class LayoutGraphEmitter
 
 		$composite = $this->builder->emit_composite_widget($node);
 		if (null !== $composite) {
-			if ($this->should_emit_container($node, $is_section, $parent_row)) {
-				return array($this->builder->emit_container($node, array($composite), $is_section, $parent_row, $parent_width));
+			// Grid/flex columns need a width-bearing wrapper; otherwise emit the
+			// composite alone so padding/background are not applied twice.
+			if ($parent_row) {
+				$wrap = $this->builder->emit_container($node, array($composite), $is_section, $parent_row, $parent_width);
+				$wrap = $this->strip_nested_widget_chrome($wrap);
+				return array($wrap);
 			}
 			return array($composite);
 		}
@@ -383,5 +395,79 @@ final class LayoutGraphEmitter
 		}
 
 		return true;
+	}
+
+	/**
+	 * Drop box chrome from nested widgets (and duplicate single-child wrappers)
+	 * so padding/background applied on the outer container is not painted twice.
+	 *
+	 * @param array<string,mixed> $element Container wrapping a composite.
+	 * @return array<string,mixed>
+	 */
+	private function strip_nested_widget_chrome(array $element): array
+	{
+		if ('container' !== ($element['elType'] ?? '')) {
+			return $element;
+		}
+
+		$kids = array_values((array) ($element['elements'] ?? array()));
+		foreach ($kids as $i => $kid) {
+			if (!is_array($kid)) {
+				continue;
+			}
+			$el_type = (string) ($kid['elType'] ?? '');
+			if ('widget' === $el_type) {
+				$kids[$i]['settings'] = $this->without_box_chrome((array) ($kid['settings'] ?? array()));
+				continue;
+			}
+			if ('container' !== $el_type) {
+				continue;
+			}
+
+			// Paint-chrome composites arrive as container > [chrome…, widget].
+			// Strip duplicate padding/margin on that inner wrapper, but keep
+			// nested chrome backgrounds (gradients / card icons).
+			$kids[$i]['settings'] = $this->without_box_chrome((array) ($kid['settings'] ?? array()), true);
+			$nested = array_values((array) ($kid['elements'] ?? array()));
+			foreach ($nested as $j => $inner) {
+				if (!is_array($inner) || 'widget' !== ($inner['elType'] ?? '')) {
+					continue;
+				}
+				$nested[$j]['settings'] = $this->without_box_chrome((array) ($inner['settings'] ?? array()));
+			}
+			$kids[$i]['elements'] = $nested;
+		}
+		$element['elements'] = $kids;
+
+		return $element;
+	}
+
+	/**
+	 * Remove padding/margin/background/border/shadow keys from settings.
+	 *
+	 * @param array<string,mixed> $settings Settings.
+	 * @param bool                $keep_background When true, retain background_* paint.
+	 * @return array<string,mixed>
+	 */
+	private function without_box_chrome(array $settings, bool $keep_background = false): array
+	{
+		foreach (array_keys($settings) as $key) {
+			if (!is_string($key)) {
+				continue;
+			}
+			if (0 === strpos($key, 'padding') || 0 === strpos($key, 'margin')) {
+				unset($settings[$key]);
+				continue;
+			}
+			if (!$keep_background && 0 === strpos($key, 'background_')) {
+				unset($settings[$key]);
+				continue;
+			}
+			if (0 === strpos($key, 'border_') || 0 === strpos($key, 'box_shadow_')) {
+				unset($settings[$key]);
+			}
+		}
+
+		return $settings;
 	}
 }

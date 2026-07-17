@@ -187,16 +187,57 @@ final class CssMapper
         }
 
         if ($include_margin && $this->has_any($s, array('mt', 'mr', 'mb', 'ml'))) {
-            $out['margin'] = $this->dimensions(
-                $s['mt'] ?? 0,
-                $s['mr'] ?? 0,
-                $s['mb'] ?? 0,
-                $s['ml'] ?? 0
-            );
-            $this->add_responsive_dimensions($out, 'margin', $node, array('mt', 'mr', 'mb', 'ml'));
+            $mt = (float) ($s['mt'] ?? 0);
+            $mr = (float) ($s['mr'] ?? 0);
+            $mb = (float) ($s['mb'] ?? 0);
+            $ml = (float) ($s['ml'] ?? 0);
+
+            // Chromium resolves margin:auto to equal L/R px. Emitting those with
+            // width:100% + max-width doubles the measure and destroys geometry.
+            if ($this->is_resolved_auto_margin_x($node, $ml, $mr)) {
+                $mr = 0.0;
+                $ml = 0.0;
+            }
+
+            if ($mt != 0.0 || $mr != 0.0 || $mb != 0.0 || $ml != 0.0) {
+                $out['margin'] = $this->dimensions($mt, $mr, $mb, $ml);
+                $this->add_responsive_dimensions($out, 'margin', $node, array('mt', 'mr', 'mb', 'ml'));
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * Detect margin-left/right that originated as auto (centering a max-width box).
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @param float               $ml   Margin left px.
+     * @param float               $mr   Margin right px.
+     */
+    private function is_resolved_auto_margin_x(array $node, float $ml, float $mr): bool
+    {
+        if ($ml < 8 && $mr < 8) {
+            return false;
+        }
+        if (abs($ml - $mr) > max(8.0, 0.2 * max($ml, $mr, 1.0))) {
+            return false;
+        }
+
+        $s = $node['s'] ?? array();
+        $max_w = $this->constrained_size($s['maxW'] ?? null);
+        if (null !== $max_w && $max_w['size'] > 0) {
+            return true;
+        }
+
+        // Narrow centered block (e.g. max-width text) without an explicit maxW
+        // still reports equal auto margins from Chromium.
+        $w = (float) ($s['w'] ?? $node['bbox']['width'] ?? 0);
+        if ($w > 0 && $ml + $mr > 40 && ($ml + $mr) >= $w * 0.15) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -759,21 +800,31 @@ final class CssMapper
             $px[] = (float) $m[1];
         }
 
-        $count = count($px);
-        $avg = array_sum($px) / max(1, $count);
-        $equal = true;
-        foreach ($px as $value) {
-            if (abs($value - $avg) > max(8.0, $avg * 0.08)) {
-                $equal = false;
-                break;
-            }
-        }
+		$count = count($px);
+		$avg = array_sum($px) / max(1, $count);
+		$equal = true;
+		// Only collapse to equal 1fr tracks when columns are truly uniform.
+		// Asymmetric heroes (e.g. 584px / 508px) must keep measured widths —
+		// an 8% tolerance was wrongly equalizing them and forcing extra text wrap.
+		foreach ($px as $value) {
+			if (abs($value - $avg) > max(4.0, $avg * 0.02)) {
+				$equal = false;
+				break;
+			}
+		}
 
-        if ($equal && $count >= 2) {
-            return 'repeat(' . $count . ', minmax(0, 1fr))';
-        }
+		if ($equal && $count >= 2) {
+			return 'repeat(' . $count . ', minmax(0, 1fr))';
+		}
 
-        return implode(' ', $tracks);
+		// Preserve asymmetric ratios as fr tracks so the measure stays correct
+		// while still flexing inside max-width containers.
+		$fr = array();
+		foreach ($px as $value) {
+			$fr[] = max(1, (int) round($value)) . 'fr';
+		}
+
+		return implode(' ', $fr);
     }
 
     private function css_align_keyword(string $value): string

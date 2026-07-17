@@ -716,16 +716,26 @@ final class LayoutTreeConverter
     private function flatten_atomic_widgets(array $node): array
     {
         $out = array();
-        if (!empty($node['atomic'])) {
+        // atomicText spans (breadcrumb separators, logo marks) are leaves too.
+        if (!empty($node['atomic']) || !empty($node['atomicText'])) {
             foreach ($this->convert_leaf($node) as $w) {
                 $out[] = $w;
             }
             return $out;
         }
-        foreach ((array) ($node['children'] ?? array()) as $child) {
-            if (!is_array($child)) {
-                continue;
+
+        $children = array_values(array_filter((array) ($node['children'] ?? array()), 'is_array'));
+        if (empty($children)) {
+            $text = trim((string) ($node['text'] ?? ''));
+            if ('' !== $text) {
+                foreach ($this->convert_leaf($node) as $w) {
+                    $out[] = $w;
+                }
             }
+            return $out;
+        }
+
+        foreach ($children as $child) {
             $out = array_merge($out, $this->flatten_atomic_widgets($child));
         }
         return $out;

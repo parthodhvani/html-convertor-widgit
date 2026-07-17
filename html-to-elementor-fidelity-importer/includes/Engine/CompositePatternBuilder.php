@@ -122,11 +122,9 @@ final class CompositePatternBuilder implements EngineInterface
 			return null;
 		}
 
-		// Painted disclosure cards keep container structure (backgrounds/borders).
-		if ($this->accordion_items_are_painted($node)) {
-			return null;
-		}
-
+		// Prefer native accordion even when items are painted cards — Elementor
+		// accordion can carry shared chrome, and keeping DOM cards as flex-row
+		// FAQ items destroys page geometry (~2× height).
 		$tabs = array();
 		foreach ($detected['items'] as $item) {
 			$tabs[] = array(

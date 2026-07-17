@@ -286,7 +286,7 @@ final class CssMappingEngine implements EngineInterface
 	}
 
 	/**
-	 * Padding and gap from geometry constraints — never margins.
+	 * Padding and gap from geometry constraints — never invent centering gutters.
 	 *
 	 * @param array<string,mixed> $node       Tree node.
 	 * @param bool                $is_section Top-level section flag.
@@ -297,20 +297,66 @@ final class CssMappingEngine implements EngineInterface
 		$out = array();
 		$whitespace = $node['whitespace'] ?? array();
 		$constraint = $node['layoutConstraint'] ?? array();
+		$s = $node['s'] ?? array();
 
-		// Preserve browser padding AND margins. Only prefer gap when CSS gap exists.
+		// Prefer browser CSS padding/margins (auto-margins already normalized).
 		$out = array_merge($out, $this->mapper->spacing($node, true));
 
+		// Geometry padding may fill missing sides only — never overwrite CSS and
+		// never apply centering free-space as Elementor padding.
 		if (!empty($whitespace['padding']) && is_array($whitespace['padding'])) {
 			$p = $whitespace['padding'];
-			$out['padding'] = array(
-				'unit' => 'px',
-				'top' => (string) round((float) ($p['top'] ?? 0)),
-				'right' => (string) round((float) ($p['right'] ?? 0)),
-				'bottom' => (string) round((float) ($p['bottom'] ?? 0)),
-				'left' => (string) round((float) ($p['left'] ?? 0)),
-				'isLinked' => false,
+			$geo = array(
+				'top' => round((float) ($p['top'] ?? 0)),
+				'right' => round((float) ($p['right'] ?? 0)),
+				'bottom' => round((float) ($p['bottom'] ?? 0)),
+				'left' => round((float) ($p['left'] ?? 0)),
 			);
+
+			$css = array(
+				'top' => (float) ($s['pt'] ?? 0),
+				'right' => (float) ($s['pr'] ?? 0),
+				'bottom' => (float) ($s['pb'] ?? 0),
+				'left' => (float) ($s['pl'] ?? 0),
+			);
+
+			$merged = array(
+				'top' => $css['top'] > 0 ? $css['top'] : $geo['top'],
+				'right' => $css['right'] > 0 ? $css['right'] : $geo['right'],
+				'bottom' => $css['bottom'] > 0 ? $css['bottom'] : $geo['bottom'],
+				'left' => $css['left'] > 0 ? $css['left'] : $geo['left'],
+			);
+
+			// Drop residual centering gutters that slipped through.
+			if ($merged['left'] > 48 && $merged['right'] > 48
+				&& abs($merged['left'] - $merged['right']) <= max(12.0, 0.2 * max($merged['left'], $merged['right']))
+				&& $css['left'] <= 48 && $css['right'] <= 48
+			) {
+				$merged['left'] = $css['left'];
+				$merged['right'] = $css['right'];
+			}
+
+			// Drop one-sided stretch gutters (short logo in wide grid cell).
+			if ($merged['right'] > 48 && $merged['right'] > $merged['left'] + 24 && $css['right'] <= 8) {
+				$merged['right'] = $css['right'];
+			}
+			if ($merged['left'] > 48 && $merged['left'] > $merged['right'] + 24 && $css['left'] <= 8) {
+				$merged['left'] = $css['left'];
+			}
+			if ($merged['bottom'] > 48 && $css['bottom'] <= 8) {
+				$merged['bottom'] = $css['bottom'];
+			}
+
+			if ($merged['top'] > 0 || $merged['right'] > 0 || $merged['bottom'] > 0 || $merged['left'] > 0) {
+				$out['padding'] = array(
+					'unit' => 'px',
+					'top' => (string) $merged['top'],
+					'right' => (string) $merged['right'],
+					'bottom' => (string) $merged['bottom'],
+					'left' => (string) $merged['left'],
+					'isLinked' => false,
+				);
+			}
 		}
 
 		$gap = (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0);
