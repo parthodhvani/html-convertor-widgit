@@ -123,123 +123,50 @@ final class ContainerTreeOptimizer
 		}
 
 		$element = $this->compress_container_chain($element);
-		$element = $this->split_oversized_widget_stack($element);
-		$element = $this->unwrap_transparent_single_widget($element);
-
-		return $element;
+		return $this->drop_noop_flex_gap($element);
 	}
 
 	/**
-	 * Split a container with many direct widget children into smaller stacks
-	 * grouped by consecutive widget-type runs (designer-like editability).
-	 * Layout direction / gap are preserved on the parent; groups inherit direction.
+	 * flex_gap with fewer than 2 Elementor children has no flex effect.
+	 * When the sole child is a multi-item composite (social-icons, accordion…),
+	 * transfer the gap onto that widget so icon/item spacing survives.
 	 *
 	 * @param array<string,mixed> $container Container.
 	 * @return array<string,mixed>
 	 */
-	private function split_oversized_widget_stack(array $container): array
+	private function drop_noop_flex_gap(array $container): array
 	{
-		$children = (array) ($container['elements'] ?? array());
-		if (count($children) < self::OVERSIZED_WIDGET_THRESHOLD) {
+		$kids = (array) ($container['elements'] ?? array());
+		if (count($kids) >= 2) {
+			return $container;
+		}
+		$gap = $container['settings']['flex_gap'] ?? null;
+		$size = is_array($gap) ? (float) ($gap['size'] ?? 0) : 0.0;
+		if ($size <= 0) {
 			return $container;
 		}
 
-		$all_widgets = true;
-		foreach ($children as $child) {
-			if ('widget' !== ($child['elType'] ?? '')) {
-				$all_widgets = false;
-				break;
-			}
-		}
-		if (!$all_widgets) {
-			return $container;
-		}
-
-		// Do not split rows — equal-width card grids must stay flat.
-		$direction = (string) (($container['settings']['flex_direction'] ?? 'column'));
-		if ('row' === $direction) {
-			return $container;
-		}
-
-		$runs = array();
-		$current = array($children[0]);
-		$current_type = (string) ($children[0]['widgetType'] ?? '');
-		for ($i = 1; $i < count($children); ++$i) {
-			$type = (string) ($children[$i]['widgetType'] ?? '');
-			// Start a new group when type changes AND current run already has content,
-			// but keep heading+text pairs together (common designer pattern).
-			$pair = ('heading' === $current_type && 'text-editor' === $type)
-				|| ('text-editor' === $current_type && 'button' === $type)
-				|| ('heading' === $current_type && 'button' === $type);
-			if ($type !== $current_type && !$pair && count($current) >= 1) {
-				// Flush if the next type starts a new semantic block (heading).
-				if ('heading' === $type && count($current) >= 2) {
-					$runs[] = $current;
-					$current = array($children[$i]);
-					$current_type = $type;
-					continue;
+		if (1 === count($kids) && 'widget' === ($kids[0]['elType'] ?? '')) {
+			$wt = (string) ($kids[0]['widgetType'] ?? '');
+			if (in_array($wt, array('social-icons', 'icon-list', 'accordion', 'image-carousel', 'form'), true)) {
+				$existing = (float) ($kids[0]['settings']['gap']['size']
+					?? $kids[0]['settings']['space_between']['size']
+					?? 0);
+				if ($existing <= 0) {
+					$key = 'accordion' === $wt ? 'space_between' : 'gap';
+					$kids[0]['settings'][$key] = array(
+						'unit' => 'px',
+						'size' => $size,
+					);
+					$container['elements'] = $kids;
 				}
+				// Keep flex_gap on the wrapper so spacing frames still match
+				// the source container gap after composite collapse.
+				return $container;
 			}
-			$current[] = $children[$i];
-			$current_type = $type;
-		}
-		$runs[] = $current;
-
-		if (count($runs) < 2) {
-			return $container;
 		}
 
-		$grouped = array();
-		foreach ($runs as $run_index => $run) {
-			if (1 === count($run)) {
-				$grouped[] = $run[0];
-				continue;
-			}
-			$seed = (string) ($container['id'] ?? 'root') . ':grp:' . $run_index;
-			$grouped[] = array(
-				'id' => substr(md5($seed), 0, 8),
-				'elType' => 'container',
-				'isInner' => true,
-				'settings' => array(
-					'content_width' => 'full',
-					'flex_direction' => $direction,
-					'_h2e_designer_group' => 1,
-				),
-				'elements' => $run,
-			);
-			++$this->split;
-		}
-
-		$container['elements'] = $grouped;
-		return $container;
-	}
-
-	/**
-	 * Promote a single widget out of a transparent inner container that only
-	 * exists as a layout wrapper with no visual styling.
-	 *
-	 * @param array<string,mixed> $container Container.
-	 * @return array<string,mixed>
-	 */
-	private function unwrap_transparent_single_widget(array $container): array
-	{
-		$children = (array) ($container['elements'] ?? array());
-		if (1 !== count($children)) {
-			return $container;
-		}
-		$child = $children[0];
-		if ('container' !== ($child['elType'] ?? '')) {
-			return $container;
-		}
-		$grand = (array) ($child['elements'] ?? array());
-		if (1 !== count($grand) || 'widget' !== ($grand[0]['elType'] ?? '')) {
-			return $container;
-		}
-		if (!$this->is_redundant_container($child)) {
-			return $container;
-		}
-		$container['elements'] = array($grand[0]);
-		++$this->removed;
+		unset($container['settings']['flex_gap']);
 		return $container;
 	}
 
@@ -258,7 +185,22 @@ final class ContainerTreeOptimizer
 			}
 
 			$child = $children[0];
-			if ('container' !== ($child['elType'] ?? '') || !$this->is_redundant_container($container)) {
+			if ('container' !== ($child['elType'] ?? '')) {
+				break;
+			}
+
+			// Top-level section roots keep their identity. Absorb redundant
+			// single-child wrappers underneath instead of promoting the child.
+			if (!($container['isInner'] ?? true)) {
+				if ($this->is_redundant_container($child) && !$this->has_distinct_geometry($container)) {
+					$container = $this->absorb_child($container, $child);
+					++$this->removed;
+					continue;
+				}
+				break;
+			}
+
+			if (!$this->is_redundant_container($container)) {
 				break;
 			}
 
@@ -269,7 +211,14 @@ final class ContainerTreeOptimizer
 		$children = (array) ($container['elements'] ?? array());
 		if (1 === count($children) && 'container' === ($children[0]['elType'] ?? '')) {
 			$child = $children[0];
-			if ($this->layout_signatures_match($container, $child) && $this->is_redundant_container($container)) {
+			if (!($container['isInner'] ?? true)) {
+				if ($this->layout_signatures_match($container, $child)
+					&& $this->is_redundant_container($child)
+					&& !$this->has_distinct_geometry($container)) {
+					$container = $this->absorb_child($container, $child);
+					++$this->removed;
+				}
+			} elseif ($this->layout_signatures_match($container, $child) && $this->is_redundant_container($container)) {
 				$container = $this->promote_child($container, $child);
 				++$this->removed;
 			}
@@ -308,7 +257,8 @@ final class ContainerTreeOptimizer
 				$candidate = $children[$next];
 				if ('container' !== ($candidate['elType'] ?? '')
 					|| !$this->is_redundant_container($candidate)
-					|| !$this->layout_signatures_match($current, $candidate)) {
+					|| !$this->layout_signatures_match($current, $candidate)
+					|| $this->has_distinct_sibling_geometry($current, $candidate)) {
 					break;
 				}
 				$group[] = $candidate;
@@ -359,6 +309,35 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
+	 * Fold a redundant inner wrapper into its parent, keeping the parent frame.
+	 *
+	 * @param array<string,mixed> $parent Parent container.
+	 * @param array<string,mixed> $child  Child container.
+	 * @return array<string,mixed>
+	 */
+	private function absorb_child(array $parent, array $child): array
+	{
+		$parent_settings = (array) ($parent['settings'] ?? array());
+		$child_settings = (array) ($child['settings'] ?? array());
+
+		// Parent identity/geometry wins; fill missing layout from the child.
+		$merged = array_merge($child_settings, $parent_settings);
+		$merged = $this->merge_identity($parent_settings, $child_settings, $merged);
+		// Restore parent bbox / classes preference after merge_identity concatenation.
+		if (!empty($parent_settings['_h2e_bbox'])) {
+			$merged['_h2e_bbox'] = $parent_settings['_h2e_bbox'];
+		}
+		if (!empty($parent_settings['_css_classes'])) {
+			$merged['_css_classes'] = $parent_settings['_css_classes'];
+		}
+
+		$parent['settings'] = $merged;
+		$parent['elements'] = (array) ($child['elements'] ?? array());
+
+		return $parent;
+	}
+
+	/**
 	 * @param array<string,mixed> $parent   Parent settings.
 	 * @param array<string,mixed> $child    Child settings.
 	 * @param array<string,mixed> $settings Merged settings.
@@ -389,6 +368,12 @@ final class ContainerTreeOptimizer
 			return false;
 		}
 
+		// Never dissolve a top-level section root — geometry pairing and
+		// full-bleed section sizing depend on preserving that frame.
+		if (!($container['isInner'] ?? true)) {
+			return false;
+		}
+
 		if ($this->has_visual_styling($container)) {
 			return false;
 		}
@@ -398,6 +383,10 @@ final class ContainerTreeOptimizer
 		}
 
 		if ($this->has_responsive_overrides($container)) {
+			return false;
+		}
+
+		if ($this->has_distinct_geometry($container)) {
 			return false;
 		}
 
@@ -447,7 +436,7 @@ final class ContainerTreeOptimizer
 	{
 		$settings = (array) ($container['settings'] ?? array());
 
-		foreach (array('background_color', 'background_image', 'border_border', 'box_shadow_box_shadow_type') as $key) {
+		foreach (array('background_color', 'background_image', 'background_background', 'background_color_b', 'border_border', 'box_shadow_box_shadow_type') as $key) {
 			if (!empty($settings[$key])) {
 				return true;
 			}
@@ -482,7 +471,60 @@ final class ContainerTreeOptimizer
 			return true;
 		}
 
+		if ($this->positive_size($settings['max_width'] ?? null)
+			|| $this->positive_size($settings['min_width'] ?? null)
+			|| $this->positive_size($settings['min_height'] ?? null)
+			|| $this->positive_size($settings['max_height'] ?? null)) {
+			return true;
+		}
+
+		if (!empty($settings['custom_css']) || 'grid' === ($settings['_h2e_display'] ?? '')) {
+			return true;
+		}
+
 		return false;
+	}
+
+	/**
+	 * Keep wrappers whose measured box differs from their only child.
+	 *
+	 * @param array<string,mixed> $container Container element.
+	 */
+	private function has_distinct_geometry(array $container): bool
+	{
+		$kids = (array) ($container['elements'] ?? array());
+		if (1 !== count($kids)) {
+			return false;
+		}
+		$parent_box = $container['settings']['_h2e_bbox'] ?? null;
+		$child_box = $kids[0]['settings']['_h2e_bbox'] ?? null;
+		if (!is_array($parent_box) || !is_array($child_box)) {
+			return false;
+		}
+		$dw = abs((float) ($parent_box['width'] ?? 0) - (float) ($child_box['width'] ?? 0));
+		$dh = abs((float) ($parent_box['height'] ?? 0) - (float) ($child_box['height'] ?? 0));
+		return $dw > 8.0 || $dh > 8.0;
+	}
+
+	/**
+	 * Sibling containers with different measured boxes are separate layout
+	 * frames (e.g. stacked info-blocks) — never flatten them together.
+	 *
+	 * @param array<string,mixed> $a First container.
+	 * @param array<string,mixed> $b Second container.
+	 */
+	private function has_distinct_sibling_geometry(array $a, array $b): bool
+	{
+		$ba = $a['settings']['_h2e_bbox'] ?? null;
+		$bb = $b['settings']['_h2e_bbox'] ?? null;
+		if (!is_array($ba) || !is_array($bb)) {
+			return false;
+		}
+		$dy = abs((float) ($ba['y'] ?? 0) - (float) ($bb['y'] ?? 0));
+		$dx = abs((float) ($ba['x'] ?? 0) - (float) ($bb['x'] ?? 0));
+		$dh = abs((float) ($ba['height'] ?? 0) - (float) ($bb['height'] ?? 0));
+		$dw = abs((float) ($ba['width'] ?? 0) - (float) ($bb['width'] ?? 0));
+		return $dy > 8.0 || $dx > 8.0 || $dh > 8.0 || $dw > 24.0;
 	}
 
 	/**
@@ -506,7 +548,16 @@ final class ContainerTreeOptimizer
 	private function positive_size(mixed $value): bool
 	{
 		if (is_array($value)) {
-			return ((float) ($value['size'] ?? 0)) > 0;
+			if (((float) ($value['size'] ?? 0)) > 0) {
+				return true;
+			}
+			// Elementor padding/margin/gap use top/right/bottom/left or column/row.
+			foreach (array('top', 'right', 'bottom', 'left', 'column', 'row') as $side) {
+				if (isset($value[$side]) && is_numeric($value[$side]) && (float) $value[$side] > 0) {
+					return true;
+				}
+			}
+			return false;
 		}
 
 		return is_numeric($value) && (float) $value > 0;

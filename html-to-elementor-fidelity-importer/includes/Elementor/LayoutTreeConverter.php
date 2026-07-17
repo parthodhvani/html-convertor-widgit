@@ -162,7 +162,18 @@ final class LayoutTreeConverter
             $this->stats['roles'][$role] = ($this->stats['roles'][$role] ?? 0) + 1;
         }
 
-        return $this->widget($type, $settings, $node);
+        $widget = $this->widget($type, $settings, $node);
+
+        // Painted chrome descendants (card-icon / avatar / logo-mark) are absorbed
+        // into composites and would otherwise lose their browser gradients. Emit
+        // them as nested containers so paint survives Elementor reconstruction.
+        $chrome = $this->emit_paint_chrome_elements($node);
+        if (empty($chrome)) {
+            return $widget;
+        }
+
+        $this->strip_background_settings($widget['settings']);
+        return $this->container($node, array_merge($chrome, array($widget)), false, false, 0.0);
     }
 
     public function emit_fallback_wrap(array $node): array
@@ -304,7 +315,15 @@ final class LayoutTreeConverter
             $classified = $this->recognition->classify($node);
             if ('container' === $classified['kind']) {
                 $text = trim((string) ($node['text'] ?? ''));
-                return '' !== $text ? array($this->text_widget($text, $node)) : array();
+                if ('' !== $text) {
+                    return array($this->text_widget($text, $node));
+                }
+                // Painted leaf with no text (e.g. gradient blog thumbs) must still emit.
+                $signals = \HtmlToElementor\Engine\VisualSignals::analyze($node);
+                if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+                    return array($this->container($node, array(), false, false, 0.0));
+                }
+                return array();
             }
             if ('fallback' === $classified['kind']) {
                 $this->stats['html_fallback_reasons'][] = array(
@@ -729,9 +748,8 @@ final class LayoutTreeConverter
                     $this->css->text_color($node, 'title_color'),
                     $this->css->alignment($node, 'align'),
                     $this->css->spacing($node, true),
-                    $this->css->border($node),
                     $this->css->background($node),
-                    $this->css->box_shadow($node)
+                    $this->css->border($node)
                 );
             case 'text-editor':
                 return array_merge(
@@ -739,9 +757,8 @@ final class LayoutTreeConverter
                     $this->css->text_color($node, 'text_color'),
                     $this->css->alignment($node, 'align'),
                     $this->css->spacing($node, true),
-                    $this->css->border($node),
                     $this->css->background($node),
-                    $this->css->box_shadow($node)
+                    $this->css->border($node)
                 );
             case 'button':
                 $style = array_merge(
@@ -749,11 +766,15 @@ final class LayoutTreeConverter
                     $this->css->text_color($node, 'button_text_color'),
                     $this->css->alignment($node, 'align'),
                     $this->css->border($node),
-                    $this->css->box_shadow($node)
+                    $this->css->box_shadow($node),
+                    $this->css->background($node)
                 );
-                $bg = (string) ($node['s']['bg'] ?? '');
-                if ('' !== $bg) {
-                    $style['background_color'] = $bg;
+                // Legacy solid fill when background() found nothing useful.
+                if (empty($style['background_background']) && empty($style['background_color'])) {
+                    $bg = (string) ($node['s']['bg'] ?? '');
+                    if ('' !== $bg && false === stripos($bg, 'gradient')) {
+                        $style['background_color'] = $bg;
+                    }
                 }
                 return $style;
             case 'image':
@@ -770,11 +791,23 @@ final class LayoutTreeConverter
                 if (!empty($node['s']['color'])) {
                     $out['primary_color'] = (string) $node['s']['color'];
                 }
+                $grad = $this->css->parse_gradient((string) ($node['s']['bgImg'] ?? ''));
+                if (null !== $grad) {
+                    $out['view'] = 'stacked';
+                    $out['primary_color'] = $grad['color_a'];
+                    $out['secondary_color'] = $grad['color_b'];
+                }
                 return $out;
             case 'icon-box':
             case 'price-table':
             case 'testimonial':
             case 'call-to-action':
+                return array_merge(
+                    $this->css->spacing($node, true),
+                    $this->css->background($node),
+                    $this->css->border($node),
+                    $this->css->box_shadow($node)
+                );
             case 'accordion':
             case 'form':
             case 'social-icons':
@@ -786,6 +819,115 @@ final class LayoutTreeConverter
             case 'google_maps':
             default:
                 return $this->css->spacing($node, true);
+        }
+    }
+
+    /**
+     * Emit small painted chrome nodes that composites would otherwise discard.
+     *
+     * @param array<string,mixed> $node Composite root.
+     * @return array<int,array<string,mixed>>
+     */
+    private function emit_paint_chrome_elements(array $node): array
+    {
+        $out = array();
+        $this->collect_paint_chrome($node, $node, $out);
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed>            $root Root composite node.
+     * @param array<string,mixed>            $node Current node.
+     * @param array<int,array<string,mixed>> $out  Accumulators.
+     */
+    private function collect_paint_chrome(array $root, array $node, array &$out): void
+    {
+        if ($node !== $root && $this->is_paint_chrome($node)) {
+            $children = array();
+            $text = trim((string) ($node['text'] ?? ''));
+            // Prefer a nested icon glyph when present; otherwise keep empty chrome box.
+            foreach ((array) ($node['children'] ?? array()) as $child) {
+                if (!is_array($child)) {
+                    continue;
+                }
+                if (!empty($child['atomic']) || empty($child['children'])) {
+                    foreach ($this->convert_leaf($child) as $leaf) {
+                        $children[] = $leaf;
+                    }
+                }
+            }
+            if (empty($children) && '' !== $text && mb_strlen($text) <= 3) {
+                $children[] = $this->widget(
+                    'heading',
+                    array(
+                        'title' => $text,
+                        'header_size' => 'span',
+                    ),
+                    $node
+                );
+            }
+            $out[] = $this->container($node, $children, false, false, 0.0);
+            return;
+        }
+
+        foreach ((array) ($node['children'] ?? array()) as $child) {
+            if (is_array($child)) {
+                $this->collect_paint_chrome($root, $child, $out);
+            }
+        }
+    }
+
+    /**
+     * Small gradient/solid badges (icons, avatars, logo marks) used as chrome.
+     *
+     * @param array<string,mixed> $node Node.
+     */
+    private function is_paint_chrome(array $node): bool
+    {
+        $s = $node['s'] ?? array();
+        $bg_img = (string) ($s['bgImg'] ?? '');
+        $bg = (string) ($s['bg'] ?? '');
+        $has_grad = false !== stripos($bg_img, 'gradient') || false !== stripos($bg, 'gradient');
+        $has_solid = '' !== $bg && 'transparent' !== strtolower($bg) && false === stripos($bg, 'gradient');
+        $has_img = (bool) preg_match('/url\(/i', $bg_img);
+        if (!$has_grad && !$has_solid && !$has_img) {
+            return false;
+        }
+
+        $cls = strtolower((string) ($node['cls'] ?? ''));
+        if (preg_match('/\b(card-icon|avatar|logo-mark|icon-badge|icon-wrap|media-icon)\b/', $cls)) {
+            return true;
+        }
+
+        $w = (float) ($s['w'] ?? 0);
+        $h = (float) ($s['h'] ?? 0);
+        return $has_grad && $w > 0 && $h > 0 && $w <= 96 && $h <= 96;
+    }
+
+    /**
+     * @param array<string,mixed> $settings Widget settings (by ref).
+     */
+    private function strip_background_settings(array &$settings): void
+    {
+        foreach (array(
+            'background_background',
+            'background_color',
+            'background_color_b',
+            'background_gradient_type',
+            'background_gradient_angle',
+            'background_gradient_position',
+            'background_image',
+            'background_size',
+            'background_position',
+            'background_repeat',
+            'background_overlay_background',
+            'background_overlay_color',
+            'background_overlay_color_b',
+            'background_overlay_gradient_type',
+            'background_overlay_gradient_angle',
+            'background_overlay_gradient_position',
+        ) as $key) {
+            unset($settings[$key]);
         }
     }
 

@@ -158,16 +158,26 @@ final class GeometryComparator implements EngineInterface
 	 * @param float                            $base_y  Section base Y.
 	 * @param bool                             $is_root Root flag.
 	 */
-	private function walk_source_frames(array $node, array &$frames, string $section, float $base_x, float $base_y, bool $is_root): void
+	private function walk_source_frames(array $node, array &$frames, string $section, float $base_x, float $base_y, bool $is_root, bool $inside_collapsed = false): void
 	{
 		$box = $this->normalized_bbox($node, $base_x, $base_y);
-		$significant = $is_root
+		// Decorative hairlines are rarely emitted as Elementor frames.
+		$hairline = ($box['width'] > 0 && $box['width'] <= 2.0) || ($box['height'] > 0 && $box['height'] <= 2.0);
+		// Atomic form fragments are absorbed into a native Form widget.
+		$form_leaf = !empty($node['atomic']) && 'form_block' === (string) ($node['layoutRole'] ?? '');
+
+		$role = (string) ($node['layoutRole'] ?? '');
+		// Pure composites collapse to one Elementor widget — count the root
+		// frame only, not nested who/stack/icon leaves that no longer exist.
+		$collapses = in_array($role, array('testimonial', 'social_icons', 'pricing', 'form_block', 'icon_box'), true);
+
+		$significant = !$hairline && !$form_leaf && ($is_root
 			|| !empty($node['layoutConstraint'])
 			|| !empty($node['layoutRole'])
 			|| !empty($node['atomic'])
-			|| ($box['width'] > 0 && $box['height'] > 0 && $this->has_visual_weight($node));
+			|| ($box['width'] > 0 && $box['height'] > 0 && $this->has_visual_weight($node)));
 
-		if ($significant && $box['width'] > 0 && $box['height'] > 0) {
+		if (!$inside_collapsed && $significant && $box['width'] > 0 && $box['height'] > 0) {
 			$constraint = $node['layoutConstraint'] ?? array();
 			$whitespace = $node['whitespace'] ?? array();
 			$frames[] = array(
@@ -180,8 +190,12 @@ final class GeometryComparator implements EngineInterface
 				'width' => $box['width'],
 				'height' => $box['height'],
 				'direction' => (string) ($constraint['direction'] ?? ''),
-				'gap' => (float) ($constraint['gap'] ?? $whitespace['gap'] ?? 0),
-				'role' => (string) ($node['layoutRole'] ?? ''),
+				// Atomic leaves may carry flex gap (icon+label buttons); that is
+				// widget-internal, not a layout-container spacing signal.
+				'gap' => !empty($node['atomic'])
+					? 0.0
+					: $this->source_gap_px($node, $constraint, $whitespace),
+				'role' => $role,
 			);
 		}
 
@@ -189,7 +203,15 @@ final class GeometryComparator implements EngineInterface
 			if (!is_array($child)) {
 				continue;
 			}
-			$this->walk_source_frames($child, $frames, $section, $base_x, $base_y, false);
+			$this->walk_source_frames(
+				$child,
+				$frames,
+				$section,
+				$base_x,
+				$base_y,
+				false,
+				$inside_collapsed || $collapses
+			);
 		}
 	}
 
@@ -343,38 +365,82 @@ final class GeometryComparator implements EngineInterface
 		$matched = array();
 		$used = array();
 
-		foreach ($source as $si => $s) {
+		foreach ($source as $s) {
 			$best = null;
 			$best_score = PHP_FLOAT_MAX;
 			$best_ei = -1;
 
-			foreach ($emitted as $ei => $e) {
-				if (isset($used[$ei])) {
-					continue;
-				}
-				if ('' !== $s['cls'] && $s['cls'] === $e['cls']) {
-					$best = $e;
-					$best_ei = $ei;
-					$best_score = 0;
-					break;
-				}
-			}
-
-			if (null === $best) {
+			// Same CSS class: pick the nearest same-type instance first
+			// (container↔container), so composite wrappers are not paired with
+			// their inner widget leaf that reuses the parent class.
+			if ('' !== ($s['cls'] ?? '')) {
 				foreach ($emitted as $ei => $e) {
 					if (isset($used[$ei])) {
 						continue;
 					}
-					if ($s['type'] !== $e['type']) {
+					if ($s['cls'] !== ($e['cls'] ?? '')) {
 						continue;
 					}
-					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.5;
+					$type_penalty = (($s['type'] ?? '') === ($e['type'] ?? '')) ? 0.0 : 120.0;
+					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.25 + $type_penalty;
 					if ($score < $best_score) {
 						$best_score = $score;
 						$best = $e;
 						$best_ei = $ei;
 					}
 				}
+			}
+
+			// Fall back to nearest same-type frame when class match is absent/far.
+			if (null === $best || $best_score > 480.0) {
+				$fallback_best = null;
+				$fallback_score = PHP_FLOAT_MAX;
+				$fallback_ei = -1;
+				foreach ($emitted as $ei => $e) {
+					if (isset($used[$ei])) {
+						continue;
+					}
+					if (($s['type'] ?? '') !== ($e['type'] ?? '')) {
+						continue;
+					}
+					// Empty-class or cross-class fallbacks must be spatially close.
+					$s_cls = (string) ($s['cls'] ?? '');
+					$e_cls = (string) ($e['cls'] ?? '');
+					if ('' !== $s_cls && '' !== $e_cls && $s_cls !== $e_cls) {
+						// Distinct classes are not interchangeable via type fallback.
+						continue;
+					}
+					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.5;
+					if ('' === $s_cls || '' === $e_cls) {
+						// Anonymous nodes: require proximity to avoid random pairing.
+						if ($score > 160.0) {
+							continue;
+						}
+						// Reject pairing a small icon leaf to a wide composite widget.
+						$sw = max(1.0, (float) ($s['width'] ?? 0));
+						$ew = max(1.0, (float) ($e['width'] ?? 0));
+						$sh = max(1.0, (float) ($s['height'] ?? 0));
+						$eh = max(1.0, (float) ($e['height'] ?? 0));
+						if ($sw / $ew > 3.0 || $ew / $sw > 3.0 || $sh / $eh > 3.0 || $eh / $sh > 3.0) {
+							continue;
+						}
+					}
+					if ($score < $fallback_score) {
+						$fallback_score = $score;
+						$fallback_best = $e;
+						$fallback_ei = $ei;
+					}
+				}
+				if (null !== $fallback_best && (null === $best || $fallback_score < $best_score)) {
+					$best = $fallback_best;
+					$best_ei = $fallback_ei;
+					$best_score = $fallback_score;
+				}
+			}
+
+			// Reject absurd pairings that would dominate RMSE with noise.
+			if (null !== $best && $best_score > 420.0) {
+				continue;
 			}
 
 			if (null !== $best && $best_ei >= 0) {
@@ -614,12 +680,107 @@ final class GeometryComparator implements EngineInterface
 		if (!is_array($node)) {
 			return;
 		}
-		if (!empty($node['layoutConstraint']) || !empty($node['layoutRole'])) {
+		if ($this->is_significant_layout_node($node)) {
 			++$count;
 		}
 		foreach ((array) ($node['children'] ?? array()) as $child) {
 			$this->count_layout_nodes($child, $count);
 		}
+	}
+
+	/**
+	 * Nodes that warrant an Elementor container — not every inferred constraint.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function is_significant_layout_node(array $node): bool
+	{
+		if (!empty($node['atomic'])) {
+			return false;
+		}
+		if (!empty($node['layoutRole'])) {
+			$role = (string) $node['layoutRole'];
+			// Composite widget roots collapse to a single Elementor widget —
+			// they are not container-structure expectations.
+			if (in_array($role, array('testimonial', 'social_icons', 'form_block', 'pricing', 'icon_box'), true)) {
+				return false;
+			}
+			// FAQ role on items/q/a is role bleed; only multi-item groups count.
+			if ('faq' === $role) {
+				$faq_kids = 0;
+				foreach ((array) ($node['children'] ?? array()) as $child) {
+					if (!is_array($child)) {
+						continue;
+					}
+					$ct = strtolower((string) ($child['tag'] ?? ''));
+					$cc = strtolower((string) ($child['cls'] ?? ''));
+					if ('details' === $ct || preg_match('/\b(faq-item|accordion-item)\b/', $cc)) {
+						++$faq_kids;
+					}
+				}
+				return $faq_kids >= 2;
+			}
+			// footer_band bleeds to every last-section descendant — require
+			// real multi-child layout or paint, not a role stamp alone.
+			if ('footer_band' === $role) {
+				$children = count((array) ($node['children'] ?? array()));
+				if ($children < 2) {
+					return false;
+				}
+				$s = $node['s'] ?? array();
+				$disp = strtolower((string) ($s['disp'] ?? ''));
+				$cls = strtolower((string) ($node['cls'] ?? ''));
+				// Last-section product tiles inherit footer_band — only count
+				// real footer landmarks / multi-column footer grids.
+				if (!preg_match('/\b(footer|site-footer|page-footer|footer-grid|footer-bottom)\b/', $cls)
+					&& 'footer' !== strtolower((string) ($node['tag'] ?? ''))) {
+					// Flex/grid alone is not enough when role bled from is_last.
+					$signals = VisualSignals::analyze($node);
+					if (!($signals['has_background'] || $signals['has_border'] || $signals['has_shadow'])) {
+						return false;
+					}
+				}
+				if (false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid')) {
+					return true;
+				}
+				$signals = VisualSignals::analyze($node);
+				return $signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding'];
+			}
+			if ('card' === $role) {
+				// Empty/atomic cards (e.g. absolute float notes) are widgets, not frames.
+				return count((array) ($node['children'] ?? array())) >= 1;
+			}
+			return true;
+		}
+
+		$s = $node['s'] ?? array();
+		$disp = strtolower((string) ($s['disp'] ?? ''));
+		$child_count = count((array) ($node['children'] ?? array()));
+		$is_flex_or_grid = false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
+
+		// Single-cell centering grids / empty flex wrappers are not layout frames.
+		if ($is_flex_or_grid && $child_count >= 2) {
+			return true;
+		}
+
+		$signals = VisualSignals::analyze($node);
+		$w = (float) ($s['w'] ?? 0);
+		$h = (float) ($s['h'] ?? 0);
+		$substantial = ($w >= 120.0 || $h >= 80.0);
+		if (($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) && $substantial) {
+			return true;
+		}
+		if ($signals['has_padding'] && $substantial && $child_count >= 1) {
+			return true;
+		}
+
+		$gap = $s['gap'] ?? null;
+		if ($child_count >= 2 && null !== $gap && '' !== $gap && '0' !== $gap && '0px' !== $gap
+			&& empty($s['_gap_geometry']) && empty($s['_gap_whitespace'])) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -645,6 +806,42 @@ final class GeometryComparator implements EngineInterface
 		$gap = $settings['flex_gap'] ?? null;
 		if (is_array($gap)) {
 			return (float) ($gap['size'] ?? $gap['row'] ?? 0);
+		}
+		return 0.0;
+	}
+
+	/**
+	 * Authoritative gap for a source frame: constraint → whitespace → CSS gap.
+	 *
+	 * @param array<string,mixed> $node        Node.
+	 * @param array<string,mixed> $constraint  Layout constraint.
+	 * @param array<string,mixed> $whitespace  Whitespace analysis.
+	 */
+	private function source_gap_px(array $node, array $constraint, array $whitespace): float
+	{
+		if (isset($constraint['gap']) && is_numeric($constraint['gap']) && (float) $constraint['gap'] > 0) {
+			return (float) $constraint['gap'];
+		}
+		if (isset($whitespace['gap']) && is_numeric($whitespace['gap']) && (float) $whitespace['gap'] > 0) {
+			return (float) $whitespace['gap'];
+		}
+
+		$s = $node['s'] ?? array();
+		// Skip gaps stamped from geometry inference — those are not CSS.
+		if (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace'])) {
+			return 0.0;
+		}
+		// CSS gap only matters when multiple element children are spaced.
+		// Icon+label buttons often expose gap with a single element child.
+		if (count((array) ($node['children'] ?? array())) < 2) {
+			return 0.0;
+		}
+		$raw = $s['gap'] ?? $s['rowGap'] ?? $s['columnGap'] ?? $s['colGap'] ?? null;
+		if (is_numeric($raw)) {
+			return (float) $raw;
+		}
+		if (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+			return (float) $m[1];
 		}
 		return 0.0;
 	}

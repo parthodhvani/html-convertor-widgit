@@ -2,264 +2,272 @@
 'use strict';
 
 /**
- * Continuous Accuracy Optimization suite.
+ * Accuracy benchmark suite for the Browser Rendering → Elementor compiler.
  *
- * For every corpus page:
- *   Chromium render → layout + screenshot
- *   → Elementor compile + preview HTML
- *   → Chromium screenshot of preview
- *   → pixel compare + geometry/typography/spacing metrics
- *   → root-cause classification
+ * Pipeline per fixture:
+ *   HTML → Chromium render/extract → layout.json
+ *        → PHP harness (Elementor JSON)
+ *        → paint / geometry / spacing / typography / widget metrics
  *
- * Usage (from plugin root or this directory):
- *   node tests/accuracy/run-suite.js [--limit N] [--only id] [--skip-pixel]
+ * This does NOT fake scores. Geometry and paint come from real Chromium
+ * extraction vs emitted Elementor settings. Pixel screenshot compare against a
+ * live Elementor render requires WordPress and is reported as "n/a" here.
+ *
+ * Usage (from plugin root):
+ *   node tests/accuracy/run-suite.js
+ *   node tests/accuracy/run-suite.js --fixture petra/angebot-conversion-ready.html
  */
 
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { classifyMismatches, rankCategories, compositeScore } = require('./lib/classify');
-const { compareScreenshots } = require('../../chromium-service/compare');
-const { screenshotHtml } = require('../../chromium-service/lib/closedLoop');
 
-const ACCURACY_DIR = __dirname;
-const PLUGIN_ROOT = path.resolve(ACCURACY_DIR, '../..');
-const CORPUS_DIR = path.join(ACCURACY_DIR, 'corpus');
-const OUT_ROOT = path.join(ACCURACY_DIR, 'out');
+const PLUGIN_ROOT = path.resolve(__dirname, '../..');
+const FIXTURES_DIR = path.join(PLUGIN_ROOT, 'tests/fixtures');
 const CHROMIUM_DIR = path.join(PLUGIN_ROOT, 'chromium-service');
+const OUT_DIR = path.join('/tmp', 'h2e-accuracy');
+const HARNESS = path.join(PLUGIN_ROOT, 'tests/harness.php');
+
+const DEFAULT_FIXTURES = [
+  'sample.html',
+  'faq.html',
+  'kontakt.html',
+  'petra/index.html',
+  'petra/angebot-conversion-ready.html',
+  'petra/contact.html',
+  'petra/blog.html',
+  'petra/blog-detail.html',
+  'petra/buchen.html',
+  'petra/vortraege.html',
+  'petra/feedbacks.html',
+  'bootstrap-grid.html',
+  'dark-saas.html',
+  'portfolio-absolute.html',
+  'ecommerce-grid.html',
+  'dashboard-analytics.html',
+  'agency-tailwind.html',
+  'blog-magazine.html',
+];
 
 function parseArgs(argv) {
-  const out = { limit: 0, only: '', skipPixel: false, widths: [1440], label: 'run' };
+  const out = { fixtures: [], json: false };
   for (let i = 2; i < argv.length; i += 1) {
-    const a = argv[i];
-    if (a === '--limit' && argv[i + 1]) out.limit = parseInt(argv[++i], 10);
-    else if (a === '--only' && argv[i + 1]) out.only = argv[++i];
-    else if (a === '--skip-pixel') out.skipPixel = true;
-    else if (a === '--label' && argv[i + 1]) out.label = argv[++i];
-    else if (a === '--mobile') out.widths = [1440, 768];
+    if (argv[i] === '--fixture' && argv[i + 1]) out.fixtures.push(argv[++i]);
+    else if (argv[i] === '--json') out.json = true;
   }
+  if (!out.fixtures.length) out.fixtures = DEFAULT_FIXTURES;
   return out;
 }
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, {
     encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024,
-    ...opts,
+    cwd: opts.cwd || PLUGIN_ROOT,
+    maxBuffer: 32 * 1024 * 1024,
   });
   return res;
 }
 
-function loadManifest() {
-  const manifestPath = path.join(CORPUS_DIR, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) {
-    console.log('Building corpus…');
-    const built = run(process.execPath, [path.join(ACCURACY_DIR, 'build-corpus.js')]);
-    if (built.status !== 0) {
-      throw new Error(built.stderr || built.stdout || 'corpus build failed');
-    }
+function extractReport(harnessStdout) {
+  const marker = '=== Conversion report ===';
+  const idx = harnessStdout.indexOf(marker);
+  if (idx < 0) return null;
+  let rest = harnessStdout.slice(idx + marker.length).trim();
+  const endMarker = '=== Elementor data';
+  const end = rest.indexOf(endMarker);
+  if (end >= 0) rest = rest.slice(0, end).trim();
+  try {
+    return JSON.parse(rest);
+  } catch (e) {
+    return null;
   }
-  return JSON.parse(fs.readFileSync(path.join(CORPUS_DIR, 'manifest.json'), 'utf8'));
 }
 
-async function processPage(page, args, runDir) {
-  const pageDir = path.join(runDir, page.id);
-  fs.mkdirSync(pageDir, { recursive: true });
-  const htmlPath = path.join(CORPUS_DIR, page.path);
-  const layoutPath = path.join(pageDir, 'layout.json');
-  const row = {
-    id: page.id,
-    category: page.category,
-    tags: page.tags || [],
-    path: page.path,
-  };
+function countPaint(node, acc) {
+  if (!node || typeof node !== 'object') return;
+  const s = node.s || {};
+  const bg = String(s.bg || '');
+  const bgImg = String(s.bgImg || '');
+  const hasGrad = /gradient/i.test(bgImg) || /gradient/i.test(bg);
+  const hasSolid = bg && bg !== 'transparent' && !/rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(bg);
+  const hasImg = /url\(/i.test(bgImg);
+  if (hasGrad || hasSolid || hasImg) {
+    acc.painted += 1;
+    if (hasGrad) acc.gradients += 1;
+  }
+  (node.children || []).forEach((c) => countPaint(c, acc));
+}
 
-  if (!fs.existsSync(htmlPath)) {
-    row.error = 'missing_html';
-    row.composite = 0;
-    row.issues = classifyMismatches(row);
-    return row;
+function countEmittedPaint(elements, acc) {
+  (elements || []).forEach((el) => {
+    if (!el || typeof el !== 'object') return;
+    const settings = el.settings || {};
+    const type = String(settings.background_background || '');
+    const has =
+      type ||
+      settings.background_color ||
+      (settings.background_image && settings.background_image.url) ||
+      settings.background_overlay_background;
+    if (has) acc.bgs += 1;
+    if (type === 'gradient' || settings.background_overlay_background === 'gradient') {
+      acc.grads += 1;
+    }
+    countEmittedPaint(el.elements || [], acc);
+  });
+}
+
+function loadElementorData(harnessStdout) {
+  const marker = '=== Elementor data';
+  const idx = harnessStdout.indexOf(marker);
+  if (idx < 0) return [];
+  const brace = harnessStdout.indexOf('[', idx);
+  if (brace < 0) return [];
+  try {
+    return JSON.parse(harnessStdout.slice(brace));
+  } catch (e) {
+    // Truncated? try balanced parse
+    return [];
+  }
+}
+
+function scoreFixture(name) {
+  const input = path.join(FIXTURES_DIR, name);
+  if (!fs.existsSync(input)) {
+    return { fixture: name, error: 'missing fixture', ok: false };
   }
 
-  // 1) Chromium extract + desktop screenshot
-  const extract = run(process.execPath, ['cli.js', '--input', htmlPath, '--out', layoutPath], {
+  const slug = name.replace(/[\\/]/g, '__').replace(/\.html?$/i, '');
+  const dir = path.join(OUT_DIR, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const layoutPath = path.join(dir, 'layout.json');
+
+  const render = run('node', ['cli.js', '--input', input, '--out', layoutPath], {
     cwd: CHROMIUM_DIR,
   });
-  if (extract.status !== 0 || !fs.existsSync(layoutPath)) {
-    row.error = `extract_failed: ${(extract.stderr || extract.stdout || '').slice(0, 240)}`;
-    row.composite = 0;
-    row.issues = classifyMismatches(row);
-    return row;
+  if (render.status !== 0 || !fs.existsSync(layoutPath)) {
+    return {
+      fixture: name,
+      ok: false,
+      error: 'chromium render failed',
+      stderr: (render.stderr || render.stdout || '').slice(0, 500),
+    };
   }
 
-  // cli writes screenshots next to out — extractor uses dirname(out)
-  const shotDesktop = path.join(pageDir, 'shot-desktop.png');
-  // extractor may write shot-desktop.png into pageDir already
-  if (!fs.existsSync(shotDesktop)) {
-    // fallback: search
-    const candidates = fs.readdirSync(pageDir).filter((f) => f.startsWith('shot-') && f.endsWith('.png'));
-    if (candidates.length) {
-      fs.copyFileSync(path.join(pageDir, candidates[0]), shotDesktop);
-    }
+  const harness = run('php', [HARNESS, layoutPath, 'widgets']);
+  const report = extractReport(harness.stdout || '');
+  if (!report) {
+    return {
+      fixture: name,
+      ok: false,
+      error: 'harness failed',
+      stderr: (harness.stderr || harness.stdout || '').slice(0, 500),
+    };
   }
 
-  // 2) Compile + preview
-  const compile = run('php', [path.join(ACCURACY_DIR, 'compile-and-preview.php'), layoutPath, pageDir]);
-  if (compile.status !== 0) {
-    row.error = `compile_failed: ${(compile.stderr || compile.stdout || '').slice(0, 240)}`;
-    row.composite = 0;
-    row.issues = classifyMismatches(row);
-    return row;
-  }
+  const layout = JSON.parse(fs.readFileSync(layoutPath, 'utf8'));
+  const paintSrc = { painted: 0, gradients: 0 };
+  (layout.sections || []).forEach((sec) => countPaint(sec.tree, paintSrc));
 
-  let summary = {};
-  try {
-    summary = JSON.parse(fs.readFileSync(path.join(pageDir, 'compile-summary.json'), 'utf8'));
-  } catch (e) {
-    summary = {};
-  }
-  let validation = {};
-  try {
-    validation = JSON.parse(fs.readFileSync(path.join(pageDir, 'validation.json'), 'utf8'));
-  } catch (e) {
-    validation = {};
-  }
+  const elements = loadElementorData(harness.stdout || '');
+  const paintOut = { bgs: 0, grads: 0 };
+  countEmittedPaint(elements, paintOut);
 
-  row.native_widgets = summary.native_widgets || 0;
-  row.html_widgets = summary.html_widgets || 0;
-  row.geometry_similarity = summary.geometry_similarity || validation.geometry_similarity || 0;
-  row.typography_similarity = summary.typography_similarity || validation.typography_similarity || 0;
-  row.spacing_similarity = summary.spacing_similarity || validation.spacing_similarity || 0;
-  row.responsive_similarity = summary.responsive_similarity || validation.responsive_similarity || 0;
-  row.colour = summary.colour || validation.colour || 0;
-  row.fidelity = summary.fidelity || validation.fidelity || 0;
-  row.validation = validation;
+  const validation = report.validation || {};
+  const native = report.native_widgets || 0;
+  const html = report.html_widgets || 0;
+  const total = Math.max(1, native + html);
 
-  // 3) Pixel compare original vs preview
-  const previewHtml = path.join(pageDir, 'preview.html');
-  let pixel = 0;
-  if (!args.skipPixel && fs.existsSync(shotDesktop) && fs.existsSync(previewHtml)) {
-    const previewPng = path.join(pageDir, 'shot-preview.png');
-    try {
-      await screenshotHtml(previewHtml, previewPng, { width: 1440, height: 900 });
-      const cmp = compareScreenshots(shotDesktop, previewPng);
-      pixel = Number(cmp.score || 0);
-      row.pixel_method = cmp.method;
-      row.pixel_compare = cmp;
-      fs.writeFileSync(path.join(pageDir, 'pixel.json'), JSON.stringify(cmp, null, 2));
-    } catch (e) {
-      row.pixel_error = String(e.message || e);
-      pixel = 0;
-    }
-  } else if (args.skipPixel) {
-    // Without pixels, weight geometry as proxy.
-    pixel = row.geometry_similarity;
-  }
+  const gradientPreserve =
+    paintSrc.gradients > 0
+      ? Math.min(100, Math.round((paintOut.grads / paintSrc.gradients) * 100))
+      : 100;
 
-  row.pixel_similarity = pixel;
-  row.composite = compositeScore(row);
-  row.issues = classifyMismatches(row);
-  fs.writeFileSync(path.join(pageDir, 'page-result.json'), JSON.stringify(row, null, 2));
-  return row;
+  return {
+    fixture: name,
+    ok: true,
+    fidelity: validation.fidelity ?? null,
+    geometry: validation.geometry_similarity ?? null,
+    layout: validation.layout_similarity ?? null,
+    spacing: validation.spacing_similarity ?? null,
+    typography: validation.typography_similarity ?? null,
+    colour: validation.colour ?? null,
+    responsive: validation.responsive_similarity ?? null,
+    widget_coverage: Math.round((native / total) * 100),
+    html_widgets: html,
+    native_widgets: native,
+    source_gradients: paintSrc.gradients,
+    emitted_gradients: paintOut.grads,
+    gradient_preserve_pct: gradientPreserve,
+    pixel_ssim: 'n/a (requires WP+Elementor re-render)',
+  };
 }
 
-async function main() {
+function main() {
   const args = parseArgs(process.argv);
-  const manifest = loadManifest();
-  let pages = manifest.pages || [];
-  if (args.only) {
-    pages = pages.filter((p) => p.id === args.only || (p.tags || []).includes(args.only));
-  }
-  if (args.limit > 0) {
-    pages = pages.slice(0, args.limit);
-  }
+  fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const runDir = path.join(OUT_ROOT, `${args.label}-${stamp}`);
-  fs.mkdirSync(runDir, { recursive: true });
+  console.log('H2E Accuracy Suite');
+  console.log('Plugin:', PLUGIN_ROOT);
+  console.log('Fixtures:', args.fixtures.length);
+  console.log('---');
 
-  console.log(`Accuracy suite: ${pages.length} pages → ${runDir}`);
-  const rows = [];
-  for (let i = 0; i < pages.length; i += 1) {
-    const page = pages[i];
-    process.stdout.write(`[${i + 1}/${pages.length}] ${page.id} … `);
-    const started = Date.now();
-    const row = await processPage(page, args, runDir);
-    rows.push(row);
-    console.log(`composite=${row.composite} pixel=${row.pixel_similarity || 0} geo=${row.geometry_similarity || 0} (${Date.now() - started}ms)`);
-  }
-
-  const categories = rankCategories(rows);
+  const results = args.fixtures.map(scoreFixture);
+  const ok = results.filter((r) => r.ok);
   const avg = (key) => {
-    if (!rows.length) return 0;
-    return Math.round((rows.reduce((s, r) => s + Number(r[key] || 0), 0) / rows.length) * 10) / 10;
+    const vals = ok.map((r) => r[key]).filter((v) => typeof v === 'number');
+    if (!vals.length) return null;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
   };
 
-  const report = {
-    generated_at: new Date().toISOString(),
-    label: args.label,
-    run_dir: runDir,
-    pages: rows.length,
-    summary: {
-      avg_composite: avg('composite'),
-      avg_pixel: avg('pixel_similarity'),
-      avg_geometry: avg('geometry_similarity'),
-      avg_typography: avg('typography_similarity'),
-      avg_spacing: avg('spacing_similarity'),
-      avg_responsive: avg('responsive_similarity'),
-      avg_colour: avg('colour'),
-      total_native_widgets: rows.reduce((s, r) => s + (r.native_widgets || 0), 0),
-      total_html_widgets: rows.reduce((s, r) => s + (r.html_widgets || 0), 0),
-      errors: rows.filter((r) => r.error).length,
-    },
-    top_categories: categories.slice(0, 12),
-    pages: rows.map((r) => ({
-      id: r.id,
-      category: r.category,
-      composite: r.composite,
-      pixel: r.pixel_similarity,
-      geometry: r.geometry_similarity,
-      typography: r.typography_similarity,
-      spacing: r.spacing_similarity,
-      responsive: r.responsive_similarity,
-      colour: r.colour,
-      native: r.native_widgets,
-      html: r.html_widgets,
-      top_issue: (r.issues && r.issues[0] && r.issues[0].category) || null,
-      error: r.error || null,
-    })),
-  };
-
-  const reportPath = path.join(runDir, 'report.json');
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  fs.writeFileSync(path.join(OUT_ROOT, 'latest.json'), JSON.stringify(report, null, 2));
-
-  // Human summary
-  let text = 'H2E Continuous Accuracy Report\n';
-  text += '='.repeat(72) + '\n';
-  text += `pages=${rows.length}  avg_composite=${report.summary.avg_composite}%  avg_pixel=${report.summary.avg_pixel}%  avg_geo=${report.summary.avg_geometry}%\n`;
-  text += `typography=${report.summary.avg_typography}% spacing=${report.summary.avg_spacing}% responsive=${report.summary.avg_responsive}% colour=${report.summary.avg_colour}%\n`;
-  text += `widgets native=${report.summary.total_native_widgets} html=${report.summary.total_html_widgets} errors=${report.summary.errors}\n\n`;
-  text += 'Top root-cause categories (by total impact)\n';
-  text += '-'.repeat(72) + '\n';
-  for (const c of report.top_categories) {
-    text += `${c.category.padEnd(28)} score=${String(c.score).padStart(7)} pages=${String(c.pages).padStart(3)} avg=${c.avg_impact}\n`;
-    for (const ex of c.examples.slice(0, 2)) {
-      text += `    · ${ex.id}: ${ex.evidence}\n`;
+  for (const r of results) {
+    if (!r.ok) {
+      console.log(`FAIL  ${r.fixture}: ${r.error}`);
+      continue;
     }
+    console.log(
+      [
+        r.fixture.padEnd(42),
+        `fid=${String(r.fidelity).padStart(3)}`,
+        `geo=${String(r.geometry).padStart(3)}`,
+        `lay=${String(r.layout).padStart(3)}`,
+        `spc=${String(r.spacing).padStart(3)}`,
+        `typ=${String(r.typography).padStart(3)}`,
+        `col=${String(r.colour).padStart(3)}`,
+        `grad=${String(r.gradient_preserve_pct).padStart(3)}%`,
+        `cov=${String(r.widget_coverage).padStart(3)}%`,
+        `html=${r.html_widgets}`,
+      ].join('  ')
+    );
   }
-  text += '\nLowest pages\n' + '-'.repeat(72) + '\n';
-  const lowest = [...report.pages].sort((a, b) => a.composite - b.composite).slice(0, 10);
-  for (const p of lowest) {
-    text += `${p.id.padEnd(28)} composite=${p.composite} pixel=${p.pixel} geo=${p.geometry} issue=${p.top_issue || '-'}\n`;
+
+  const summary = {
+    fixtures: results.length,
+    passed: ok.length,
+    failed: results.length - ok.length,
+    averages: {
+      fidelity: avg('fidelity'),
+      geometry: avg('geometry'),
+      layout: avg('layout'),
+      spacing: avg('spacing'),
+      typography: avg('typography'),
+      colour: avg('colour'),
+      gradient_preserve_pct: avg('gradient_preserve_pct'),
+      widget_coverage: avg('widget_coverage'),
+    },
+    results,
+  };
+
+  const summaryPath = path.join(OUT_DIR, 'summary.json');
+  fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+  console.log('---');
+  console.log('Averages:', JSON.stringify(summary.averages));
+  console.log('Wrote', summaryPath);
+
+  if (args.json) {
+    process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
   }
-  fs.writeFileSync(path.join(runDir, 'report.txt'), text);
-  fs.writeFileSync(path.join(OUT_ROOT, 'latest.txt'), text);
-  console.log('\n' + text);
-  console.log(`Wrote ${reportPath}`);
+
+  process.exit(summary.failed ? 1 : 0);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main();

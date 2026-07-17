@@ -216,6 +216,7 @@ final class EngineTest extends TestCase
 				'tree' => array(
 					'tag' => 'div',
 					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 400),
+					's' => array('disp' => 'flex', 'fd' => 'column'),
 					'children' => array(
 						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 40), 's' => array()),
 						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 64, 'width' => 600, 'height' => 40), 's' => array()),
@@ -250,6 +251,26 @@ final class EngineTest extends TestCase
 		$out = $analyzer->analyze($sections);
 		$this->assertSame('row', $out[0]['tree']['whitespace']['direction'] ?? '');
 		$this->assertEqualsWithDelta(24.0, (float) ($out[0]['tree']['whitespace']['gap'] ?? 0), 0.5);
+	}
+
+	public function test_whitespace_analyzer_ignores_block_flow_geometry_gap(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 400),
+					's' => array('disp' => 'block'),
+					'children' => array(
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 40), 's' => array('mb' => 24)),
+						array('tag' => 'p', 'atomic' => true, 'bbox' => array('x' => 0, 'y' => 64, 'width' => 600, 'height' => 40), 's' => array()),
+					),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$this->assertSame(0.0, (float) ($out[0]['tree']['whitespace']['gap'] ?? 0));
 	}
 
 	public function test_alignment_engine_detects_shared_left(): void

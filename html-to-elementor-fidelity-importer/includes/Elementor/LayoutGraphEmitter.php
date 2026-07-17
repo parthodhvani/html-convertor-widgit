@@ -104,12 +104,16 @@ final class LayoutGraphEmitter
 		// (e.g. `.faq` wrapper). Mixed sections fall through so headings stay.
 		$role = strtolower((string) ($node['layoutRole'] ?? ''));
 		$cls = strtolower((string) ($node['cls'] ?? ''));
-		// pricing intentionally omitted: feature-rich cards expand to native stacks.
-		$pure_pattern = in_array($role, array('faq', 'form_block', 'testimonial', 'icon_box', 'social_icons', 'cta_block', 'cta'), true)
-			|| (bool) preg_match('/\b(faq|accordion|testimonial|cta-banner|socials|newsletter-form)\b/', $cls);
+		$pure_pattern = in_array($role, array('faq', 'form_block', 'social_icons', 'pricing', 'cta_block', 'cta'), true)
+			|| (bool) preg_match('/\b(faq|accordion|cta-banner|socials|newsletter-form|price-table|pricing)\b/', $cls);
 		if ($pure_pattern) {
 			$composite = $this->builder->emit_composite_widget($node);
 			if (null !== $composite) {
+				// Keep a layout container so CSS gap / flex alignment survive
+				// composite collapse (FAQ, CTA, socials).
+				if ($this->should_emit_container($node, $is_section, $parent_row)) {
+					return array($this->builder->emit_container($node, array($composite), $is_section, $parent_row, $parent_width));
+				}
 				return array($composite);
 			}
 		}
@@ -126,12 +130,15 @@ final class LayoutGraphEmitter
 
 		$child_row = 'row' === $this->builder->flex_direction($node);
 		$self_width = (float) ($node['s']['w'] ?? 0);
+		$is_grid = false !== strpos((string) ($node['s']['disp'] ?? ''), 'grid');
+		// CSS Grid places tracks itself — do not force flex percentage column widths.
+		$parent_row_for_children = $child_row && !$is_grid;
 
 		// Group consecutive accordion/details children into one widget.
 		$grouped = $this->emit_children_with_accordion_groups(
 			(array) ($node['children'] ?? array()),
 			$is_section,
-			$child_row,
+			$parent_row_for_children,
 			$self_width,
 			$node
 		);
@@ -203,6 +210,12 @@ final class LayoutGraphEmitter
 			$cls = strtolower((string) ($child['cls'] ?? ''));
 			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
 			if ($is_item) {
+				$signals = VisualSignals::analyze($child);
+				if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+					$flush();
+					$out = array_merge($out, $this->emit_node($child, false, $child_row, $self_width));
+					continue;
+				}
 				$buffer[] = $child;
 				continue;
 			}
@@ -240,6 +253,9 @@ final class LayoutGraphEmitter
 
 		$composite = $this->builder->emit_composite_widget($node);
 		if (null !== $composite) {
+			if ($this->should_emit_container($node, $is_section, $parent_row)) {
+				return array($this->builder->emit_container($node, array($composite), $is_section, $parent_row, $parent_width));
+			}
 			return array($composite);
 		}
 

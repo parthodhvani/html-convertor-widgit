@@ -122,6 +122,11 @@ final class CompositePatternBuilder implements EngineInterface
 			return null;
 		}
 
+		// Painted disclosure cards keep container structure (backgrounds/borders).
+		if ($this->accordion_items_are_painted($node)) {
+			return null;
+		}
+
 		$tabs = array();
 		foreach ($detected['items'] as $item) {
 			$tabs[] = array(
@@ -133,8 +138,90 @@ final class CompositePatternBuilder implements EngineInterface
 		return array(
 			'type' => 'accordion',
 			'role' => 'faq',
-			'settings' => array('tabs' => $tabs),
+			'settings' => array_merge(
+				array('tabs' => $tabs),
+				$this->accordion_spacing_settings($node),
+				$this->accordion_paint_settings($node)
+			),
 		);
+	}
+
+	/**
+	 * Map FAQ flex/CSS gap onto Elementor accordion item spacing.
+	 *
+	 * @param array<string,mixed> $node FAQ root.
+	 * @return array<string,mixed>
+	 */
+	private function accordion_spacing_settings(array $node): array
+	{
+		$gap = (float) ($node['layoutConstraint']['gap'] ?? $node['whitespace']['gap'] ?? 0);
+		if ($gap <= 0) {
+			$raw = $node['s']['gap'] ?? null;
+			if (is_numeric($raw)) {
+				$gap = (float) $raw;
+			} elseif (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+				$gap = (float) $m[1];
+			}
+		}
+		if ($gap <= 0) {
+			return array();
+		}
+		return array(
+			'space_between' => array(
+				'unit' => 'px',
+				'size' => round($gap),
+			),
+		);
+	}
+
+	/**
+	 * @param array<string,mixed> $node FAQ root.
+	 */
+	private function accordion_items_are_painted(array $node): bool
+	{
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
+			if (!$is_item) {
+				continue;
+			}
+			$signals = VisualSignals::analyze($child);
+			if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Carry painted FAQ item backgrounds onto the accordion widget.
+	 *
+	 * @param array<string,mixed> $node FAQ root.
+	 * @return array<string,mixed>
+	 */
+	private function accordion_paint_settings(array $node): array
+	{
+		$mapper = new \HtmlToElementor\Elementor\CssMapper();
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$tag = strtolower((string) ($child['tag'] ?? ''));
+			$cls = strtolower((string) ($child['cls'] ?? ''));
+			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
+			if (!$is_item) {
+				continue;
+			}
+			$bg = $mapper->background($child);
+			if (!empty($bg)) {
+				return $bg;
+			}
+		}
+		return array();
 	}
 
 	/**
@@ -480,11 +567,39 @@ final class CompositePatternBuilder implements EngineInterface
 			);
 		}
 
+		$settings = array('social_icon_list' => $list);
+		$gap = $this->css_gap_px($node);
+		if ($gap > 0) {
+			$settings['gap'] = array(
+				'unit' => 'px',
+				'size' => $gap,
+			);
+		}
+
 		return array(
 			'type' => 'social-icons',
 			'role' => 'social_icons',
-			'settings' => array('social_icon_list' => $list),
+			'settings' => $settings,
 		);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function css_gap_px(array $node): float
+	{
+		$gap = (float) ($node['layoutConstraint']['gap'] ?? $node['whitespace']['gap'] ?? 0);
+		if ($gap > 0) {
+			return round($gap);
+		}
+		$raw = $node['s']['gap'] ?? null;
+		if (is_numeric($raw)) {
+			return (float) $raw;
+		}
+		if (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+			return (float) $m[1];
+		}
+		return 0.0;
 	}
 
 	/**
@@ -659,17 +774,15 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_price_table(array $node, string $role, string $cls): ?array
 	{
+		// Only explicit pricing blocks — marketing service cards keep a structured
+		// container + heading/text/button tree so Chromium IR children survive.
 		$hinted = in_array($role, array('pricing', 'price_table'), true)
-			|| (bool) preg_match('/\b(service-card|pricing|price-table)\b/', $cls);
+			|| (bool) preg_match('/\b(pricing|price-table|price-card)\b/', $cls);
+		if (!$hinted) {
+			return null;
+		}
 		$price = $this->extract_price($node);
 		if (null === $price) {
-			return null;
-		}
-		if (!$hinted && 'card' !== $role && !preg_match('/\bcard\b/', $cls)) {
-			return null;
-		}
-		// Bare `.card` only becomes a price table when a price signal is present.
-		if (!$hinted && null === $price) {
 			return null;
 		}
 
@@ -762,11 +875,9 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_icon_box(array $node, string $role, string $cls): ?array
 	{
+		// Explicit icon-box / feature widgets only — not broad service-card trees.
 		$hinted = in_array($role, array('icon_box', 'feature'), true)
-			|| (bool) preg_match('/\b(service-card|icon-box|feature)\b/', $cls);
-		if (!$hinted && in_array($role, array('card'), true) && null !== $this->first_icon($node)) {
-			$hinted = true;
-		}
+			|| (bool) preg_match('/\b(icon-box|feature-box|feature-card)\b/', $cls);
 		if (!$hinted) {
 			return null;
 		}
@@ -809,6 +920,18 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_star_rating(array $node, string $role, string $cls): ?array
 	{
+		// Never collapse FAQ / form / card trees into a star widget because
+		// body copy mentioned "rating" or included a ★ glyph.
+		if (in_array($role, array('faq', 'accordion', 'form_block', 'testimonial', 'card', 'cta_block', 'footer_band', 'social_icons'), true)) {
+			return null;
+		}
+		if (preg_match('/\b(faq|accordion|disclosure|testimonial|form)\b/', $cls)) {
+			return null;
+		}
+		if (count((array) ($node['children'] ?? array())) >= 2) {
+			return null;
+		}
+
 		$text = trim((string) ($node['text'] ?? ''));
 		$html = (string) ($node['html'] ?? '');
 		$combined = $text . ' ' . $html . ' ' . $cls;

@@ -200,7 +200,12 @@ final class CssMapper
     }
 
     /**
-     * Background controls for a container (colour + image + gradient).
+     * Background controls for a container (colour, image, or CSS gradient).
+     *
+     * Gradients from Chromium computed styles are mapped to Elementor's native
+     * gradient background controls. Multi-layer backgrounds use the dominant
+     * linear (or radial) layer as the primary fill; additional layers cannot
+     * be expressed as native Elementor stops and rely on source-CSS reinjection.
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -209,18 +214,24 @@ final class CssMapper
     {
         $s = $node['s'] ?? array();
         $out = array();
-        $unsupported = array();
+        $raw_bg_img = (string) ($s['bgImg'] ?? '');
 
-        $bg_img_raw = (string) ($s['bgImg'] ?? '');
-        $is_gradient = !empty($s['bgGrad']) || ('' !== $bg_img_raw && false !== stripos($bg_img_raw, 'gradient('));
+        // Prefer real image URLs over gradients when both appear — but keep the
+        // gradient as an Elementor background overlay so multi-layer heroes survive.
+        $bg_image = $this->css_url($raw_bg_img);
+        $gradient = $this->parse_gradient($raw_bg_img);
+        if (null === $gradient) {
+            $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
+        }
 
-        if ($is_gradient) {
-            $gradient = $this->parse_gradient($bg_img_raw);
-            if (null !== $gradient) {
-                $out = array_merge($out, $gradient);
-            } else {
-                $unsupported[] = 'background-image:gradient';
-                $out = $this->merge_custom_css($out, 'background-image:' . $bg_img_raw);
+        if ('' !== $bg_image) {
+            $out['background_background'] = 'classic';
+            $out['background_image'] = array(
+                'url' => $bg_image,
+                'id' => '',
+            );
+            if (!empty($s['bgSize'])) {
+                $out['background_size'] = $this->bg_keyword((string) $s['bgSize']);
             }
         } else {
             $bg_image = $this->css_url($bg_img_raw);
@@ -240,35 +251,150 @@ final class CssMapper
                     $out['background_repeat'] = (string) $s['bgRepeat'];
                 }
             }
+            if (null !== $gradient) {
+                $overlay = $this->elementor_gradient_settings($gradient);
+                $out['background_overlay_background'] = 'gradient';
+                $out['background_overlay_color'] = $overlay['background_color'] ?? '';
+                $out['background_overlay_color_b'] = $overlay['background_color_b'] ?? '';
+                $out['background_overlay_gradient_type'] = $overlay['background_gradient_type'] ?? 'linear';
+                if (isset($overlay['background_gradient_angle'])) {
+                    $out['background_overlay_gradient_angle'] = $overlay['background_gradient_angle'];
+                }
+                if (isset($overlay['background_gradient_position'])) {
+                    $out['background_overlay_gradient_position'] = $overlay['background_gradient_position'];
+                }
+            }
+        } elseif (null !== $gradient) {
+            $out = array_merge($out, $this->elementor_gradient_settings($gradient));
         }
 
         $bg_color = (string) ($s['bg'] ?? '');
-        if ('' !== $bg_color && !$this->is_transparent($bg_color)) {
+        if ('' !== $bg_color && !$this->is_transparent($bg_color) && false === stripos($bg_color, 'gradient')) {
             if (empty($out['background_background'])) {
                 $out['background_background'] = 'classic';
             }
-            // Gradient parse already sets color A; only fill classic backgrounds here.
-            if ('gradient' !== ($out['background_background'] ?? '') || empty($out['background_color'])) {
-                if ('gradient' !== ($out['background_background'] ?? '')) {
-                    $out['background_color'] = $bg_color;
-                } elseif (empty($out['background_color'])) {
-                    $out['background_color'] = $bg_color;
-                }
+            // Do not overwrite gradient color A with a solid fill when gradient won.
+            if ('gradient' !== ($out['background_background'] ?? '')) {
+                $out['background_color'] = $bg_color;
             }
-        }
-
-        if (!empty($unsupported)) {
-            $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
-                (array) ($out['_h2e_unsupported'] ?? array()),
-                $unsupported
-            )));
         }
 
         return $out;
     }
 
     /**
-     * Border + border-radius controls (per-side / per-corner when IR provides them).
+     * Convert a parsed gradient into Elementor background controls.
+     *
+     * @param array{type:string,angle:float,color_a:string,color_b:string,position:string} $gradient Parsed gradient.
+     * @return array<string,mixed>
+     */
+    public function elementor_gradient_settings(array $gradient): array
+    {
+        $out = array(
+            'background_background' => 'gradient',
+            'background_color' => $gradient['color_a'],
+            'background_color_b' => $gradient['color_b'],
+            'background_gradient_type' => $gradient['type'],
+        );
+        if ('linear' === $gradient['type']) {
+            $out['background_gradient_angle'] = array(
+                'unit' => 'deg',
+                'size' => $gradient['angle'],
+            );
+        } else {
+            $out['background_gradient_position'] = $gradient['position'] ?: 'center center';
+        }
+        return $out;
+    }
+
+    /**
+     * Parse a CSS background-image value containing linear/radial gradients.
+     *
+     * Supports multi-layer lists: prefers the last linear-gradient (base fill),
+     * then the first linear, then the first radial. Elementor only exposes two
+     * colour stops, so first and last stops of the chosen layer are used.
+     *
+     * @param string $value CSS background-image (may include url() and gradients).
+     * @return array{type:string,angle:float,color_a:string,color_b:string,position:string}|null
+     */
+    public function parse_gradient(string $value): ?array
+    {
+        $value = trim($value);
+        if ('' === $value || false === stripos($value, 'gradient')) {
+            return null;
+        }
+
+        $layers = $this->split_background_layers($value);
+        $linear = null;
+        $radial = null;
+        foreach ($layers as $layer) {
+            $layer = trim($layer);
+            if (preg_match('/^linear-gradient\s*\(/i', $layer)) {
+                $linear = $layer; // keep last linear as base.
+            } elseif (null === $radial && preg_match('/^radial-gradient\s*\(/i', $layer)) {
+                $radial = $layer;
+            }
+        }
+
+        $chosen = $linear ?? $radial;
+        if (null === $chosen) {
+            // Fallback: whole value may be a single gradient without clean split.
+            if (preg_match('/((?:repeating-)?(?:linear|radial)-gradient\s*\([^;]*)/i', $value, $m)) {
+                $chosen = $m[1];
+            } else {
+                return null;
+            }
+        }
+
+        $type = (false !== stripos($chosen, 'radial-gradient')) ? 'radial' : 'linear';
+        $inner = $this->gradient_inner($chosen);
+        if ('' === $inner) {
+            return null;
+        }
+
+        $angle = 180.0;
+        $position = 'center center';
+        $stop_source = $inner;
+
+        if ('linear' === $type) {
+            if (preg_match('/^(\d+(?:\.\d+)?)\s*deg\s*,/i', $inner, $m)) {
+                $angle = (float) $m[1];
+                $stop_source = trim(substr($inner, strlen($m[0])));
+            } elseif (preg_match('/^to\s+([\w\s]+)\s*,/i', $inner, $m)) {
+                $angle = $this->to_direction_angle(trim($m[1]));
+                $stop_source = trim(substr($inner, strlen($m[0])));
+            }
+        } else {
+            // Drop size/shape/at-position prefix before colour stops.
+            if (preg_match('/^(.*?\bat\s+([^,]+))\s*,/i', $inner, $m)) {
+                $position = $this->bg_position(trim($m[2]));
+                $stop_source = trim(substr($inner, strlen($m[1]) + 1));
+            } elseif (preg_match('/^(circle|ellipse|closest-side|closest-corner|farthest-side|farthest-corner|[\d.]+(?:px|%|em)?(?:\s+[\d.]+(?:px|%|em)?)?)\s*,/i', $inner, $m)) {
+                $stop_source = trim(substr($inner, strlen($m[0])));
+            }
+        }
+
+        $colors = $this->extract_gradient_colors($stop_source);
+        if (count($colors) < 1) {
+            return null;
+        }
+        $color_a = $colors[0];
+        $color_b = $colors[count($colors) - 1];
+        if ($color_a === $color_b && count($colors) > 2) {
+            $color_b = $colors[(int) floor(count($colors) / 2)];
+        }
+
+        return array(
+            'type' => $type,
+            'angle' => $angle,
+            'color_a' => $color_a,
+            'color_b' => $color_b,
+            'position' => $position,
+        );
+    }
+
+    /**
+     * Border + border-radius controls.
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -500,7 +626,15 @@ final class CssMapper
             return array();
         }
 
-        // Map both flex and grid onto Elementor's flex container.
+        // Multi-track CSS Grid → Elementor container + custom CSS (do not fake as flex).
+        if ($is_grid) {
+            $grid = $this->grid_settings($node);
+            if (!empty($grid)) {
+                return $grid;
+            }
+            // Single-track grid used for centering — fall through to flex-like mapping.
+        }
+
         $direction = strtolower((string) ($s['fd'] ?? 'row'));
         $direction = (false !== strpos($direction, 'column')) ? 'column' : 'row';
         if ($is_grid) {
@@ -565,7 +699,112 @@ final class CssMapper
     }
 
     /**
-     * Minimum-height / opacity sizing controls for a container.
+     * Map multi-column CSS Grid onto Elementor container + custom CSS.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
+    public function grid_settings(array $node): array
+    {
+        $s = $node['s'] ?? array();
+        $gtc = trim((string) ($s['gtc'] ?? ''));
+        if ('' === $gtc || 'none' === strtolower($gtc)) {
+            return array();
+        }
+
+        $tracks = preg_split('/\s+/', $gtc) ?: array();
+        $tracks = array_values(array_filter($tracks, static fn($t) => '' !== $t && 'none' !== strtolower($t)));
+        if (count($tracks) < 2) {
+            return array();
+        }
+
+        $columns = $this->normalize_grid_columns($tracks);
+        $gap = $this->size($s['gap'] ?? null);
+        $gap_css = $gap ? (rtrim(rtrim((string) $gap['size'], '0'), '.') . $gap['unit']) : '0';
+        if ($gap && abs($gap['size'] - round($gap['size'])) < 0.001) {
+            $gap_css = ((string) (int) round($gap['size'])) . $gap['unit'];
+        }
+
+        $out = array(
+            'flex_direction' => 'row',
+            'flex_wrap' => 'wrap',
+            '_h2e_display' => 'grid',
+            'custom_css' => sprintf(
+                'selector { display: grid !important; grid-template-columns: %s; gap: %s; align-items: %s; }',
+                $columns,
+                $gap_css,
+                $this->css_align_keyword((string) ($s['ai'] ?? 'stretch'))
+            ),
+        );
+
+        if ($gap) {
+            $size = $gap['size'];
+            $out['flex_gap'] = array(
+                'unit' => 'px',
+                'size' => $size,
+                'column' => (string) $size,
+                'row' => (string) $size,
+                'isLinked' => true,
+            );
+        }
+
+        if (!empty($s['jc'])) {
+            $out['flex_justify_content'] = $this->flex_align((string) $s['jc']);
+        }
+        if (!empty($s['ai'])) {
+            $out['flex_align_items'] = $this->flex_align((string) $s['ai']);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<int,string> $tracks Computed grid-template-columns tracks.
+     */
+    private function normalize_grid_columns(array $tracks): string
+    {
+        $px = array();
+        foreach ($tracks as $track) {
+            if (!preg_match('/^(\d+(?:\.\d+)?)px$/i', $track, $m)) {
+                return implode(' ', $tracks);
+            }
+            $px[] = (float) $m[1];
+        }
+
+        $count = count($px);
+        $avg = array_sum($px) / max(1, $count);
+        $equal = true;
+        foreach ($px as $value) {
+            if (abs($value - $avg) > max(8.0, $avg * 0.08)) {
+                $equal = false;
+                break;
+            }
+        }
+
+        if ($equal && $count >= 2) {
+            return 'repeat(' . $count . ', minmax(0, 1fr))';
+        }
+
+        return implode(' ', $tracks);
+    }
+
+    private function css_align_keyword(string $value): string
+    {
+        $value = strtolower(trim($value));
+        return match ($value) {
+            'start', 'flex-start', 'left' => 'start',
+            'end', 'flex-end', 'right' => 'end',
+            'center' => 'center',
+            'baseline' => 'baseline',
+            default => 'stretch',
+        };
+    }
+
+    /**
+     * Width / height / max-width / min-* sizing controls for a container.
+     *
+     * Browser computed max-width (and related constraints) are mapped to
+     * Elementor size controls so centered content columns keep their measure.
      *
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
@@ -574,17 +813,116 @@ final class CssMapper
     {
         $s = $node['s'] ?? array();
         $out = array();
-        $min_h = $this->size($s['minH'] ?? null);
-        if ($min_h && $min_h['size'] > 0) {
+
+		$max_w = $this->constrained_size($s['maxW'] ?? null);
+        if (null !== $max_w) {
+            $out['max_width'] = $max_w;
+            // Fill available width up to the browser max-width constraint.
+            if (empty($out['width'])) {
+                $out['width'] = array('unit' => '%', 'size' => 100);
+            }
+            // Center constrained measure boxes (margin:auto equivalent in flex).
+            $out['align_self'] = 'center';
+        }
+
+        $min_w = $this->constrained_size($s['minW'] ?? null);
+        if (null !== $min_w && $min_w['size'] > 0) {
+            $out['min_width'] = $min_w;
+        }
+
+        $min_h = $this->constrained_size($s['minH'] ?? null);
+        if (null !== $min_h && $min_h['size'] > 0) {
             $out['min_height'] = $min_h;
         }
+
+        $max_h = $this->constrained_size($s['maxH'] ?? null);
+        if (null !== $max_h) {
+            $out['max_height'] = $max_h;
+        }
+
+        // Explicit non-auto aspect-ratio when Chromium reports one.
+        $ar = trim((string) ($s['ar'] ?? ''));
+        if ('' !== $ar && 'auto' !== strtolower($ar)) {
+            if (preg_match('/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/', $ar, $m)) {
+                $out['aspect_ratio'] = round(((float) $m[1]) / max(0.0001, (float) $m[2]), 4);
+            } elseif (is_numeric($ar)) {
+                $out['aspect_ratio'] = (float) $ar;
+            }
+        }
+
         if (isset($s['op']) && (float) $s['op'] < 1) {
             $out['_opacity'] = array(
                 'unit' => 'px',
                 'size' => round((float) $s['op'], 2),
             );
         }
+
+        return array_merge($out, $this->position($node));
+    }
+
+    /**
+     * Map CSS position:absolute/fixed onto Elementor advanced positioning.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
+    public function position(array $node): array
+    {
+        $s = $node['s'] ?? array();
+        $pos = strtolower((string) ($s['pos'] ?? 'static'));
+        if (!in_array($pos, array('absolute', 'fixed', 'sticky'), true)) {
+            return array();
+        }
+
+        $out = array(
+            'position' => 'fixed' === $pos ? 'fixed' : ('sticky' === $pos ? 'sticky' : 'absolute'),
+        );
+
+        $z = $s['z'] ?? $s['zIndex'] ?? null;
+        if (is_numeric($z)) {
+            $out['z_index'] = (int) $z;
+        }
+
+        foreach (array('top' => 'offset_y', 'left' => 'offset_x') as $css => $control) {
+            if (!isset($s[$css]) || '' === $s[$css] || 'auto' === $s[$css]) {
+                continue;
+            }
+            $size = $this->size($s[$css]);
+            if ($size) {
+                $out[$control] = $size;
+                if ('offset_x' === $control) {
+                    $out['_offset_orientation_h'] = 'start';
+                } else {
+                    $out['_offset_orientation_v'] = 'start';
+                }
+            }
+        }
+
         return $out;
+    }
+
+    /**
+     * Parse a constraining CSS length, ignoring none/auto/0.
+     *
+     * @param mixed $value Raw CSS size.
+     * @return array{unit:string,size:float}|null
+     */
+    private function constrained_size($value): ?array
+    {
+        if (null === $value || '' === $value) {
+            return null;
+        }
+        if (is_string($value)) {
+            $lower = strtolower(trim($value));
+            if (in_array($lower, array('none', 'auto', 'initial', 'unset', '0', '0px'), true)) {
+                return null;
+            }
+        }
+        $parsed = $this->size($value);
+        if (null === $parsed || $parsed['size'] <= 0) {
+            return null;
+        }
+        return $parsed;
     }
 
     /* --------------------------------------------------------------------- */
@@ -794,13 +1132,17 @@ final class CssMapper
     }
 
     /**
-     * Extract a URL from a CSS url(...) value (ignores gradients).
+     * Extract a URL from a CSS url(...) value (ignores gradients — use parse_gradient).
      *
      * @param string $value background-image value.
      */
     private function css_url(string $value): string
     {
-        if ('' === $value || false !== strpos($value, 'gradient')) {
+        if ('' === $value || false !== stripos($value, 'gradient')) {
+            // url(...) may coexist with gradients; still try to pull a URL first.
+            if (preg_match('/url\((["\']?)(.*?)\1\)/', $value, $m) && '' !== trim($m[2])) {
+                return $m[2];
+            }
             return '';
         }
         if (preg_match('/url\((["\']?)(.*?)\1\)/', $value, $m)) {
@@ -810,100 +1152,115 @@ final class CssMapper
     }
 
     /**
-     * Parse a CSS gradient into Elementor background gradient controls.
+     * Split a CSS background-image list into layers (comma-aware of nested parens).
      *
-     * Verified control names against Elementor Group_Control_Background:
-     * background_background=gradient, background_color, background_color_b,
-     * background_gradient_type, background_gradient_angle, stop controls.
-     *
-     * @param string $value background-image value.
-     * @return array<string,mixed>|null
+     * @param string $value Raw background-image.
+     * @return array<int,string>
      */
-    private function parse_gradient(string $value): ?array
+    private function split_background_layers(string $value): array
     {
-        $value = trim($value);
-        if ('' === $value) {
-            return null;
+        $layers = array();
+        $depth = 0;
+        $current = '';
+        $len = strlen($value);
+        for ($i = 0; $i < $len; ++$i) {
+            $ch = $value[$i];
+            if ('(' === $ch) {
+                ++$depth;
+                $current .= $ch;
+            } elseif (')' === $ch) {
+                $depth = max(0, $depth - 1);
+                $current .= $ch;
+            } elseif (',' === $ch && 0 === $depth) {
+                if ('' !== trim($current)) {
+                    $layers[] = trim($current);
+                }
+                $current = '';
+            } else {
+                $current .= $ch;
+            }
         }
-
-        $type = 'linear';
-        if (preg_match('/radial-gradient\s*\(/i', $value)) {
-            $type = 'radial';
-        } elseif (!preg_match('/linear-gradient\s*\(/i', $value)) {
-            return null;
+        if ('' !== trim($current)) {
+            $layers[] = trim($current);
         }
-
-        $angle = 180.0;
-        if (preg_match('/linear-gradient\s*\(\s*([+-]?\d+(?:\.\d+)?)deg/i', $value, $m)) {
-            $angle = (float) $m[1];
-        } elseif (preg_match('/linear-gradient\s*\(\s*to\s+([a-z\s]+),/i', $value, $m)) {
-            $to = strtolower(trim(preg_replace('/\s+/', ' ', $m[1])));
-            $map = array(
-                'top' => 0.0,
-                'right' => 90.0,
-                'bottom' => 180.0,
-                'left' => 270.0,
-                'top right' => 45.0,
-                'right top' => 45.0,
-                'bottom right' => 135.0,
-                'right bottom' => 135.0,
-                'bottom left' => 225.0,
-                'left bottom' => 225.0,
-                'top left' => 315.0,
-                'left top' => 315.0,
-            );
-            $angle = $map[$to] ?? 180.0;
-        }
-
-        // Collect color stops (rgb()/rgba()/hsl()/hex/named roughly via regex).
-        $colors = array();
-        if (preg_match_all('/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/', $value, $matches)) {
-            $colors = $matches[1];
-        }
-        if (count($colors) < 2) {
-            return null;
-        }
-
-        $out = array(
-            'background_background' => 'gradient',
-            'background_color' => $colors[0],
-            'background_color_b' => $colors[count($colors) - 1],
-            'background_gradient_type' => $type,
-            'background_color_stop' => array('unit' => '%', 'size' => 0),
-            'background_color_b_stop' => array('unit' => '%', 'size' => 100),
-        );
-        if ('linear' === $type) {
-            $out['background_gradient_angle'] = array(
-                'unit' => 'deg',
-                'size' => $angle,
-            );
-        }
-
-        // Preserve multi-stop / complex gradients via custom CSS as well.
-        if (count($colors) > 2) {
-            $out = $this->merge_custom_css($out, 'background-image:' . $value);
-            $out['_h2e_unsupported'] = array('background-image:multi-stop-gradient');
-        }
-
-        return $out;
+        return $layers;
     }
 
     /**
-     * Append CSS declarations onto `_h2e_custom_css` (semicolon-separated props).
+     * Inner contents of a gradient(...) function.
      *
-     * @param array<string,mixed> $settings Settings.
-     * @param string              $css      Declarations without selector.
-     * @return array<string,mixed>
+     * @param string $gradient Gradient CSS function call.
      */
-    private function merge_custom_css(array $settings, string $css): array
+    private function gradient_inner(string $gradient): string
     {
-        $css = trim($css, " \t\n\r\0\x0B;");
-        if ('' === $css) {
-            return $settings;
+        $start = strpos($gradient, '(');
+        if (false === $start) {
+            return '';
         }
-        $existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
-        $settings['_h2e_custom_css'] = '' === $existing ? $css : ($existing . ';' . $css);
-        return $settings;
+        $depth = 0;
+        $len = strlen($gradient);
+        for ($i = $start; $i < $len; ++$i) {
+            if ('(' === $gradient[$i]) {
+                ++$depth;
+            } elseif (')' === $gradient[$i]) {
+                --$depth;
+                if (0 === $depth) {
+                    return trim(substr($gradient, $start + 1, $i - $start - 1));
+                }
+            }
+        }
+        return trim(substr($gradient, $start + 1));
+    }
+
+    /**
+     * Extract colour tokens from a gradient colour-stop list.
+     *
+     * @param string $stops Colour-stop source.
+     * @return array<int,string>
+     */
+    private function extract_gradient_colors(string $stops): array
+    {
+        $colors = array();
+        if (preg_match_all('/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8}|\b(?:transparent|currentColor)\b)/i', $stops, $m)) {
+            foreach ($m[1] as $c) {
+                $c = trim($c);
+                if ('' === $c || $this->is_transparent($c)) {
+                    continue;
+                }
+                $colors[] = $c;
+            }
+        }
+        // If every stop was transparent, keep the first transparent as a soft fade.
+        if (!$colors && preg_match('/(rgba?\([^)]+\))/i', $stops, $m)) {
+            $colors[] = $m[1];
+            $colors[] = 'rgba(0, 0, 0, 0)';
+        }
+        return $colors;
+    }
+
+    /**
+     * Map CSS "to …" direction keywords to degrees.
+     *
+     * @param string $dir Direction keywords.
+     */
+    private function to_direction_angle(string $dir): float
+    {
+        $dir = strtolower(preg_replace('/\s+/', ' ', trim($dir)) ?? '');
+        $map = array(
+            'top' => 0.0,
+            'right' => 90.0,
+            'bottom' => 180.0,
+            'left' => 270.0,
+            'top right' => 45.0,
+            'right top' => 45.0,
+            'bottom right' => 135.0,
+            'right bottom' => 135.0,
+            'bottom left' => 225.0,
+            'left bottom' => 225.0,
+            'top left' => 315.0,
+            'left top' => 315.0,
+        );
+        return $map[$dir] ?? 180.0;
     }
 
     /**

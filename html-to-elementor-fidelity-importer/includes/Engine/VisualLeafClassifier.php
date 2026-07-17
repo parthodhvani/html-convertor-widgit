@@ -127,9 +127,28 @@ final class VisualLeafClassifier
 			return $this->result('text-editor', array('editor' => '<p>' . esc_html($text) . '</p>'), 85);
 		}
 
-		// SVG inline — still a visual asset.
-		if (false !== stripos($html, '<svg')) {
-			return array('kind' => 'fallback', 'confidence' => 50);
+		// Inline SVG → native Image widget (data URI), keep link when wrapped in <a>.
+		if ('svg' === $tag || false !== stripos($html, '<svg')) {
+			$svg = $this->extract_svg_markup($html !== '' ? $html : (string) ($node['outerHTML'] ?? ''));
+			if ('' === $svg && 'svg' === $tag) {
+				$svg = $html;
+			}
+			if ('' !== $svg) {
+				$settings = array(
+					'image' => array('url' => $this->svg_data_uri($svg), 'id' => ''),
+					'image_size' => 'full',
+					'alt' => (string) ($node['alt'] ?? ''),
+				);
+				$href = (string) ($node['href'] ?? '');
+				if ('' === $href && 'a' === $tag) {
+					$href = $this->first_href($html);
+				}
+				if ('' !== $href) {
+					$settings['link_to'] = 'custom';
+					$settings['link'] = array('url' => $href);
+				}
+				return $this->result('image', $settings, 90);
+			}
 		}
 
 		// Lone form controls → native Form widget (avoid HTML fallback).
@@ -392,5 +411,35 @@ final class VisualLeafClassifier
 	private function is_maps(string $html): bool
 	{
 		return (bool) preg_match('#(google\.[a-z.]+/maps|maps\.google)#i', $html);
+	}
+
+	/**
+	 * @param string $html HTML possibly containing an SVG.
+	 */
+	private function extract_svg_markup(string $html): string
+	{
+		if (preg_match('/<svg\b.*?<\/svg>/is', $html, $m)) {
+			return $m[0];
+		}
+		return '';
+	}
+
+	/**
+	 * @param string $svg SVG markup.
+	 */
+	private function svg_data_uri(string $svg): string
+	{
+		return 'data:image/svg+xml;base64,' . base64_encode($svg);
+	}
+
+	/**
+	 * @param string $html Anchor HTML.
+	 */
+	private function first_href(string $html): string
+	{
+		if (preg_match('/href=["\']([^"\']*)["\']/i', $html, $m)) {
+			return $m[1];
+		}
+		return '';
 	}
 }

@@ -85,7 +85,10 @@ final class LayeredLayoutSolver
 				$settings['background_image'] = array('url' => $src, 'id' => '');
 				$settings['background_position'] = 'center center';
 				$settings['background_size'] = 'cover';
-			} elseif (!empty($bg['s']['bgImg']) && !preg_match('/gradient\s*\(/i', (string) $bg['s']['bgImg'])) {
+			} elseif (!empty($bg['s']['bgImg']) && preg_match('/gradient\s*\(/i', (string) $bg['s']['bgImg'])) {
+				// Nested gradient backgrounds — map via CssMapper.
+				$settings = array_merge($settings, $this->css->background($bg));
+			} elseif (!empty($bg['s']['bgImg'])) {
 				$settings['_h2e_layer_bg'] = (string) $bg['s']['bgImg'];
 			} else {
 				// Keep media frames (e.g. founder photo wrappers) as nested content
@@ -97,39 +100,25 @@ final class LayeredLayoutSolver
 		}
 
 		$overlay = $layers['overlay'] ?? null;
-		if (is_array($overlay)) {
-			$overlay_img = (string) ($overlay['s']['bgImg'] ?? '');
-			if ('' !== $overlay_img && !preg_match('/gradient\s*\(/i', $overlay_img)) {
+		if (is_array($overlay) && !empty($overlay['s']['bgImg'])) {
+			$overlay_img = (string) $overlay['s']['bgImg'];
+			if (preg_match('/gradient\s*\(/i', $overlay_img)) {
+				$parsed = $this->css->parse_gradient($overlay_img);
+				if (null !== $parsed) {
+					$grad = $this->css->elementor_gradient_settings($parsed);
+					$settings['background_overlay_background'] = 'gradient';
+					$settings['background_overlay_color'] = $grad['background_color'] ?? '';
+					$settings['background_overlay_color_b'] = $grad['background_color_b'] ?? '';
+					$settings['background_overlay_gradient_type'] = $grad['background_gradient_type'] ?? 'linear';
+					if (isset($grad['background_gradient_angle'])) {
+						$settings['background_overlay_gradient_angle'] = $grad['background_gradient_angle'];
+					}
+					if (isset($grad['background_gradient_position'])) {
+						$settings['background_overlay_gradient_position'] = $grad['background_gradient_position'];
+					}
+				}
+			} else {
 				$settings['_h2e_layer_overlay'] = $overlay_img;
-			}
-			// Absolute decorative layers often carry the hero gradient / fill.
-			$grad = (string) ($overlay['s']['bgGrad'] ?? '');
-			if ('' === $grad && preg_match('/gradient\s*\(/i', $overlay_img)) {
-				$grad = $overlay_img;
-			}
-			$overlay_bg = strtolower(trim((string) ($overlay['s']['bg'] ?? '')));
-			if ('' === $grad && '' !== $overlay_bg && !preg_match('/rgba?\([^)]*,\s*0\s*\)|transparent/i', $overlay_bg)) {
-				// Solid overlay wash.
-				$settings['background_overlay_background'] = 'classic';
-				$settings['background_overlay_color'] = (string) $overlay['s']['bg'];
-			}
-			if ('' !== $grad) {
-				$settings['background_background'] = $settings['background_background'] ?? 'classic';
-				$existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
-				$settings['_h2e_custom_css'] = trim($existing . ';background-image:' . $grad, " \t\n\r\0\x0B;");
-			}
-		}
-
-		// Background layer may also be a gradient div (no <img>).
-		if (is_array($bg)) {
-			$grad = (string) ($bg['s']['bgGrad'] ?? '');
-			$bg_img = (string) ($bg['s']['bgImg'] ?? '');
-			if ('' === $grad && preg_match('/gradient\s*\(/i', $bg_img)) {
-				$grad = $bg_img;
-			}
-			if ('' !== $grad && empty($settings['background_image']['url'])) {
-				$existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
-				$settings['_h2e_custom_css'] = trim($existing . ';background-image:' . $grad, " \t\n\r\0\x0B;");
 			}
 		}
 

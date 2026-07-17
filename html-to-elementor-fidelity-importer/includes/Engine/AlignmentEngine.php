@@ -91,20 +91,61 @@ final class AlignmentEngine implements EngineInterface
 			'shared_baseline' => Geometry::aligned(array_map(fn($b) => $b['y'] + $b['height'], $boxes), 6.0),
 		);
 
-		if ('row' === $direction) {
-			$align['justify'] = $align['shared_center_x'] ? 'center' : ($align['shared_left'] ? 'flex-start' : ($align['shared_right'] ? 'flex-end' : 'space-between'));
-			$align['align_items'] = $align['shared_center_y'] ? 'center' : ($align['shared_baseline'] ? 'baseline' : 'stretch');
+		$css_jc = strtolower(trim((string) ($parent['s']['jc'] ?? '')));
+		$css_ai = strtolower(trim((string) ($parent['s']['ai'] ?? '')));
+		$disp = strtolower((string) ($parent['s']['disp'] ?? ''));
+		$is_grid = false !== strpos($disp, 'grid');
+
+		// Chromium-computed alignment is authoritative when present.
+		if ('' !== $css_jc) {
+			$align['justify'] = $this->normalize_justify($css_jc);
+			$align['justify_source'] = 'css';
+		} elseif ($is_grid) {
+			// Grid placement is not flex space-between.
+			$align['justify'] = 'flex-start';
+			$align['justify_source'] = 'grid';
+		} elseif ('row' === $direction) {
+			if ($align['shared_center_x']) {
+				$align['justify'] = 'center';
+			} elseif ($align['shared_left']) {
+				$align['justify'] = 'flex-start';
+			} elseif ($align['shared_right']) {
+				$align['justify'] = 'flex-end';
+			} else {
+				// Ambiguous geometry — never invent space-between (breaks card grids).
+				$align['justify'] = 'flex-start';
+			}
+			$align['justify_source'] = 'geometry';
 		} else {
-			$align['justify'] = $align['shared_top'] ? 'flex-start' : ($align['shared_center_y'] ? 'center' : 'space-between');
-			$align['align_items'] = $align['shared_left'] ? 'flex-start' : ($align['shared_center_x'] ? 'center' : ($align['shared_right'] ? 'flex-end' : 'stretch'));
+			if ($align['shared_center_y']) {
+				$align['justify'] = 'center';
+			} elseif ($align['shared_top'] || $align['shared_baseline']) {
+				$align['justify'] = 'flex-start';
+			} else {
+				$align['justify'] = 'flex-start';
+			}
+			$align['justify_source'] = 'geometry';
 		}
 
-		// Parent text-align hint.
-		$ta = strtolower((string) ($parent['s']['ta'] ?? ''));
-		if ('center' === $ta) {
-			$align['justify'] = 'center';
-		} elseif ('right' === $ta || 'end' === $ta) {
-			$align['justify'] = 'flex-end';
+		if ('' !== $css_ai) {
+			$align['align_items'] = $this->normalize_align($css_ai);
+			$align['align_source'] = 'css';
+		} elseif ('row' === $direction) {
+			$align['align_items'] = $align['shared_center_y'] ? 'center' : ($align['shared_baseline'] ? 'baseline' : 'stretch');
+			$align['align_source'] = 'geometry';
+		} else {
+			$align['align_items'] = $align['shared_left'] ? 'flex-start' : ($align['shared_center_x'] ? 'center' : ($align['shared_right'] ? 'flex-end' : 'stretch'));
+			$align['align_source'] = 'geometry';
+		}
+
+		// Parent text-align hint only when CSS justify was absent.
+		if (empty($align['justify_source']) || 'css' !== $align['justify_source']) {
+			$ta = strtolower((string) ($parent['s']['ta'] ?? ''));
+			if ('center' === $ta) {
+				$align['justify'] = 'center';
+			} elseif ('right' === $ta || 'end' === $ta) {
+				$align['justify'] = 'flex-end';
+			}
 		}
 
 		return $align;
@@ -112,6 +153,8 @@ final class AlignmentEngine implements EngineInterface
 
 	/**
 	 * Write alignment into computed style hints for CssMapper.
+	 *
+	 * Never overwrite Chromium-computed justify-content / align-items.
 	 *
 	 * @param array<string,mixed> $node Node (by ref).
 	 */
@@ -121,11 +164,42 @@ final class AlignmentEngine implements EngineInterface
 		if (empty($align)) {
 			return;
 		}
-		if (!empty($align['justify'])) {
+		$css_jc = strtolower(trim((string) ($node['s']['jc'] ?? '')));
+		$css_ai = strtolower(trim((string) ($node['s']['ai'] ?? '')));
+
+		if ('' === $css_jc && !empty($align['justify'])) {
 			$node['s']['jc'] = $align['justify'];
 		}
-		if (!empty($align['align_items'])) {
+		if ('' === $css_ai && !empty($align['align_items'])) {
 			$node['s']['ai'] = $align['align_items'];
 		}
+	}
+
+	private function normalize_justify(string $value): string
+	{
+		$value = strtolower(trim($value));
+		return match ($value) {
+			'start', 'left', 'flex-start' => 'flex-start',
+			'end', 'right', 'flex-end' => 'flex-end',
+			'center' => 'center',
+			'space-between' => 'space-between',
+			'space-around' => 'space-around',
+			'space-evenly' => 'space-evenly',
+			'stretch' => 'stretch',
+			default => $value,
+		};
+	}
+
+	private function normalize_align(string $value): string
+	{
+		$value = strtolower(trim($value));
+		return match ($value) {
+			'start', 'left', 'flex-start' => 'flex-start',
+			'end', 'right', 'flex-end' => 'flex-end',
+			'center' => 'center',
+			'baseline' => 'baseline',
+			'stretch' => 'stretch',
+			default => $value,
+		};
 	}
 }

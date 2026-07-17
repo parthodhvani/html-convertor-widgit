@@ -60,7 +60,7 @@ final class PetraRegressionTest extends TestCase
 			return array(
 				'tag' => 'div',
 				'cls' => 'card service-card',
-				'layoutRole' => 'pricing',
+				'layoutRole' => 'card',
 				's' => array('bg' => 'rgb(255,255,255)', 'bdw' => '1px', 'br' => 18, 'sh' => '0 4px 14px rgba(13,59,102,0.06)', 'pt' => 34, 'pb' => 34, 'pl' => 34, 'pr' => 34, 'w' => 360),
 				'children' => array(
 					array(
@@ -308,16 +308,17 @@ final class PetraRegressionTest extends TestCase
 		$this->assertGreaterThanOrEqual(1, $result['report']['widget_breakdown']['accordion'] ?? 0);
 	}
 
-	public function test_petra_emits_price_table_or_icon_box_for_services(): void
+	public function test_petra_service_cards_emit_structured_native_widgets(): void
 	{
 		$gen = new ElementorJsonGenerator();
 		$result = $gen->generate(RenderResult::from_array($this->petra_layout()), array('mode' => 'native'));
 		$types = $this->all_widget_types($result['data']);
 
-		$this->assertTrue(
-			in_array('price-table', $types, true) || in_array('icon-box', $types, true),
-			'Service cards should map to price-table or icon-box'
-		);
+		$this->assertContains('heading', $types);
+		$this->assertContains('button', $types);
+		// Structured cards preserve editable heading/text/button children instead of
+		// collapsing into a monolithic price-table that drops Chromium IR leaves.
+		$this->assertGreaterThanOrEqual(3, $result['report']['widget_breakdown']['heading'] ?? 0);
 	}
 
 	public function test_petra_emits_testimonial_widgets(): void

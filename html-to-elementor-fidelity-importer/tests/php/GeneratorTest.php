@@ -199,13 +199,13 @@ final class GeneratorTest extends TestCase
 		$heading = $classifier->classify(array('tag' => 'h2', 'text' => 'Title', 'html' => '<h2>Title</h2>'));
 		$this->assertSame('heading', $heading['type']);
 
-		// Layered (absolute) children force an HTML fallback for the legacy classifier.
+		// Absolute children are reconstructed via Elementor position controls.
 		$layered = array(
 			'tag' => 'section',
 			'cls' => 'page-hero',
 			'children' => array(array('tag' => 'div', 's' => array('pos' => 'absolute'))),
 		);
-		$this->assertTrue($classifier->container_needs_fallback($layered));
+		$this->assertFalse($classifier->container_needs_fallback($layered));
 
 		// v3 recognition engine reconstructs layered blocks natively.
 		$recognition = new \HtmlToElementor\Engine\SemanticComponentRecognizer();

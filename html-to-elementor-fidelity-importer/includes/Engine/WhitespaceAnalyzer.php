@@ -73,31 +73,44 @@ final class WhitespaceAnalyzer implements EngineInterface
 			$whitespace = $this->measure_sibling_whitespace($children, $node);
 			$node['whitespace'] = $whitespace;
 
-			// ConstraintLayoutSolver is the gap authority when present.
-			// Whitespace fills in measured gap only when the solver left it empty.
-			$constraint_gap = (float) ($node['layoutConstraint']['gap'] ?? 0);
-			$measured_gap = (float) ($whitespace['gap'] ?? 0);
+			$css_gap = $this->css_gap_px($node);
+			$jc = strtolower((string) ($node['s']['jc'] ?? ''));
+			$distributed = in_array($jc, array('space-between', 'space-around', 'space-evenly'), true);
 
-			if ($constraint_gap > 0) {
-				$gap = round($constraint_gap, 0);
-				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
-				$node['s']['gap'] = $gap . 'px';
-				$node['s']['_gap_source'] = 'constraint';
-				$this->clear_child_margins($node);
-			} elseif ($measured_gap > 0) {
-				$gap = round($measured_gap, 0);
-				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
-				$node['s']['gap'] = $gap . 'px';
-				$node['s']['_gap_source'] = 'whitespace';
-				$node['s']['_gap_whitespace'] = true;
-				if (empty($node['layoutConstraint'])) {
-					$node['layoutConstraint'] = array();
+			if ($distributed) {
+				// Free space from justify-content must not become Elementor flex_gap.
+				$whitespace['gap'] = $css_gap;
+				$whitespace['gap_source'] = 'css';
+				$node['whitespace'] = $whitespace;
+				unset($node['s']['_gap_whitespace']);
+				if ($css_gap > 0) {
+					$node['s']['gap'] = $css_gap . 'px';
+					$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
 				}
-				if (empty($node['layoutConstraint']['direction'])) {
-					$node['layoutConstraint']['direction'] = $whitespace['direction'];
+			} elseif ($css_gap > 0) {
+				$whitespace['gap'] = $css_gap;
+				$whitespace['gap_source'] = 'css';
+				$node['whitespace'] = $whitespace;
+				$node['s']['gap'] = $css_gap . 'px';
+				unset($node['s']['_gap_whitespace']);
+				$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
+			} elseif ($whitespace['gap'] > 0) {
+				$disp = strtolower((string) ($node['s']['disp'] ?? ''));
+				$is_flex_or_grid = false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
+				if ($is_flex_or_grid) {
+					$gap = round((float) $whitespace['gap'], 0);
+					$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
+					$node['s']['gap'] = $gap . 'px';
+					$node['s']['_gap_whitespace'] = true;
+					$whitespace['gap_source'] = 'geometry';
+					$node['whitespace'] = $whitespace;
+					$this->clear_child_margins($node);
+				} else {
+					// Block/flow: sibling distance is margin, not gap.
+					$whitespace['gap'] = 0;
+					$whitespace['gap_source'] = 'none';
+					$node['whitespace'] = $whitespace;
 				}
-				$node['layoutConstraint']['gap'] = $gap;
-				$this->clear_child_margins($node);
 			}
 
 			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0
@@ -119,22 +132,77 @@ final class WhitespaceAnalyzer implements EngineInterface
 	}
 
 	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function css_gap_px(array $node): float
+	{
+		$s = $node['s'] ?? array();
+		foreach (array('gap', 'rowGap', 'colGap', 'columnGap') as $key) {
+			if (!isset($s[$key]) || '' === $s[$key] || null === $s[$key]) {
+				continue;
+			}
+			if ('gap' === $key && (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace']))) {
+				continue;
+			}
+			$value = $s[$key];
+			if (is_numeric($value)) {
+				$px = (float) $value;
+			} elseif (is_string($value) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($value), $m)) {
+				$px = (float) $m[1];
+			} else {
+				continue;
+			}
+			if ($px > 0) {
+				return round($px, 0);
+			}
+		}
+		return 0.0;
+	}
+
+	/**
 	 * @param array<int,array<string,mixed>> $children Siblings.
 	 * @return array<string,mixed>
 	 */
 	private function measure_sibling_whitespace(array $children, array $parent): array
 	{
-		$boxes = array_map(array(Geometry::class, 'bbox'), $children);
-		$direction = $this->resolve_direction($parent, $boxes);
+		$flow = array_values(array_filter($children, function ($child) {
+			if (!is_array($child)) {
+				return false;
+			}
+			$pos = strtolower((string) ($child['s']['pos'] ?? ''));
+			return !in_array($pos, array('absolute', 'fixed'), true);
+		}));
+		$measure = count($flow) >= 2 ? $flow : array_values(array_filter($children, 'is_array'));
+		$boxes = array_map(array(Geometry::class, 'bbox'), $measure);
+		$constraint = $parent['layoutConstraint'] ?? array();
+		$direction = (string) ($constraint['direction'] ?? (($parent['s']['fd'] ?? '') === 'row' ? 'row' : 'column'));
+		if (false !== strpos(strtolower((string) ($parent['s']['fd'] ?? '')), 'row')) {
+			$direction = 'row';
+		} elseif (false !== strpos(strtolower((string) ($parent['s']['fd'] ?? '')), 'column')) {
+			$direction = 'column';
+		}
 
 		$gaps = array();
-		for ($i = 0; $i < count($boxes) - 1; ++$i) {
-			$g = 'row' === $direction
-				? Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1])
-				: Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]);
-			if ($g > 0) {
-				$gaps[] = $g;
+		// Only invent geometry gap from in-flow siblings.
+		if (count($flow) >= 2) {
+			$flow_boxes = array_map(array(Geometry::class, 'bbox'), $flow);
+			for ($i = 0; $i < count($flow_boxes) - 1; ++$i) {
+				$g = 'row' === $direction
+					? Geometry::horizontal_gap($flow_boxes[$i], $flow_boxes[$i + 1])
+					: Geometry::vertical_gap($flow_boxes[$i], $flow_boxes[$i + 1]);
+				if ($g > 0) {
+					$gaps[] = $g;
+				}
 			}
+		}
+
+		if (empty($boxes)) {
+			return array(
+				'gap' => 0.0,
+				'gaps' => array(),
+				'direction' => $direction,
+				'padding' => array('top' => 0, 'left' => 0, 'right' => 0, 'bottom' => 0),
+			);
 		}
 
 		$parent_box = Geometry::bbox($parent);

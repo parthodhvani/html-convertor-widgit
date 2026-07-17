@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Portfolio Studio — Absolute & Responsive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --ink: #1a1a1a;
+  --sand: #e8dfd0;
+  --accent: #c45c26;
+  --muted: #5c564e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Source Sans 3", sans-serif; color: var(--ink); background: var(--sand); }
+.hero {
+  position: relative;
+  min-height: 100vh;
+  background:
+    linear-gradient(120deg, rgba(26,26,26,.55), rgba(26,26,26,.2)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%23d4c4a8'/%3E%3Cstop offset='1' stop-color='%238a7a62'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1600' height='900' fill='url(%23g)'/%3E%3C/svg%3E") center/cover;
+  color: #fff;
+  display: flex;
+  align-items: flex-end;
+  padding: 48px 6vw 72px;
+}
+.brand { position: absolute; top: 28px; left: 6vw; font-family: Fraunces, serif; font-size: 28px; letter-spacing: .02em; }
+.hero h1 { font-family: Fraunces, serif; font-size: clamp(42px, 7vw, 84px); max-width: 12ch; line-height: 1.05; margin-bottom: 16px; }
+.hero p { max-width: 36ch; font-size: 18px; opacity: .92; margin-bottom: 28px; }
+.cta { display: inline-flex; gap: 12px; }
+.cta a {
+  display: inline-block; padding: 14px 22px; text-decoration: none; border-radius: 2px; font-weight: 600;
+}
+.cta .primary { background: var(--accent); color: #fff; }
+.cta .ghost { border: 1px solid rgba(255,255,255,.7); color: #fff; }
+.work {
+  padding: 80px 6vw;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 24px;
+}
+.work h2 { grid-column: 1 / -1; font-family: Fraunces, serif; font-size: 36px; margin-bottom: 8px; }
+.tile {
+  background: #fff; padding: 28px; min-height: 220px;
+  display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.06);
+}
+.tile.a { grid-column: span 7; background: linear-gradient(160deg, #2b2b2b, #4a4036); color: #fff; }
+.tile.b { grid-column: span 5; }
+.tile.c { grid-column: span 4; }
+.tile.d { grid-column: span 4; }
+.tile.e { grid-column: span 4; }
+.tile span { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.tile.a span { color: rgba(255,255,255,.7); }
+.tile strong { font-family: Fraunces, serif; font-size: 24px; }
+.float-note {
+  position: absolute; right: 8vw; bottom: 18vh; width: 180px; padding: 16px;
+  background: rgba(255,255,255,.12); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.25);
+  font-size: 14px; line-height: 1.4;
+}
+@media (max-width: 800px) {
+  .tile.a, .tile.b, .tile.c, .tile.d, .tile.e { grid-column: 1 / -1; }
+  .float-note { display: none; }
+  .hero { min-height: 80vh; }
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="brand">Atelier North</div>
+  <div>
+    <h1>Spaces that hold quiet ambition</h1>
+    <p>Interior architecture for residences and galleries — measured light, tactile material, lasting proportion.</p>
+    <div class="cta">
+      <a class="primary" href="#work">View work</a>
+      <a class="ghost" href="#contact">Start a project</a>
+    </div>
+  </div>
+  <aside class="float-note">Selected for Design Week 2025 — Copenhagen</aside>
+</header>
+<main class="work" id="work">
+  <h2>Selected projects</h2>
+  <article class="tile a"><span>Residence</span><strong>Harbour House</strong></article>
+  <article class="tile b"><span>Gallery</span><strong>Linea Exhibition</strong></article>
+  <article class="tile c"><span>Retail</span><strong>Oak Atelier</strong></article>
+  <article class="tile d"><span>Office</span><strong>Studio 14</strong></article>
+  <article class="tile e"><span>Hospitality</span><strong>Coast Kitchen</strong></article>
+</main>
+</body>
+</html>

@@ -55,8 +55,8 @@ final class PixelRepairEngine implements EngineInterface
 			$elementor_data = $this->apply_layout_constraints($elementor_data, $sections, $round_changed, $repairs);
 			$elementor_data = $this->promote_simple_html($elementor_data, $round_changed, $repairs);
 			$elementor_data = $this->fix_container_flex($elementor_data, $round_changed, $repairs);
-			$elementor_data = $this->strip_container_margins($elementor_data, $round_changed, $repairs);
-			$elementor_data = $this->apply_gap_from_source($elementor_data, $sections, $round_changed, $repairs);
+			// Do not strip browser margins — spacing fidelity requires them.
+			// Do not invent median flex_gap on containers that had no CSS/constraint gap.
 			$elementor_data = $this->apply_padding_from_whitespace($elementor_data, $sections, $round_changed, $repairs);
 
 			if (!$round_changed) {
@@ -100,36 +100,39 @@ final class PixelRepairEngine implements EngineInterface
 				continue;
 			}
 			$cls = (string) ($el['settings']['_css_classes'] ?? '');
-			if ('' === $cls || !isset($constraints[$cls])) {
-				$elements[$i]['elements'] = $this->apply_layout_constraints(
-					(array) ($el['elements'] ?? array()),
-					$sections,
-					$changed,
-					$repairs
-				);
-				continue;
-			}
-			$c = $constraints[$cls];
-			$settings = (array) ($el['settings'] ?? array());
-
-			if (!empty($c['direction']) && ($settings['flex_direction'] ?? '') !== $c['direction']) {
-				$settings['flex_direction'] = $c['direction'];
-				$changed = true;
-				$repairs[] = 'flex_direction:' . $cls;
-			}
-			if (($c['gap'] ?? 0) > 0) {
-				$target = (float) $c['gap'];
-				$current = $this->current_flex_gap($settings);
-				if (abs($current - $target) > 0.5) {
-					$settings['flex_gap'] = array(
-						'column' => (string) $target,
-						'row' => (string) $target,
-						'isLinked' => true,
-						'unit' => 'px',
-						'size' => $target,
-					);
+			$c = $this->match_constraint($el, $constraints);
+			if (null !== $c) {
+				if (!empty($c['direction']) && ($el['settings']['flex_direction'] ?? '') !== $c['direction']) {
+					$elements[$i]['settings']['flex_direction'] = $c['direction'];
 					$changed = true;
-					$repairs[] = 'flex_gap:' . $cls;
+					$repairs[] = 'flex_direction:' . $cls;
+				}
+				$child_count = count((array) ($el['elements'] ?? array()));
+				if (($c['gap'] ?? 0) > 0 && $child_count >= 2) {
+					$jc = strtolower((string) ($el['settings']['flex_justify_content'] ?? ''));
+					$distributed = in_array($jc, array('space-between', 'space-around', 'space-evenly'), true);
+					$existing = (float) ($el['settings']['flex_gap']['size'] ?? 0);
+					$target = (float) $c['gap'];
+					// Never stamp free-space as gap on distributed justify rows.
+					if (!($distributed && $target > 64) && abs($existing - $target) > 0.5) {
+						$elements[$i]['settings']['flex_gap'] = array(
+							'column' => (string) $c['gap'],
+							'row' => (string) $c['gap'],
+							'isLinked' => true,
+							'unit' => 'px',
+							'size' => $target,
+						);
+						$changed = true;
+						$repairs[] = 'flex_gap:' . $cls;
+					}
+				}
+				if (!empty($c['justify'])) {
+					$elements[$i]['settings']['flex_justify_content'] = $c['justify'];
+					$changed = true;
+				}
+				if (!empty($c['align_items'])) {
+					$elements[$i]['settings']['flex_align_items'] = $c['align_items'];
+					$changed = true;
 				}
 			}
 			if (!empty($c['justify']) && ($settings['flex_justify_content'] ?? '') !== $c['justify']) {
@@ -155,20 +158,67 @@ final class PixelRepairEngine implements EngineInterface
 	}
 
 	/**
-	 * @param array<string,mixed> $settings Container settings.
+	 * Pick the source constraint for an Elementor container.
+	 *
+	 * Generic classes like "container" appear many times with different gaps —
+	 * never last-wins stamp by class alone. Prefer nearest _h2e_bbox match.
+	 *
+	 * @param array<string,mixed>            $el          Elementor element.
+	 * @param array<int,array<string,mixed>> $constraints Collected source constraints.
+	 * @return array<string,mixed>|null
 	 */
-	private function current_flex_gap(array $settings): float
+	private function match_constraint(array $el, array $constraints): ?array
 	{
-		$gap = $settings['flex_gap'] ?? null;
-		if (is_array($gap)) {
-			return (float) ($gap['size'] ?? $gap['row'] ?? 0);
+		$cls = (string) ($el['settings']['_css_classes'] ?? '');
+		if ('' === $cls) {
+			return null;
 		}
-		return is_numeric($gap) ? (float) $gap : 0.0;
+
+		$candidates = array();
+		foreach ($constraints as $c) {
+			if ($cls === ($c['cls'] ?? '')) {
+				$candidates[] = $c;
+			}
+		}
+		if (empty($candidates)) {
+			return null;
+		}
+		if (1 === count($candidates)) {
+			return $candidates[0];
+		}
+
+		$bbox = $el['settings']['_h2e_bbox'] ?? null;
+		if (!is_array($bbox)) {
+			// Ambiguous class without geometry — do not invent a gap/direction.
+			return null;
+		}
+
+		$best = null;
+		$best_dist = PHP_FLOAT_MAX;
+		$bx = (float) ($bbox['x'] ?? 0);
+		$by = (float) ($bbox['y'] ?? 0);
+		$bw = (float) ($bbox['width'] ?? 0);
+		$bh = (float) ($bbox['height'] ?? 0);
+		foreach ($candidates as $c) {
+			$cb = $c['bbox'] ?? null;
+			if (!is_array($cb)) {
+				continue;
+			}
+			$dx = $bx - (float) ($cb['x'] ?? 0);
+			$dy = $by - (float) ($cb['y'] ?? 0);
+			$dw = $bw - (float) ($cb['width'] ?? 0);
+			$dh = $bh - (float) ($cb['height'] ?? 0);
+			$dist = ($dx * $dx) + ($dy * $dy) + (0.25 * $dw * $dw) + (0.25 * $dh * $dh);
+			if ($dist < $best_dist) {
+				$best_dist = $dist;
+				$best = $c;
+			}
+		}
+
+		return $best;
 	}
 
 	/**
-	 * Collect constraints keyed by CSS class (one row per class).
-	 *
 	 * @param array<int,array<string,mixed>> $sections Sections.
 	 * @return array<string,array<string,mixed>>
 	 */
@@ -199,6 +249,12 @@ final class PixelRepairEngine implements EngineInterface
 				'gap' => (float) ($c['gap'] ?? 0),
 				'justify' => (string) ($node['alignment']['justify'] ?? ''),
 				'align_items' => (string) ($node['alignment']['align_items'] ?? ''),
+				'bbox' => array(
+					'x' => (float) ($node['s']['x'] ?? $node['bbox']['x'] ?? 0),
+					'y' => (float) ($node['s']['y'] ?? $node['bbox']['y'] ?? 0),
+					'width' => (float) ($node['s']['w'] ?? $node['bbox']['width'] ?? 0),
+					'height' => (float) ($node['s']['h'] ?? $node['bbox']['height'] ?? 0),
+				),
 			);
 		}
 		foreach ((array) ($node['children'] ?? array()) as $child) {
