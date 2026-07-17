@@ -59,18 +59,18 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'title_color'),
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, false)
+				$this->mapper->spacing($node, true)
 			),
 			'text-editor' => array_merge(
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'text_color'),
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, false)
+				$this->mapper->spacing($node, true)
 			),
 			'button' => $this->map_button($node),
 			'image' => array_merge(
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, false),
+				$this->mapper->spacing($node, true),
 				$this->mapper->border($node),
 				$this->mapper->box_shadow($node)
 			),
@@ -78,10 +78,10 @@ final class CssMappingEngine implements EngineInterface
 			'call-to-action', 'price-table', 'icon-box', 'testimonial' => $this->map_painted_composite($node, $widget_type),
 			'accordion', 'form', 'social-icons', 'star-rating', 'icon-list',
 			'divider', 'spacer', 'video', 'google_maps', 'icon' => array_merge(
-				$this->mapper->spacing($node, false),
+				$this->mapper->spacing($node, true),
 				$this->map_icon_paint($node, $widget_type)
 			),
-			default => $this->mapper->spacing($node, false),
+			default => $this->mapper->spacing($node, true),
 		};
 
 		return $this->apply_token_references($settings);
@@ -97,7 +97,7 @@ final class CssMappingEngine implements EngineInterface
 	private function map_painted_composite(array $node, string $widget_type): array
 	{
 		$out = array_merge(
-			$this->mapper->spacing($node, false),
+			$this->mapper->spacing($node, true),
 			$this->mapper->background($node),
 			$this->mapper->border($node),
 			$this->mapper->box_shadow($node)
@@ -286,10 +286,8 @@ final class CssMappingEngine implements EngineInterface
 		$whitespace = $node['whitespace'] ?? array();
 		$constraint = $node['layoutConstraint'] ?? array();
 
-		// Padding from measured whitespace or computed padding (not margin).
-		$padding = $this->mapper->spacing($node, false);
-		unset($padding['margin']);
-		$out = array_merge($out, $padding);
+		// Preserve browser padding AND margins. Only prefer gap when CSS gap exists.
+		$out = array_merge($out, $this->mapper->spacing($node, true));
 
 		if (!empty($whitespace['padding']) && is_array($whitespace['padding'])) {
 			$p = $whitespace['padding'];
