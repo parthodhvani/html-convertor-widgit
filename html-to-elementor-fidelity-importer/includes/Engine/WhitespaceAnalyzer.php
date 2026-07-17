@@ -76,15 +76,17 @@ final class WhitespaceAnalyzer implements EngineInterface
 			$css_gap = $this->css_gap_px($node);
 			$jc = strtolower((string) ($node['s']['jc'] ?? ''));
 			$distributed = in_array($jc, array('space-between', 'space-around', 'space-evenly'), true);
+			$constraint_gap = (float) ($node['layoutConstraint']['gap'] ?? 0);
 
 			if ($distributed) {
 				// Free space from justify-content must not become Elementor flex_gap.
 				$whitespace['gap'] = $css_gap;
 				$whitespace['gap_source'] = 'css';
 				$node['whitespace'] = $whitespace;
-				unset($node['s']['_gap_whitespace']);
+				unset($node['s']['_gap_whitespace'], $node['s']['_gap_source']);
 				if ($css_gap > 0) {
 					$node['s']['gap'] = $css_gap . 'px';
+					$node['s']['_gap_source'] = 'css';
 					$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
 				}
 			} elseif ($css_gap > 0) {
@@ -92,8 +94,19 @@ final class WhitespaceAnalyzer implements EngineInterface
 				$whitespace['gap_source'] = 'css';
 				$node['whitespace'] = $whitespace;
 				$node['s']['gap'] = $css_gap . 'px';
+				$node['s']['_gap_source'] = 'css';
 				unset($node['s']['_gap_whitespace']);
 				$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
+			} elseif ($constraint_gap > 0) {
+				$gap = round($constraint_gap, 0);
+				$whitespace['gap'] = $gap;
+				$whitespace['gap_source'] = 'constraint';
+				$node['whitespace'] = $whitespace;
+				$node['s']['gap'] = $gap . 'px';
+				$node['s']['_gap_source'] = 'constraint';
+				unset($node['s']['_gap_whitespace']);
+				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
+				$this->clear_child_margins($node);
 			} elseif ($whitespace['gap'] > 0) {
 				$disp = strtolower((string) ($node['s']['disp'] ?? ''));
 				$is_flex_or_grid = false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid');
@@ -102,6 +115,7 @@ final class WhitespaceAnalyzer implements EngineInterface
 					$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
 					$node['s']['gap'] = $gap . 'px';
 					$node['s']['_gap_whitespace'] = true;
+					$node['s']['_gap_source'] = 'geometry';
 					$whitespace['gap_source'] = 'geometry';
 					$node['whitespace'] = $whitespace;
 					$this->clear_child_margins($node);

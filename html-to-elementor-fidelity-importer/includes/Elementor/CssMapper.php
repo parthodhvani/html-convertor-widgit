@@ -233,23 +233,11 @@ final class CssMapper
             if (!empty($s['bgSize'])) {
                 $out['background_size'] = $this->bg_keyword((string) $s['bgSize']);
             }
-        } else {
-            $bg_image = $this->css_url($bg_img_raw);
-            if ('' !== $bg_image) {
-                $out['background_background'] = 'classic';
-                $out['background_image'] = array(
-                    'url' => $bg_image,
-                    'id' => '',
-                );
-                if (!empty($s['bgSize'])) {
-                    $out['background_size'] = $this->bg_keyword((string) $s['bgSize']);
-                }
-                if (!empty($s['bgPos'])) {
-                    $out['background_position'] = $this->bg_position((string) $s['bgPos']);
-                }
-                if (!empty($s['bgRepeat'])) {
-                    $out['background_repeat'] = (string) $s['bgRepeat'];
-                }
+            if (!empty($s['bgPos'])) {
+                $out['background_position'] = $this->bg_position((string) $s['bgPos']);
+            }
+            if (!empty($s['bgRepeat'])) {
+                $out['background_repeat'] = (string) $s['bgRepeat'];
             }
             if (null !== $gradient) {
                 $overlay = $this->elementor_gradient_settings($gradient);
@@ -1260,7 +1248,25 @@ final class CssMapper
             'top left' => 315.0,
             'left top' => 315.0,
         );
-        return $map[$dir] ?? 180.0;
+		return $map[$dir] ?? 180.0;
+    }
+
+    /**
+     * Append CSS declarations onto the shared custom-CSS bag.
+     *
+     * @param array<string,mixed> $settings Settings bag.
+     * @param string              $css      Declaration list (no wrapping braces).
+     * @return array<string,mixed>
+     */
+    private function merge_custom_css(array $settings, string $css): array
+    {
+        $css = trim($css, " \t\n\r\0\x0B;");
+        if ('' === $css) {
+            return $settings;
+        }
+        $existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
+        $settings['_h2e_custom_css'] = '' === $existing ? $css : ($existing . ';' . $css);
+        return $settings;
     }
 
     /**

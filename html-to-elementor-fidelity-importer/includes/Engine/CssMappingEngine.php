@@ -82,10 +82,6 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->image_media($node),
 				$this->mapper->effects($node)
 			),
-			default => array_merge(
-				$this->mapper->spacing($node, false),
-				$this->mapper->effects($node)
-			),
 			// Painted composites must retain browser backgrounds (incl. gradients).
 			'call-to-action', 'price-table', 'icon-box', 'testimonial' => $this->map_painted_composite($node, $widget_type),
 			'accordion', 'form', 'social-icons', 'star-rating', 'icon-list',
@@ -93,7 +89,10 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->spacing($node, true),
 				$this->map_icon_paint($node, $widget_type)
 			),
-			default => $this->mapper->spacing($node, true),
+			default => array_merge(
+				$this->mapper->spacing($node, true),
+				$this->mapper->effects($node)
+			),
 		};
 
 		return $this->apply_token_references($settings);

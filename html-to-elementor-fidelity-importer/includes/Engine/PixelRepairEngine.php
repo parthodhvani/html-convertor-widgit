@@ -126,27 +126,17 @@ final class PixelRepairEngine implements EngineInterface
 						$repairs[] = 'flex_gap:' . $cls;
 					}
 				}
-				if (!empty($c['justify'])) {
+				if (!empty($c['justify']) && ($elements[$i]['settings']['flex_justify_content'] ?? '') !== $c['justify']) {
 					$elements[$i]['settings']['flex_justify_content'] = $c['justify'];
 					$changed = true;
+					$repairs[] = 'flex_justify:' . $cls;
 				}
-				if (!empty($c['align_items'])) {
+				if (!empty($c['align_items']) && ($elements[$i]['settings']['flex_align_items'] ?? '') !== $c['align_items']) {
 					$elements[$i]['settings']['flex_align_items'] = $c['align_items'];
 					$changed = true;
+					$repairs[] = 'flex_align:' . $cls;
 				}
 			}
-			if (!empty($c['justify']) && ($settings['flex_justify_content'] ?? '') !== $c['justify']) {
-				$settings['flex_justify_content'] = $c['justify'];
-				$changed = true;
-				$repairs[] = 'flex_justify:' . $cls;
-			}
-			if (!empty($c['align_items']) && ($settings['flex_align_items'] ?? '') !== $c['align_items']) {
-				$settings['flex_align_items'] = $c['align_items'];
-				$changed = true;
-				$repairs[] = 'flex_align:' . $cls;
-			}
-
-			$elements[$i]['settings'] = $settings;
 			$elements[$i]['elements'] = $this->apply_layout_constraints(
 				(array) ($el['elements'] ?? array()),
 				$sections,
@@ -220,7 +210,7 @@ final class PixelRepairEngine implements EngineInterface
 
 	/**
 	 * @param array<int,array<string,mixed>> $sections Sections.
-	 * @return array<string,array<string,mixed>>
+	 * @return array<int,array<string,mixed>>
 	 */
 	private function collect_constraints(array $sections): array
 	{
@@ -232,8 +222,8 @@ final class PixelRepairEngine implements EngineInterface
 	}
 
 	/**
-	 * @param array<string,mixed>|null              $node Node.
-	 * @param array<string,array<string,mixed>>     $out  Output keyed by class.
+	 * @param array<string,mixed>|null       $node Node.
+	 * @param array<int,array<string,mixed>> $out  Output list (by ref).
 	 */
 	private function walk_constraints($node, array &$out): void
 	{
@@ -241,10 +231,9 @@ final class PixelRepairEngine implements EngineInterface
 			return;
 		}
 		$c = $node['layoutConstraint'] ?? array();
-		$cls = trim((string) ($node['cls'] ?? ''));
-		if (!empty($c) && '' !== $cls && !isset($out[$cls])) {
-			$out[$cls] = array(
-				'cls' => $cls,
+		if (!empty($c)) {
+			$out[] = array(
+				'cls' => (string) ($node['cls'] ?? ''),
 				'direction' => (string) ($c['direction'] ?? ''),
 				'gap' => (float) ($c['gap'] ?? 0),
 				'justify' => (string) ($node['alignment']['justify'] ?? ''),
