@@ -103,7 +103,10 @@ final class ChromiumService
 			1 => array('pipe', 'w'),
 			2 => array('pipe', 'w'),
 		);
-		$process = proc_open($cmd, $descriptor, $pipes, $job_dir, $this->child_env($settings));
+		// Puppeteer reads chromium-service/.puppeteerrc.cjs from cwd — always
+		// spawn from the service directory (entry/out paths are absolute).
+		$cwd = dirname($script);
+		$process = proc_open($cmd, $descriptor, $pipes, $cwd, $this->child_env($settings));
 		if (!is_resource($process)) {
 			throw new \RuntimeException('Unable to start Node process.');
 		}
@@ -247,7 +250,7 @@ final class ChromiumService
 	{
 		return array(
 			'breakpoints' => $settings['breakpoints'] ?? array(),
-			'waitUntil' => $settings['wait_until'] ?? 'networkidle0',
+			'waitUntil' => $settings['wait_until'] ?? 'load',
 			'timeout' => (int) ($settings['render_timeout_ms'] ?? 60000),
 			'captureScreenshots' => (bool) ($settings['capture_screenshots'] ?? true),
 			// Always widgets-only; "preserve" conversion mode was permanently removed.

@@ -58,7 +58,7 @@ final class Settings
 			),
 			'fidelity_threshold' => 95,
 			'validation_max_iterations' => 3,
-			'wait_until' => 'networkidle0',
+			'wait_until' => 'load',
 			'render_timeout_ms' => 60000,
 			'capture_screenshots' => true,
 			// Visual reconstruction.

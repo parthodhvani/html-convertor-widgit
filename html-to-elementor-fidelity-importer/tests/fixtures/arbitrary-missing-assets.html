@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Arbitrary HTML Without Package Assets</title>
+<!-- Intentionally missing local stylesheets / scripts / images -->
+<link rel="stylesheet" href="assets/css/style.css" />
+<link rel="stylesheet" href="assets/css/responsive.css" />
+<style>
+  :root { --bg: #0a1020; --text: #e6ecf5; --accent: #c9a227; }
+  body { margin: 0; font-family: Georgia, serif; background: var(--bg); color: var(--text); }
+  .hero { padding: 72px 24px; background: linear-gradient(135deg, #05070f, #1a3a5c); }
+  h1 { font-size: 2.4rem; margin: 0 0 12px; color: #f4ecd6; }
+  .section { padding: 48px 24px; }
+  .card { background: #121a2c; padding: 24px; border-radius: 16px; margin-top: 16px; }
+  .reveal { opacity: 1; }
+  .js .reveal { opacity: 0; }
+</style>
+</head>
+<body>
+<header><nav><a href="index.html">Home</a></nav></header>
+<section class="hero reveal">
+  <h1>Standalone Paste Works</h1>
+  <p>This page references missing local assets on purpose.</p>
+  <img src="assets/img/hero.jpg" alt="Missing hero" width="400" height="240" />
+</section>
+<section class="section">
+  <div class="card reveal">
+    <h2>Below the fold</h2>
+    <p>Lazy images must not hang the converter.</p>
+    <img src="assets/img/lazy-one.jpg" alt="Lazy one" loading="lazy" width="320" height="180" />
+    <img src="assets/img/lazy-two.jpg" alt="Lazy two" loading="lazy" width="320" height="180" />
+  </div>
+</section>
+<footer class="section"><p>Footer copy</p></footer>
+<script src="assets/js/main.js"></script>
+</body>
+</html>

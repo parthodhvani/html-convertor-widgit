@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 $bp = is_array($settings['breakpoints'] ?? null) ? $settings['breakpoints'] : array();
 $bp_keys = array('wide', 'desktop', 'laptop', 'tablet_landscape', 'tablet', 'mobile_landscape', 'mobile');
 $render_mode = (string) ($settings['render_mode'] ?? 'cli');
-$wait_until = (string) ($settings['wait_until'] ?? 'networkidle0');
+$wait_until = (string) ($settings['wait_until'] ?? 'load');
 ?>
 <div class="wrap h2e-wrap">
 	<h1><?php esc_html_e('HTML To Elementor Fidelity Importer', 'html-to-elementor-fidelity-importer'); ?></h1>
