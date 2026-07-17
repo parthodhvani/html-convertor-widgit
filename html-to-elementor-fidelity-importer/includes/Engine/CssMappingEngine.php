@@ -59,13 +59,17 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'title_color'),
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, true)
+				$this->mapper->spacing($node, true),
+				$this->mapper->background($node),
+				$this->mapper->border($node)
 			),
 			'text-editor' => array_merge(
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'text_color'),
 				$this->mapper->alignment($node, 'align'),
-				$this->mapper->spacing($node, true)
+				$this->mapper->spacing($node, true),
+				$this->mapper->background($node),
+				$this->mapper->border($node)
 			),
 			'button' => $this->map_button($node),
 			'image' => array_merge(

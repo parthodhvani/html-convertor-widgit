@@ -315,7 +315,15 @@ final class LayoutTreeConverter
             $classified = $this->recognition->classify($node);
             if ('container' === $classified['kind']) {
                 $text = trim((string) ($node['text'] ?? ''));
-                return '' !== $text ? array($this->text_widget($text, $node)) : array();
+                if ('' !== $text) {
+                    return array($this->text_widget($text, $node));
+                }
+                // Painted leaf with no text (e.g. gradient blog thumbs) must still emit.
+                $signals = \HtmlToElementor\Engine\VisualSignals::analyze($node);
+                if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']) {
+                    return array($this->container($node, array(), false, false, 0.0));
+                }
+                return array();
             }
             if ('fallback' === $classified['kind']) {
                 $this->stats['html_fallback_reasons'][] = array(
@@ -717,14 +725,18 @@ final class LayoutTreeConverter
                     $this->css->typography($node),
                     $this->css->text_color($node, 'title_color'),
                     $this->css->alignment($node, 'align'),
-                    $this->css->spacing($node, true)
+                    $this->css->spacing($node, true),
+                    $this->css->background($node),
+                    $this->css->border($node)
                 );
             case 'text-editor':
                 return array_merge(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'text_color'),
                     $this->css->alignment($node, 'align'),
-                    $this->css->spacing($node, true)
+                    $this->css->spacing($node, true),
+                    $this->css->background($node),
+                    $this->css->border($node)
                 );
             case 'button':
                 $style = array_merge(
