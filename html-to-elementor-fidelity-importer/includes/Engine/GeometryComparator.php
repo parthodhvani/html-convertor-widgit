@@ -573,6 +573,42 @@ final class GeometryComparator implements EngineInterface
 			return false;
 		}
 		if (!empty($node['layoutRole'])) {
+			$role = (string) $node['layoutRole'];
+			// Composite widget roots collapse to a single Elementor widget —
+			// they are not container-structure expectations.
+			if (in_array($role, array('testimonial', 'social_icons', 'form_block', 'pricing', 'icon_box'), true)) {
+				return false;
+			}
+			// FAQ role on items/q/a is role bleed; only multi-item groups count.
+			if ('faq' === $role) {
+				$faq_kids = 0;
+				foreach ((array) ($node['children'] ?? array()) as $child) {
+					if (!is_array($child)) {
+						continue;
+					}
+					$ct = strtolower((string) ($child['tag'] ?? ''));
+					$cc = strtolower((string) ($child['cls'] ?? ''));
+					if ('details' === $ct || preg_match('/\b(faq-item|accordion-item)\b/', $cc)) {
+						++$faq_kids;
+					}
+				}
+				return $faq_kids >= 2;
+			}
+			// footer_band bleeds to every last-section descendant — require
+			// real multi-child layout or paint, not a role stamp alone.
+			if ('footer_band' === $role) {
+				$children = count((array) ($node['children'] ?? array()));
+				if ($children < 2) {
+					return false;
+				}
+				$s = $node['s'] ?? array();
+				$disp = strtolower((string) ($s['disp'] ?? ''));
+				if (false !== strpos($disp, 'flex') || false !== strpos($disp, 'grid')) {
+					return true;
+				}
+				$signals = VisualSignals::analyze($node);
+				return $signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding'];
+			}
 			return true;
 		}
 

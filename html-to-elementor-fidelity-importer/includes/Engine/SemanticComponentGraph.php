@@ -56,6 +56,7 @@ final class SemanticComponentGraph implements EngineInterface
 					'total' => $section_count,
 					'is_first' => 0 === $i,
 					'is_last' => ($i === $section_count - 1),
+					'is_section_root' => true,
 				));
 				$section['tree'] = $tree;
 			}
@@ -90,7 +91,9 @@ final class SemanticComponentGraph implements EngineInterface
 			if (!is_array($child)) {
 				continue;
 			}
-			$this->annotate($child, $context);
+			$child_context = $context;
+			$child_context['is_section_root'] = false;
+			$this->annotate($child, $child_context);
 			$node['children'][$i] = $child;
 		}
 	}
@@ -141,8 +144,8 @@ final class SemanticComponentGraph implements EngineInterface
 			return 'form_block';
 		}
 
-		// FAQ / accordion — repeated Q/A or class hints.
-		if (preg_match('/\b(faq|accordion|disclosure)\b/', $cls) || $this->looks_faq($node, $layout)) {
+		// FAQ / accordion — only the group root, not faq-item / faq-q / faq-a.
+		if ($this->is_faq_group_root($node, $cls, $layout)) {
 			return 'faq';
 		}
 
@@ -205,6 +208,29 @@ final class SemanticComponentGraph implements EngineInterface
 		}
 
 		return '';
+	}
+
+	/**
+	 * FAQ group roots only — never faq-item / question / answer leaves.
+	 *
+	 * @param array<string,mixed> $node   Node.
+	 * @param string              $cls    Lowercased class+id.
+	 * @param string              $layout Layout type.
+	 */
+	private function is_faq_group_root(array $node, string $cls, string $layout): bool
+	{
+		// Item / question / answer fragments are not the accordion group.
+		if (preg_match('/\b(faq-item|faq-q|faq-a|accordion-item|accordion-header|accordion-body|accordion-button|accordion-collapse)\b/', $cls)) {
+			return false;
+		}
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		if (in_array($tag, array('details', 'summary'), true)) {
+			return false;
+		}
+		if (preg_match('/\b(faq|accordion|disclosure)s?\b/', $cls)) {
+			return true;
+		}
+		return $this->looks_faq($node, $layout);
 	}
 
 	/**
