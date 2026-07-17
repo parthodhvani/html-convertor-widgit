@@ -38,6 +38,8 @@ const DEFAULT_FIXTURES = [
   'petra/blog.html',
   'bootstrap-grid.html',
   'dark-saas.html',
+  'portfolio-absolute.html',
+  'ecommerce-grid.html',
 ];
 
 function parseArgs(argv) {
