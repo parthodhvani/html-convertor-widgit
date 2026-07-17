@@ -425,6 +425,10 @@ final class ContainerTreeOptimizer
 			return true;
 		}
 
+		if (!empty($settings['custom_css']) || 'grid' === ($settings['_h2e_display'] ?? '')) {
+			return true;
+		}
+
 		return false;
 	}
 

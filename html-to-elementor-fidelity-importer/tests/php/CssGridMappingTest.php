@@ -1,0 +1,56 @@
+<?php
+/**
+ * CSS Grid maps to Elementor custom CSS, not fake flex space-between.
+ *
+ * @package HtmlToElementor
+ */
+
+declare(strict_types=1);
+
+namespace HtmlToElementor\Tests;
+
+use HtmlToElementor\Elementor\CssMapper;
+use PHPUnit\Framework\TestCase;
+
+final class CssGridMappingTest extends TestCase
+{
+
+	public function test_multi_column_grid_emits_custom_css(): void
+	{
+		$mapper = new CssMapper();
+		$node = array(
+			'cls' => 'grid grid-3',
+			's' => array(
+				'disp' => 'grid',
+				'gap' => '28px',
+				'gtc' => '365.328px 365.328px 365.344px',
+			),
+		);
+
+		$flex = $mapper->flex($node);
+
+		$this->assertSame('grid', $flex['_h2e_display'] ?? '');
+		$this->assertStringContainsString('display: grid', (string) ($flex['custom_css'] ?? ''));
+		$this->assertStringContainsString('repeat(3, minmax(0, 1fr))', (string) ($flex['custom_css'] ?? ''));
+		$this->assertSame(28.0, (float) ($flex['flex_gap']['size'] ?? 0));
+	}
+
+	public function test_single_track_grid_falls_back_to_flex_mapping(): void
+	{
+		$mapper = new CssMapper();
+		$node = array(
+			'cls' => 'card-icon',
+			's' => array(
+				'disp' => 'grid',
+				'ai' => 'center',
+				'gtc' => '56px',
+			),
+		);
+
+		$flex = $mapper->flex($node);
+
+		$this->assertArrayNotHasKey('custom_css', $flex);
+		$this->assertArrayNotHasKey('_h2e_display', $flex);
+		$this->assertSame('center', $flex['flex_align_items'] ?? '');
+	}
+}

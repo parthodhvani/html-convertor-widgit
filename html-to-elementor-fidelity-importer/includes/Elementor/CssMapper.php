@@ -389,7 +389,15 @@ final class CssMapper
             return array();
         }
 
-        // Map both flex and grid onto Elementor's flex container.
+        // Multi-track CSS Grid → Elementor container + custom CSS (do not fake as flex).
+        if ($is_grid) {
+            $grid = $this->grid_settings($node);
+            if (!empty($grid)) {
+                return $grid;
+            }
+            // Single-track grid used for centering — fall through to flex-like mapping.
+        }
+
         $direction = strtolower((string) ($s['fd'] ?? 'row'));
         $direction = (false !== strpos($direction, 'column')) ? 'column' : 'row';
         if ($is_grid) {
@@ -432,6 +440,108 @@ final class CssMapper
         }
 
         return $out;
+    }
+
+    /**
+     * Map multi-column CSS Grid onto Elementor container + custom CSS.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
+    public function grid_settings(array $node): array
+    {
+        $s = $node['s'] ?? array();
+        $gtc = trim((string) ($s['gtc'] ?? ''));
+        if ('' === $gtc || 'none' === strtolower($gtc)) {
+            return array();
+        }
+
+        $tracks = preg_split('/\s+/', $gtc) ?: array();
+        $tracks = array_values(array_filter($tracks, static fn($t) => '' !== $t && 'none' !== strtolower($t)));
+        if (count($tracks) < 2) {
+            return array();
+        }
+
+        $columns = $this->normalize_grid_columns($tracks);
+        $gap = $this->size($s['gap'] ?? null);
+        $gap_css = $gap ? (rtrim(rtrim((string) $gap['size'], '0'), '.') . $gap['unit']) : '0';
+        if ($gap && abs($gap['size'] - round($gap['size'])) < 0.001) {
+            $gap_css = ((string) (int) round($gap['size'])) . $gap['unit'];
+        }
+
+        $out = array(
+            'flex_direction' => 'row',
+            'flex_wrap' => 'wrap',
+            '_h2e_display' => 'grid',
+            'custom_css' => sprintf(
+                'selector { display: grid !important; grid-template-columns: %s; gap: %s; align-items: %s; }',
+                $columns,
+                $gap_css,
+                $this->css_align_keyword((string) ($s['ai'] ?? 'stretch'))
+            ),
+        );
+
+        if ($gap) {
+            $size = $gap['size'];
+            $out['flex_gap'] = array(
+                'unit' => 'px',
+                'size' => $size,
+                'column' => (string) $size,
+                'row' => (string) $size,
+                'isLinked' => true,
+            );
+        }
+
+        if (!empty($s['jc'])) {
+            $out['flex_justify_content'] = $this->flex_align((string) $s['jc']);
+        }
+        if (!empty($s['ai'])) {
+            $out['flex_align_items'] = $this->flex_align((string) $s['ai']);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<int,string> $tracks Computed grid-template-columns tracks.
+     */
+    private function normalize_grid_columns(array $tracks): string
+    {
+        $px = array();
+        foreach ($tracks as $track) {
+            if (!preg_match('/^(\d+(?:\.\d+)?)px$/i', $track, $m)) {
+                return implode(' ', $tracks);
+            }
+            $px[] = (float) $m[1];
+        }
+
+        $count = count($px);
+        $avg = array_sum($px) / max(1, $count);
+        $equal = true;
+        foreach ($px as $value) {
+            if (abs($value - $avg) > max(8.0, $avg * 0.08)) {
+                $equal = false;
+                break;
+            }
+        }
+
+        if ($equal && $count >= 2) {
+            return 'repeat(' . $count . ', minmax(0, 1fr))';
+        }
+
+        return implode(' ', $tracks);
+    }
+
+    private function css_align_keyword(string $value): string
+    {
+        $value = strtolower(trim($value));
+        return match ($value) {
+            'start', 'flex-start', 'left' => 'start',
+            'end', 'flex-end', 'right' => 'end',
+            'center' => 'center',
+            'baseline' => 'baseline',
+            default => 'stretch',
+        };
     }
 
     /**

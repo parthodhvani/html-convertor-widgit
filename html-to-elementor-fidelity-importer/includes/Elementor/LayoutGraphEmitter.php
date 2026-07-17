@@ -125,12 +125,15 @@ final class LayoutGraphEmitter
 
 		$child_row = 'row' === $this->builder->flex_direction($node);
 		$self_width = (float) ($node['s']['w'] ?? 0);
+		$is_grid = false !== strpos((string) ($node['s']['disp'] ?? ''), 'grid');
+		// CSS Grid places tracks itself — do not force flex percentage column widths.
+		$parent_row_for_children = $child_row && !$is_grid;
 
 		// Group consecutive accordion/details children into one widget.
 		$grouped = $this->emit_children_with_accordion_groups(
 			(array) ($node['children'] ?? array()),
 			$is_section,
-			$child_row,
+			$parent_row_for_children,
 			$self_width,
 			$node
 		);
