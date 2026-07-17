@@ -929,18 +929,30 @@ final class CssMapper
             $out['z_index'] = (int) $z;
         }
 
-        foreach (array('top' => 'offset_y', 'left' => 'offset_x') as $css => $control) {
-            if (!isset($s[$css]) || '' === $s[$css] || 'auto' === $s[$css]) {
+        $inset = is_array($s['inset'] ?? null) ? $s['inset'] : array();
+        foreach (array('top', 'right', 'bottom', 'left') as $side) {
+            $raw = $s[$side] ?? ($inset[$side] ?? null);
+            if (null === $raw || '' === $raw || 'auto' === $raw) {
                 continue;
             }
-            $size = $this->size($s[$css]);
-            if ($size) {
-                $out[$control] = $size;
-                if ('offset_x' === $control) {
-                    $out['_offset_orientation_h'] = 'start';
-                } else {
-                    $out['_offset_orientation_v'] = 'start';
-                }
+            $size = $this->size($raw);
+            if (!$size) {
+                continue;
+            }
+            // Elementor advanced offsets + preview-friendly side controls.
+            $out[$side] = $size;
+            if ('left' === $side) {
+                $out['offset_x'] = $size;
+                $out['_offset_orientation_h'] = 'start';
+            } elseif ('right' === $side) {
+                $out['offset_x'] = $size;
+                $out['_offset_orientation_h'] = 'end';
+            } elseif ('top' === $side) {
+                $out['offset_y'] = $size;
+                $out['_offset_orientation_v'] = 'start';
+            } elseif ('bottom' === $side) {
+                $out['offset_y'] = $size;
+                $out['_offset_orientation_v'] = 'end';
             }
         }
 
@@ -1160,7 +1172,7 @@ final class CssMapper
      *
      * @param string $value CSS value.
      */
-    private function flex_align(string $value): string
+    public function flex_align(string $value): string
     {
         $value = strtolower(trim($value));
         $map = array(

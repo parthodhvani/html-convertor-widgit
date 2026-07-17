@@ -80,7 +80,9 @@ final class LayeredLayoutSolver
 		$bg = $layers['background'] ?? null;
 		if (is_array($bg)) {
 			$src = $this->resolve_image_src($bg);
-			if ('' !== $src) {
+			// Framed / organic media (asymmetric radius, overflow clip) must stay
+			// nested content — promoting to background_image loses shape + badges.
+			if ('' !== $src && !$this->is_framed_media($bg)) {
 				$settings['background_background'] = 'classic';
 				$settings['background_image'] = array('url' => $src, 'id' => '');
 				$settings['background_position'] = 'center center';
@@ -88,11 +90,11 @@ final class LayeredLayoutSolver
 			} elseif (!empty($bg['s']['bgImg']) && preg_match('/gradient\s*\(/i', (string) $bg['s']['bgImg'])) {
 				// Nested gradient backgrounds — map via CssMapper.
 				$settings = array_merge($settings, $this->css->background($bg));
-			} elseif (!empty($bg['s']['bgImg'])) {
+			} elseif (!empty($bg['s']['bgImg']) && '' === $src) {
 				$settings['_h2e_layer_bg'] = (string) $bg['s']['bgImg'];
 			} else {
 				// Keep media frames (e.g. founder photo wrappers) as nested content
-				// when they are not a usable background URL.
+				// when they are not a usable full-bleed background URL.
 				foreach ($convert_content($bg) as $el) {
 					array_unshift($content_elements, $el);
 				}
@@ -158,5 +160,40 @@ final class LayeredLayoutSolver
 			return $m[1];
 		}
 		return '';
+	}
+
+	/**
+	 * Media wrapped in a decorative frame should not become a section background.
+	 *
+	 * @param array<string,mixed> $node Background candidate.
+	 */
+	private function is_framed_media(array $node): bool
+	{
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		if (preg_match('/\b(founder-frame|media-frame|image-frame|avatar-frame|photo-frame)\b/', $cls)) {
+			return true;
+		}
+
+		$brad = $node['s']['brad'] ?? null;
+		if (is_array($brad)) {
+			$vals = array_map('floatval', array_values($brad));
+			if (count($vals) >= 2) {
+				$max = max($vals);
+				$min = min($vals);
+				// Organic / blob radii differ by corner.
+				if ($max >= 24 && ($max - $min) >= 8) {
+					return true;
+				}
+			}
+		}
+
+		$w = (float) ($node['s']['w'] ?? 0);
+		$parent_hint = (float) ($node['s']['maxW'] ?? 0);
+		// Distinct portrait frames are usually narrower than a full hero column.
+		if ($w > 0 && $w <= 520 && preg_match('/\b(frame|portrait|founder)\b/', $cls)) {
+			return true;
+		}
+
+		return false;
 	}
 }

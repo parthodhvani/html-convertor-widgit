@@ -38,6 +38,30 @@ final class ElementorPreviewRenderer implements EngineInterface
 		$title = htmlspecialchars((string) ($opts['title'] ?? 'H2E Preview'), ENT_QUOTES);
 		$width = (int) ($opts['width'] ?? 1440);
 		$extra_css = (string) ($opts['css'] ?? '');
+		$page = is_array($opts['page'] ?? null) ? $opts['page'] : array();
+		$body_bg = trim((string) ($page['backgroundColor'] ?? $page['background_color'] ?? ''));
+		$body_color = trim((string) ($page['color'] ?? ''));
+		if ('' === $body_bg) {
+			foreach ($elements as $el) {
+				if (!is_array($el)) {
+					continue;
+				}
+				$s = (array) ($el['settings'] ?? array());
+				$candidate = (string) ($s['background_color'] ?? '');
+				if ('' !== $candidate && false === stripos($candidate, 'rgba(0, 0, 0, 0)')) {
+					$body_bg = $candidate;
+					break;
+				}
+			}
+		}
+		$body_style = array();
+		if ('' !== $body_bg) {
+			$body_style[] = 'background:' . $body_bg;
+		}
+		if ('' !== $body_color) {
+			$body_style[] = 'color:' . $body_color;
+		}
+		$body_attr = empty($body_style) ? '' : ' style="' . htmlspecialchars(implode(';', $body_style), ENT_QUOTES) . '"';
 		$body = '';
 		foreach ($elements as $el) {
 			if (is_array($el)) {
@@ -81,7 +105,7 @@ p,ul,ol,figure,blockquote{margin:0}
 {$extra_css}
 </style>
 </head>
-<body>
+<body{$body_attr}>
 {$body}
 </body>
 </html>
@@ -289,7 +313,7 @@ HTML;
 		$s = (array) ($el['settings'] ?? array());
 		$type = (string) ($el['widgetType'] ?? 'html');
 		$id = htmlspecialchars((string) ($el['id'] ?? ''), ENT_QUOTES);
-		$style = implode(';', array_merge($this->box_styles($s), $this->typography_styles($s), $this->background_styles($s)));
+		$style = implode(';', array_merge($this->box_styles($s), $this->typography_styles($s), $this->background_styles($s), $this->position_styles($s)));
 		foreach (array('_h2e_custom_css', 'custom_css') as $key) {
 			$custom = $this->flatten_custom_css((string) ($s[$key] ?? ''));
 			if ('' !== $custom) {
@@ -334,11 +358,49 @@ HTML;
 				if (!empty($s['button_text_color'])) {
 					$st[] = 'color:' . (string) $s['button_text_color'];
 				}
-				if (!empty($s['background_color'])) {
+				if ('gradient' === ($s['background_background'] ?? '')) {
+					$a = (string) ($s['background_color'] ?? '#000');
+					$b = (string) ($s['background_color_b'] ?? $a);
+					$angle = (float) ($s['background_gradient_angle']['size'] ?? 135);
+					$st[] = 'background-image:linear-gradient(' . $angle . 'deg,' . $a . ',' . $b . ')';
+				} elseif (!empty($s['background_color'])) {
 					$st[] = 'background-color:' . (string) $s['background_color'];
+				}
+				if (!empty($s['padding']) && is_array($s['padding'])) {
+					$p = $s['padding'];
+					$u = (string) ($p['unit'] ?? 'px');
+					$st[] = 'padding:' . (float) ($p['top'] ?? 0) . $u . ' '
+						. (float) ($p['right'] ?? 0) . $u . ' '
+						. (float) ($p['bottom'] ?? 0) . $u . ' '
+						. (float) ($p['left'] ?? 0) . $u;
+				}
+				if (!empty($s['border_radius']) && is_array($s['border_radius'])) {
+					$br = $s['border_radius'];
+					$u = (string) ($br['unit'] ?? 'px');
+					$st[] = 'border-radius:' . (float) ($br['top'] ?? 0) . $u . ' '
+						. (float) ($br['right'] ?? 0) . $u . ' '
+						. (float) ($br['bottom'] ?? 0) . $u . ' '
+						. (float) ($br['left'] ?? 0) . $u;
+				}
+				if (!empty($s['border_border']) && !empty($s['border_width'])) {
+					$bw = $s['border_width'];
+					$u = (string) ($bw['unit'] ?? 'px');
+					$st[] = 'border-style:' . (string) $s['border_border'];
+					$st[] = 'border-width:' . (float) ($bw['top'] ?? 0) . $u;
+					if (!empty($s['border_color'])) {
+						$st[] = 'border-color:' . (string) $s['border_color'];
+					}
 				}
 				$attr = empty($st) ? '' : ' style="' . htmlspecialchars(implode(';', $st), ENT_QUOTES) . '"';
 				return '<div class="e-widget-button"><a href="' . $url . '"' . $attr . '>' . $text . '</a></div>';
+			case 'star-rating':
+				$rating = (float) ($s['rating'] ?? 5);
+				$scale = max(1, (int) ($s['rating_scale'] ?? 5));
+				$full = (int) round(min($scale, max(0, $rating)));
+				$stars = str_repeat('★', $full) . str_repeat('☆', max(0, $scale - $full));
+				$color = htmlspecialchars((string) ($s['title_color'] ?? $s['text_color'] ?? '#C9A227'), ENT_QUOTES);
+				return '<div class="e-star-rating" style="color:' . $color . ';letter-spacing:2px;font-size:1.1em">'
+					. htmlspecialchars($stars, ENT_QUOTES) . '</div>';
 			case 'image':
 				$url = htmlspecialchars((string) ($s['image']['url'] ?? ''), ENT_QUOTES);
 				$alt = htmlspecialchars((string) ($s['alt'] ?? ''), ENT_QUOTES);
@@ -411,6 +473,27 @@ HTML;
 				$title = htmlspecialchars((string) ($s['title'] ?? $type), ENT_QUOTES);
 				return '<div data-widget="' . htmlspecialchars($type, ENT_QUOTES) . '">' . $title . '</div>';
 		}
+	}
+
+	/**
+	 * @param array<string,mixed> $s Settings.
+	 * @return array<int,string>
+	 */
+	private function position_styles(array $s): array
+	{
+		$css = array();
+		if (!empty($s['position'])) {
+			$css[] = 'position:' . $s['position'];
+		}
+		foreach (array('top', 'right', 'bottom', 'left') as $side) {
+			if (isset($s[$side]['size']) && '' !== $s[$side]['size']) {
+				$css[] = $side . ':' . (float) $s[$side]['size'] . ($s[$side]['unit'] ?? 'px');
+			}
+		}
+		if (!empty($s['z_index'])) {
+			$css[] = 'z-index:' . (int) $s['z_index'];
+		}
+		return $css;
 	}
 
 	/**

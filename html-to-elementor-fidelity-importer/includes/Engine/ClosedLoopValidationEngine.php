@@ -69,6 +69,7 @@ final class ClosedLoopValidationEngine implements EngineInterface
 					'title' => (string) ($context['title'] ?? 'H2E Preview'),
 					'width' => (int) ($context['viewport_width'] ?? 1440),
 					'css' => (string) ($context['source_css'] ?? ''),
+					'page' => is_array($context['page'] ?? null) ? $context['page'] : array(),
 				)
 			);
 			$preview_path = $work_dir . '/preview-' . $iterations . '.html';

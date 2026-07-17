@@ -446,6 +446,22 @@ final class LayoutTreeConverter
                 $settings['width'] = array('unit' => 'px', 'size' => round($width, 0));
                 $settings['flex_shrink'] = 0;
             }
+        } elseif ($this->should_lock_intrinsic_box($node)) {
+            // Column parents default nested containers to width:100% in Elementor.
+            // Painted chrome (icons, avatars, marks) must keep measured px size.
+            $width = (float) ($node['s']['w'] ?? 0);
+            $height = (float) ($node['s']['h'] ?? 0);
+            if ($width > 0) {
+                $settings['width'] = array('unit' => 'px', 'size' => round($width, 0));
+            }
+            if ($height > 0 && empty($settings['min_height']['size'])) {
+                $settings['min_height'] = array('unit' => 'px', 'size' => round($height, 0));
+            }
+            $settings['flex_grow'] = 0;
+            $settings['flex_shrink'] = 0;
+            if (empty($settings['align_self'])) {
+                $settings['align_self'] = 'flex-start';
+            }
         }
 
         $role = $this->classifier->role($node);
@@ -573,13 +589,27 @@ final class LayoutTreeConverter
                 'size' => round($gap),
             );
         }
-        // Prefer inferred constraint intents (Phase 9) over raw CSS alignment.
-        if (!empty($constraint['justify'])) {
+        // Chromium CSS justify/align wins over inferred constraints. Constraint
+        // inference often mis-labels space-between headers (padding insets) as
+        // flex-start, which collapses logo/nav/CTA into a left cluster.
+        $css_jc = strtolower(trim((string) ($node['s']['jc'] ?? '')));
+        $css_ai = strtolower(trim((string) ($node['s']['ai'] ?? '')));
+        if ('' !== $css_jc) {
+            $mapped = $this->css->flex_align($css_jc);
+            if ('' !== $mapped) {
+                $out['flex_justify_content'] = $mapped;
+            }
+        } elseif (!empty($constraint['justify'])) {
             $out['flex_justify_content'] = (string) $constraint['justify'];
         } elseif (!empty($alignment['justify'])) {
             $out['flex_justify_content'] = (string) $alignment['justify'];
         }
-        if (!empty($constraint['align_items'])) {
+        if ('' !== $css_ai) {
+            $mapped = $this->css->flex_align($css_ai);
+            if ('' !== $mapped) {
+                $out['flex_align_items'] = $mapped;
+            }
+        } elseif (!empty($constraint['align_items'])) {
             $out['flex_align_items'] = (string) $constraint['align_items'];
         } elseif (!empty($alignment['align_items'])) {
             $out['flex_align_items'] = (string) $alignment['align_items'];
@@ -1051,5 +1081,38 @@ final class LayoutTreeConverter
         $h = (float) ($s['h'] ?? 0);
         $has_visual = !empty($s['bg']) || !empty($s['bgImg']) || !empty($s['bdw']);
         return $h >= 6 && $h <= 400 && !$has_visual;
+    }
+
+    /**
+     * Lock measured px size for painted chrome that would otherwise stretch to 100%.
+     *
+     * @param array<string,mixed> $node Source node.
+     */
+    private function should_lock_intrinsic_box(array $node): bool
+    {
+        $s = $node['s'] ?? array();
+        $w = (float) ($s['w'] ?? 0);
+        $h = (float) ($s['h'] ?? 0);
+        if ($w <= 0 || $h <= 0 || $w > 160 || $h > 160) {
+            return false;
+        }
+
+        $cls = strtolower((string) ($node['cls'] ?? ''));
+        if (preg_match('/\b(card-icon|avatar|logo-mark|icon-badge|icon-wrap|media-icon|google-logo)\b/', $cls)) {
+            return true;
+        }
+
+        $disp = strtolower((string) ($s['disp'] ?? ''));
+        $gtc = trim((string) ($s['gtc'] ?? ''));
+        $gtr = trim((string) ($s['gtr'] ?? ''));
+        if (false !== strpos($disp, 'grid') && preg_match('/^\d+(\.\d+)?px$/', $gtc) && preg_match('/^\d+(\.\d+)?px$/', $gtr)) {
+            return true;
+        }
+
+        $bg_img = (string) ($s['bgImg'] ?? '');
+        $bg = (string) ($s['bg'] ?? '');
+        $has_paint = (false !== stripos($bg_img, 'gradient'))
+            || ('' !== $bg && 'transparent' !== strtolower($bg) && false === stripos($bg, 'rgba(0, 0, 0, 0)'));
+        return $has_paint && $w <= 96 && $h <= 96;
     }
 }

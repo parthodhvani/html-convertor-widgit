@@ -87,6 +87,7 @@ final class ElementorJsonGenerator
 
 		$optimizer = new ContainerTreeOptimizer();
 		$elements = $optimizer->optimize($elements);
+		$elements = $this->apply_page_canvas($elements, $result->page(), $sections);
 		$compression = array_merge(
 			$optimizer->stats(),
 			$optimizer->depth_metrics($elements)
@@ -122,6 +123,8 @@ final class ElementorJsonGenerator
 				'wrappers_eliminated' => (int) ($this->last_engines['wrappers_eliminated'] ?? 0),
 				'compare' => $opts['compare'] ?? null,
 				'threshold' => (int) ($opts['confidence'] ?? 95),
+				'page' => $result->page(),
+				'title' => $result->title(),
 			)
 		);
 
@@ -162,5 +165,91 @@ final class ElementorJsonGenerator
 			),
 			'isInner' => false,
 		);
+	}
+
+	/**
+	 * Paint the document canvas onto transparent top-level sections.
+	 *
+	 * Dark themes set colour on body while section backgrounds stay transparent.
+	 * Elementor (and the closed-loop preview) default to a white canvas, which
+	 * makes light text invisible and tanks screenshot fidelity.
+	 *
+	 * @param array<int,array<string,mixed>> $elements Generated sections.
+	 * @param array<string,mixed>            $page     meta.page from Chromium.
+	 * @param array<int,array<string,mixed>> $sections Source sections.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function apply_page_canvas(array $elements, array $page, array $sections): array
+	{
+		$bg = $this->resolve_page_background($page, $sections);
+		$color = trim((string) ($page['color'] ?? ''));
+		if ('' === $bg && '' === $color) {
+			return $elements;
+		}
+
+		foreach ($elements as $i => $el) {
+			if (!is_array($el) || 'container' !== ($el['elType'] ?? '')) {
+				continue;
+			}
+			$settings = (array) ($el['settings'] ?? array());
+			$has_paint = !empty($settings['background_color'])
+				|| !empty($settings['background_image']['url'])
+				|| 'gradient' === ($settings['background_background'] ?? '');
+			if (!$has_paint && '' !== $bg) {
+				$settings['background_background'] = 'classic';
+				$settings['background_color'] = $bg;
+			}
+			if ('' !== $color && empty($settings['text_color'])) {
+				$settings['text_color'] = $color;
+			}
+			$elements[$i]['settings'] = $settings;
+		}
+
+		return $elements;
+	}
+
+	/**
+	 * @param array<string,mixed>            $page     Page styles.
+	 * @param array<int,array<string,mixed>> $sections Source sections.
+	 */
+	private function resolve_page_background(array $page, array $sections): string
+	{
+		$bg = trim((string) ($page['backgroundColor'] ?? $page['background_color'] ?? ''));
+		if ('' !== $bg && !$this->is_transparent_color($bg)) {
+			return $bg;
+		}
+
+		// Fallback: majority opaque section background (section-alt / footer).
+		$counts = array();
+		foreach ($sections as $section) {
+			$styles = (array) ($section['styles'] ?? array());
+			$candidate = (string) ($styles['backgroundColor'] ?? $section['background'] ?? '');
+			if ($this->is_transparent_color($candidate)) {
+				$tree_bg = (string) (($section['tree']['s']['bg'] ?? ''));
+				$candidate = $tree_bg;
+			}
+			if ($this->is_transparent_color($candidate)) {
+				continue;
+			}
+			$counts[$candidate] = ($counts[$candidate] ?? 0) + 1;
+		}
+		if (empty($counts)) {
+			return '';
+		}
+		arsort($counts);
+		return (string) array_key_first($counts);
+	}
+
+	private function is_transparent_color(string $color): bool
+	{
+		$color = strtolower(trim($color));
+		if ('' === $color || 'transparent' === $color || 'none' === $color) {
+			return true;
+		}
+		if (preg_match('/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/', $color, $m)) {
+			$alpha = isset($m[4]) ? (float) $m[4] : 1.0;
+			return $alpha <= 0.01;
+		}
+		return false;
 	}
 }

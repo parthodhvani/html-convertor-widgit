@@ -245,7 +245,14 @@ final class ConstraintLayoutSolver implements EngineInterface
 		);
 
 		$justify = 'flex-start';
-		if (!empty($intents['space_between'])) {
+		$css_jc = strtolower(trim((string) ($parent['s']['jc'] ?? '')));
+		if (in_array($css_jc, array('space-between', 'space-around', 'space-evenly', 'center', 'flex-end', 'flex-start', 'start', 'end'), true)) {
+			$justify = match ($css_jc) {
+				'start' => 'flex-start',
+				'end' => 'flex-end',
+				default => $css_jc,
+			};
+		} elseif (!empty($intents['space_between'])) {
 			$justify = 'space-between';
 		} elseif (!empty($intents['centered'])) {
 			$justify = 'center';
@@ -254,7 +261,14 @@ final class ConstraintLayoutSolver implements EngineInterface
 		}
 
 		$align_items = 'stretch';
-		if (!empty($intents['align_center'])) {
+		$css_ai = strtolower(trim((string) ($parent['s']['ai'] ?? '')));
+		if (in_array($css_ai, array('center', 'flex-start', 'flex-end', 'stretch', 'baseline', 'start', 'end'), true)) {
+			$align_items = match ($css_ai) {
+				'start' => 'flex-start',
+				'end' => 'flex-end',
+				default => $css_ai,
+			};
+		} elseif (!empty($intents['align_center'])) {
 			$align_items = 'center';
 		} elseif ($shared_top && !$equal_height) {
 			$align_items = 'flex-start';
@@ -326,12 +340,15 @@ final class ConstraintLayoutSolver implements EngineInterface
 		}
 
 		// Space-between: first near start edge, last near end edge, uneven gaps.
+		// Account for parent padding so sticky headers with 24px gutters still match.
 		if ('row' === $direction && count($boxes) >= 2 && $parent_box['width'] > 0) {
 			$first = $boxes[0];
 			$last = $boxes[count($boxes) - 1];
-			$start_inset = abs($first['x'] - $parent_box['x']);
-			$end_inset = abs(($parent_box['x'] + $parent_box['width']) - ($last['x'] + $last['width']));
-			if ($start_inset <= 12 && $end_inset <= 12 && empty($flags['equal_width'])) {
+			$pad_l = (float) ($parent['s']['pl'] ?? 0);
+			$pad_r = (float) ($parent['s']['pr'] ?? 0);
+			$start_inset = abs($first['x'] - ($parent_box['x'] + $pad_l));
+			$end_inset = abs(($parent_box['x'] + $parent_box['width'] - $pad_r) - ($last['x'] + $last['width']));
+			if ($start_inset <= 16 && $end_inset <= 16 && empty($flags['equal_width'])) {
 				$intents['space_between'] = true;
 			}
 		}

@@ -426,7 +426,9 @@ final class CssMappingEngine implements EngineInterface
 			$this->mapper->alignment($node, 'align'),
 			$this->mapper->border($node),
 			$this->mapper->box_shadow($node),
-			$this->mapper->background($node)
+			$this->mapper->background($node),
+			$this->mapper->spacing($node, true),
+			$this->mapper->position($node)
 		);
 		if (empty($style['background_background']) && empty($style['background_color'])) {
 			$bg = (string) ($node['s']['bg'] ?? '');
