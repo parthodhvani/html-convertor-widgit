@@ -51,8 +51,24 @@ final class ContainerTreeOptimizer
 			}
 		}
 
+		$optimized = $this->ensure_nested_full_widths($optimized);
 		$this->containers_after = $this->count_containers($optimized);
 		return array_values($optimized);
+	}
+
+	/**
+	 * Ensure nesting levels 2–4 fill their parent in Elementor (Full Width + 100%).
+	 *
+	 * Elementor nested containers often omit an explicit width, so the editor
+	 * shrink-wraps them. Apply 100% only when it will not break row column shares
+	 * or intrinsic (px) chrome boxes.
+	 *
+	 * @param array<int,array<string,mixed>> $elements Root elements.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function ensure_nested_full_widths(array $elements): array
+	{
+		return $this->apply_nested_full_widths($elements, 1, 'column');
 	}
 
 	/**
@@ -645,6 +661,110 @@ final class ContainerTreeOptimizer
 		}
 
 		return is_numeric($value) && (float) $value > 0;
+	}
+
+	/**
+	 * Walk containers and set content_width=full + width=100% at depths 2–4 when safe.
+	 *
+	 * @param array<int,array<string,mixed>> $elements        Elements.
+	 * @param int                            $depth           Container depth (1 = section root).
+	 * @param string                         $parent_direction Parent flex direction.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function apply_nested_full_widths(array $elements, int $depth, string $parent_direction): array
+	{
+		$container_siblings = 0;
+		foreach ($elements as $el) {
+			if ('container' === ($el['elType'] ?? '')) {
+				++$container_siblings;
+			}
+		}
+
+		foreach ($elements as $i => $element) {
+			if (!is_array($element)) {
+				continue;
+			}
+
+			$is_container = 'container' === ($element['elType'] ?? '');
+			if ($is_container) {
+				$settings = (array) ($element['settings'] ?? array());
+				$settings['content_width'] = 'full';
+
+				if ($depth >= 2 && $depth <= 4
+					&& $this->should_force_full_percent_width($settings, $parent_direction, $container_siblings)
+				) {
+					$settings['width'] = array(
+						'unit' => '%',
+						'size' => 100,
+					);
+				}
+
+				$element['settings'] = $settings;
+				$child_direction = strtolower(trim((string) ($settings['flex_direction'] ?? 'column')));
+				if ('' === $child_direction) {
+					$child_direction = 'column';
+				}
+				$element['elements'] = $this->apply_nested_full_widths(
+					(array) ($element['elements'] ?? array()),
+					$depth + 1,
+					$child_direction
+				);
+				$elements[$i] = $element;
+				continue;
+			}
+
+			if (!empty($element['elements']) && is_array($element['elements'])) {
+				$element['elements'] = $this->apply_nested_full_widths(
+					$element['elements'],
+					$depth,
+					$parent_direction
+				);
+				$elements[$i] = $element;
+			}
+		}
+
+		return $elements;
+	}
+
+	/**
+	 * Whether forcing width:100% preserves layout structure.
+	 *
+	 * @param array<string,mixed> $settings            Container settings.
+	 * @param string              $parent_direction    Parent flex direction.
+	 * @param int                 $container_siblings  Container siblings at this level.
+	 */
+	private function should_force_full_percent_width(array $settings, string $parent_direction, int $container_siblings): bool
+	{
+		$position = strtolower(trim((string) ($settings['position'] ?? '')));
+		if (in_array($position, array('absolute', 'fixed'), true)) {
+			return false;
+		}
+
+		$width = $settings['width'] ?? null;
+		if (is_array($width)) {
+			$unit = strtolower((string) ($width['unit'] ?? '%'));
+			$size = (float) ($width['size'] ?? 0);
+			// Keep intrinsic painted chrome (icons, marks, avatars).
+			if ('px' === $unit && $size > 0 && $size <= 160) {
+				return false;
+			}
+			// Keep intentional flex-row column shares (e.g. 32% / 51% cards).
+			if ('%' === $unit && $size > 0 && $size < 100) {
+				return false;
+			}
+			// Already full width.
+			if ('%' === $unit && 100.0 === $size) {
+				return false;
+			}
+		}
+
+		$parent_direction = strtolower(trim($parent_direction));
+		// Do not blow up multi-column rows — siblings already own a share or flex_grow.
+		if ('row' === $parent_direction && $container_siblings > 1) {
+			return false;
+		}
+
+		return true;
 	}
 
 	/**

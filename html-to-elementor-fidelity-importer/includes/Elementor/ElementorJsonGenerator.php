@@ -128,11 +128,15 @@ final class ElementorJsonGenerator
 			)
 		);
 
+		// Re-apply after validation repairs so Elementor always receives
+		// Full Width + 100% on nested levels 2–4 where structure allows.
+		$data = $optimizer->ensure_nested_full_widths($validated['data']);
+
 		$report['validation'] = $validated['validation'];
 		$report['quality'] = $validated['quality'];
 
 		return array(
-			'data' => $validated['data'],
+			'data' => $data,
 			'report' => $report,
 			'tokens' => $tokens,
 			'assets' => array_merge($result->assets(), array('media' => $prepared['media'])),
