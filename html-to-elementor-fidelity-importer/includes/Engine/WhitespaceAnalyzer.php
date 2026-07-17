@@ -73,11 +73,34 @@ final class WhitespaceAnalyzer implements EngineInterface
 			$whitespace = $this->measure_sibling_whitespace($children, $node);
 			$node['whitespace'] = $whitespace;
 
-			if ($whitespace['gap'] > 0) {
-				$gap = round($whitespace['gap'], 0);
+			$css_gap = $this->css_gap_px($node);
+			$jc = strtolower((string) ($node['s']['jc'] ?? ''));
+			$distributed = in_array($jc, array('space-between', 'space-around', 'space-evenly'), true);
+
+			if ($distributed) {
+				// Free space from justify-content must not become Elementor flex_gap.
+				$whitespace['gap'] = $css_gap;
+				$whitespace['gap_source'] = 'css';
+				$node['whitespace'] = $whitespace;
+				unset($node['s']['_gap_whitespace']);
+				if ($css_gap > 0) {
+					$node['s']['gap'] = $css_gap . 'px';
+					$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
+				}
+			} elseif ($css_gap > 0) {
+				$whitespace['gap'] = $css_gap;
+				$whitespace['gap_source'] = 'css';
+				$node['whitespace'] = $whitespace;
+				$node['s']['gap'] = $css_gap . 'px';
+				unset($node['s']['_gap_whitespace']);
+				$this->measured_gaps[$css_gap] = ($this->measured_gaps[$css_gap] ?? 0) + 1;
+			} elseif ($whitespace['gap'] > 0) {
+				$gap = round((float) $whitespace['gap'], 0);
 				$this->measured_gaps[$gap] = ($this->measured_gaps[$gap] ?? 0) + 1;
 				$node['s']['gap'] = $gap . 'px';
 				$node['s']['_gap_whitespace'] = true;
+				$whitespace['gap_source'] = 'geometry';
+				$node['whitespace'] = $whitespace;
 				$this->clear_child_margins($node);
 			}
 
@@ -99,14 +122,47 @@ final class WhitespaceAnalyzer implements EngineInterface
 	}
 
 	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function css_gap_px(array $node): float
+	{
+		$s = $node['s'] ?? array();
+		foreach (array('gap', 'rowGap', 'colGap', 'columnGap') as $key) {
+			if (!isset($s[$key]) || '' === $s[$key] || null === $s[$key]) {
+				continue;
+			}
+			if ('gap' === $key && (!empty($s['_gap_geometry']) || !empty($s['_gap_whitespace']))) {
+				continue;
+			}
+			$value = $s[$key];
+			if (is_numeric($value)) {
+				$px = (float) $value;
+			} elseif (is_string($value) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($value), $m)) {
+				$px = (float) $m[1];
+			} else {
+				continue;
+			}
+			if ($px > 0) {
+				return round($px, 0);
+			}
+		}
+		return 0.0;
+	}
+
+	/**
 	 * @param array<int,array<string,mixed>> $children Siblings.
 	 * @return array<string,mixed>
 	 */
 	private function measure_sibling_whitespace(array $children, array $parent): array
 	{
 		$boxes = array_map(array(Geometry::class, 'bbox'), $children);
-		$constraint = $children[0]['layoutConstraint'] ?? array();
-		$direction = (string) ($constraint['direction'] ?? 'column');
+		$constraint = $parent['layoutConstraint'] ?? array();
+		$direction = (string) ($constraint['direction'] ?? (($parent['s']['fd'] ?? '') === 'row' ? 'row' : 'column'));
+		if (false !== strpos(strtolower((string) ($parent['s']['fd'] ?? '')), 'row')) {
+			$direction = 'row';
+		} elseif (false !== strpos(strtolower((string) ($parent['s']['fd'] ?? '')), 'column')) {
+			$direction = 'column';
+		}
 
 		$gaps = array();
 		for ($i = 0; $i < count($boxes) - 1; ++$i) {

@@ -69,14 +69,7 @@ final class ConstraintLayoutSolver implements EngineInterface
 		$children = (array) ($node['children'] ?? array());
 		if (count($children) >= 2) {
 			$constraint = $this->infer_constraint($children, $node);
-			$node['layoutConstraint'] = $constraint;
-
-			if ($constraint['gap'] > 0) {
-				$node['s']['gap'] = $constraint['gap'] . 'px';
-				$node['s']['_gap_geometry'] = true;
-				$spacing_values[(string) $constraint['gap']] = ($spacing_values[(string) $constraint['gap']] ?? 0) + 1;
-				$this->strip_child_margins($node);
-			}
+			$node['layoutConstraint'] = $this->resolve_gap($node, $constraint, $spacing_values);
 		}
 
 		foreach ($children as $i => $child) {
@@ -86,6 +79,88 @@ final class ConstraintLayoutSolver implements EngineInterface
 			$this->solve_node($child, $spacing_values);
 			$node['children'][$i] = $child;
 		}
+	}
+
+	/**
+	 * Prefer Chromium CSS gap. Never treat space-between free space as gap.
+	 *
+	 * @param array<string,mixed> $node            Parent node (by ref via s mutation).
+	 * @param array<string,mixed> $constraint      Inferred constraint.
+	 * @param array<string,int>   $spacing_values  Tally.
+	 * @return array<string,mixed>
+	 */
+	private function resolve_gap(array &$node, array $constraint, array &$spacing_values): array
+	{
+		$css_gap = $this->css_gap_px($node);
+		$jc = strtolower((string) ($node['s']['jc'] ?? ''));
+		$distributed = in_array($jc, array('space-between', 'space-around', 'space-evenly'), true);
+		$geometry_gap = (float) ($constraint['gap'] ?? 0);
+
+		if ($distributed) {
+			// justify-content distributes free space — that is not CSS gap.
+			$constraint['gap'] = $css_gap;
+			$constraint['gap_source'] = 'css';
+			unset($node['s']['_gap_geometry']);
+			if ($css_gap > 0) {
+				$node['s']['gap'] = $css_gap . 'px';
+				$spacing_values[(string) $css_gap] = ($spacing_values[(string) $css_gap] ?? 0) + 1;
+			} elseif (isset($node['s']['gap']) && !empty($node['s']['_gap_geometry'])) {
+				unset($node['s']['gap']);
+			}
+			return $constraint;
+		}
+
+		if ($css_gap > 0) {
+			// Browser-computed gap is authoritative; do not overwrite with geometry.
+			$constraint['gap'] = $css_gap;
+			$constraint['gap_source'] = 'css';
+			$node['s']['gap'] = $css_gap . 'px';
+			unset($node['s']['_gap_geometry']);
+			$spacing_values[(string) $css_gap] = ($spacing_values[(string) $css_gap] ?? 0) + 1;
+			return $constraint;
+		}
+
+		if ($geometry_gap > 0) {
+			$constraint['gap'] = $geometry_gap;
+			$constraint['gap_source'] = 'geometry';
+			$node['s']['gap'] = $geometry_gap . 'px';
+			$node['s']['_gap_geometry'] = true;
+			$spacing_values[(string) $geometry_gap] = ($spacing_values[(string) $geometry_gap] ?? 0) + 1;
+			$this->strip_child_margins($node);
+		}
+
+		return $constraint;
+	}
+
+	/**
+	 * Read gap / row-gap / column-gap from Chromium computed styles.
+	 *
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function css_gap_px(array $node): float
+	{
+		$s = $node['s'] ?? array();
+		foreach (array('gap', 'rowGap', 'colGap', 'columnGap') as $key) {
+			if (!isset($s[$key]) || '' === $s[$key] || null === $s[$key]) {
+				continue;
+			}
+			// Ignore previously stamped geometry gaps when re-solving.
+			if ('gap' === $key && !empty($s['_gap_geometry'])) {
+				continue;
+			}
+			$value = $s[$key];
+			if (is_numeric($value)) {
+				$px = (float) $value;
+			} elseif (is_string($value) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($value), $m)) {
+				$px = (float) $m[1];
+			} else {
+				continue;
+			}
+			if ($px > 0) {
+				return round($px, 0);
+			}
+		}
+		return 0.0;
 	}
 
 	/**

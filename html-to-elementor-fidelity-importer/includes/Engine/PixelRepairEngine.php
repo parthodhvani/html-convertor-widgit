@@ -108,15 +108,25 @@ final class PixelRepairEngine implements EngineInterface
 						$repairs[] = 'flex_direction:' . $cls;
 					}
 					if (($c['gap'] ?? 0) > 0) {
-						$elements[$i]['settings']['flex_gap'] = array(
-							'column' => (string) $c['gap'],
-							'row' => (string) $c['gap'],
-							'isLinked' => true,
-							'unit' => 'px',
-							'size' => (float) $c['gap'],
-						);
-						$changed = true;
-						$repairs[] = 'flex_gap:' . $cls;
+						$jc = strtolower((string) ($el['settings']['flex_justify_content'] ?? ''));
+						$distributed = in_array($jc, array('space-between', 'space-around', 'space-evenly'), true);
+						$existing = (float) ($el['settings']['flex_gap']['size'] ?? 0);
+						$target = (float) $c['gap'];
+						// Never stamp free-space as gap on distributed justify rows.
+						if ($distributed && $target > 64) {
+							continue;
+						}
+						if (abs($existing - $target) > 0.5) {
+							$elements[$i]['settings']['flex_gap'] = array(
+								'column' => (string) $c['gap'],
+								'row' => (string) $c['gap'],
+								'isLinked' => true,
+								'unit' => 'px',
+								'size' => $target,
+							);
+							$changed = true;
+							$repairs[] = 'flex_gap:' . $cls;
+						}
 					}
 					if (!empty($c['justify'])) {
 						$elements[$i]['settings']['flex_justify_content'] = $c['justify'];
