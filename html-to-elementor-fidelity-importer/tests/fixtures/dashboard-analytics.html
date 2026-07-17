@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Pulse Analytics — Dashboard Shell</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet"/>
+<style>
+:root { --bg:#0f1419; --panel:#1a2332; --line:#2a3548; --text:#e7eef8; --muted:#8b9bb4; --accent:#3d8bfd; --good:#3dd68c; --warn:#f5a524; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "IBM Plex Sans", sans-serif; background: var(--bg); color: var(--text); display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.side { background: var(--panel); border-right: 1px solid var(--line); padding: 24px 16px; display: flex; flex-direction: column; gap: 28px; }
+.brand { font-weight: 700; letter-spacing: .04em; font-size: 15px; }
+.side nav { display: flex; flex-direction: column; gap: 6px; }
+.side a { color: var(--muted); text-decoration: none; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+.side a.active, .side a:hover { background: #243044; color: var(--text); }
+.main { padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; }
+.top { display: flex; justify-content: space-between; align-items: center; }
+.top h1 { font-size: 22px; font-weight: 600; }
+.top .meta { color: var(--muted); font-size: 13px; font-family: "IBM Plex Mono", monospace; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+.kpi span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.kpi strong { font-size: 28px; font-family: "IBM Plex Mono", monospace; }
+.kpi em { font-style: normal; font-size: 12px; color: var(--good); }
+.grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-height: 280px; }
+.panel h2 { font-size: 15px; margin-bottom: 16px; font-weight: 600; }
+.chart { height: 180px; border-radius: 8px; background: linear-gradient(180deg, rgba(61,139,253,.35), rgba(61,139,253,0) 70%), repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,.04) 40px, rgba(255,255,255,.04) 41px); }
+.list { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.row:last-child { border-bottom: 0; }
+.tag { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: #243044; color: var(--warn); }
+@media (max-width: 900px) {
+  body { grid-template-columns: 1fr; }
+  .side { display: none; }
+  .kpis, .grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) { .kpis, .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<aside class="side">
+  <div class="brand">PULSE</div>
+  <nav>
+    <a class="active" href="#">Overview</a>
+    <a href="#">Traffic</a>
+    <a href="#">Funnels</a>
+    <a href="#">Settings</a>
+  </nav>
+</aside>
+<main class="main">
+  <div class="top"><h1>Overview</h1><div class="meta">UTC · last 24h</div></div>
+  <section class="kpis">
+    <article class="kpi"><span>Sessions</span><strong>18.4k</strong><em>+12.4%</em></article>
+    <article class="kpi"><span>Conversion</span><strong>3.8%</strong><em>+0.4%</em></article>
+    <article class="kpi"><span>Revenue</span><strong>$42.1k</strong><em>+8.1%</em></article>
+    <article class="kpi"><span>Latency</span><strong>184ms</strong><em>-11ms</em></article>
+  </section>
+  <section class="grid">
+    <div class="panel"><h2>Traffic</h2><div class="chart" aria-hidden="true"></div></div>
+    <div class="panel"><h2>Alerts</h2>
+      <div class="list">
+        <div class="row"><span>Checkout spike</span><span class="tag">watch</span></div>
+        <div class="row"><span>CDN cache miss</span><span class="tag">warn</span></div>
+        <div class="row"><span>API p95 healthy</span><span class="tag">ok</span></div>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

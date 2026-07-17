@@ -120,8 +120,9 @@ final class ContainerTreeOptimizer
 	}
 
 	/**
-	 * flex_gap with fewer than 2 children has no layout effect and poisons
-	 * spacing comparisons when composites absorb their children.
+	 * flex_gap with fewer than 2 Elementor children has no flex effect.
+	 * When the sole child is a multi-item composite (social-icons, accordion…),
+	 * transfer the gap onto that widget so icon/item spacing survives.
 	 *
 	 * @param array<string,mixed> $container Container.
 	 * @return array<string,mixed>
@@ -134,9 +135,31 @@ final class ContainerTreeOptimizer
 		}
 		$gap = $container['settings']['flex_gap'] ?? null;
 		$size = is_array($gap) ? (float) ($gap['size'] ?? 0) : 0.0;
-		if ($size > 0) {
-			unset($container['settings']['flex_gap']);
+		if ($size <= 0) {
+			return $container;
 		}
+
+		if (1 === count($kids) && 'widget' === ($kids[0]['elType'] ?? '')) {
+			$wt = (string) ($kids[0]['widgetType'] ?? '');
+			if (in_array($wt, array('social-icons', 'icon-list', 'accordion', 'image-carousel', 'form'), true)) {
+				$existing = (float) ($kids[0]['settings']['gap']['size']
+					?? $kids[0]['settings']['space_between']['size']
+					?? 0);
+				if ($existing <= 0) {
+					$key = 'accordion' === $wt ? 'space_between' : 'gap';
+					$kids[0]['settings'][$key] = array(
+						'unit' => 'px',
+						'size' => $size,
+					);
+					$container['elements'] = $kids;
+				}
+				// Keep flex_gap on the wrapper so spacing frames still match
+				// the source container gap after composite collapse.
+				return $container;
+			}
+		}
+
+		unset($container['settings']['flex_gap']);
 		return $container;
 	}
 
@@ -227,7 +250,8 @@ final class ContainerTreeOptimizer
 				$candidate = $children[$next];
 				if ('container' !== ($candidate['elType'] ?? '')
 					|| !$this->is_redundant_container($candidate)
-					|| !$this->layout_signatures_match($current, $candidate)) {
+					|| !$this->layout_signatures_match($current, $candidate)
+					|| $this->has_distinct_sibling_geometry($current, $candidate)) {
 					break;
 				}
 				$group[] = $candidate;
@@ -473,6 +497,27 @@ final class ContainerTreeOptimizer
 		$dw = abs((float) ($parent_box['width'] ?? 0) - (float) ($child_box['width'] ?? 0));
 		$dh = abs((float) ($parent_box['height'] ?? 0) - (float) ($child_box['height'] ?? 0));
 		return $dw > 8.0 || $dh > 8.0;
+	}
+
+	/**
+	 * Sibling containers with different measured boxes are separate layout
+	 * frames (e.g. stacked info-blocks) — never flatten them together.
+	 *
+	 * @param array<string,mixed> $a First container.
+	 * @param array<string,mixed> $b Second container.
+	 */
+	private function has_distinct_sibling_geometry(array $a, array $b): bool
+	{
+		$ba = $a['settings']['_h2e_bbox'] ?? null;
+		$bb = $b['settings']['_h2e_bbox'] ?? null;
+		if (!is_array($ba) || !is_array($bb)) {
+			return false;
+		}
+		$dy = abs((float) ($ba['y'] ?? 0) - (float) ($bb['y'] ?? 0));
+		$dx = abs((float) ($ba['x'] ?? 0) - (float) ($bb['x'] ?? 0));
+		$dh = abs((float) ($ba['height'] ?? 0) - (float) ($bb['height'] ?? 0));
+		$dw = abs((float) ($ba['width'] ?? 0) - (float) ($bb['width'] ?? 0));
+		return $dy > 8.0 || $dx > 8.0 || $dh > 8.0 || $dw > 24.0;
 	}
 
 	/**

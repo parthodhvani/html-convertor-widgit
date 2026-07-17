@@ -567,11 +567,39 @@ final class CompositePatternBuilder implements EngineInterface
 			);
 		}
 
+		$settings = array('social_icon_list' => $list);
+		$gap = $this->css_gap_px($node);
+		if ($gap > 0) {
+			$settings['gap'] = array(
+				'unit' => 'px',
+				'size' => $gap,
+			);
+		}
+
 		return array(
 			'type' => 'social-icons',
 			'role' => 'social_icons',
-			'settings' => array('social_icon_list' => $list),
+			'settings' => $settings,
 		);
+	}
+
+	/**
+	 * @param array<string,mixed> $node Node.
+	 */
+	private function css_gap_px(array $node): float
+	{
+		$gap = (float) ($node['layoutConstraint']['gap'] ?? $node['whitespace']['gap'] ?? 0);
+		if ($gap > 0) {
+			return round($gap);
+		}
+		$raw = $node['s']['gap'] ?? null;
+		if (is_numeric($raw)) {
+			return (float) $raw;
+		}
+		if (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+			return (float) $m[1];
+		}
+		return 0.0;
 	}
 
 	/**
@@ -835,6 +863,18 @@ final class CompositePatternBuilder implements EngineInterface
 	 */
 	private function try_star_rating(array $node, string $role, string $cls): ?array
 	{
+		// Never collapse FAQ / form / card trees into a star widget because
+		// body copy mentioned "rating" or included a ★ glyph.
+		if (in_array($role, array('faq', 'accordion', 'form_block', 'testimonial', 'card', 'cta_block', 'footer_band', 'social_icons'), true)) {
+			return null;
+		}
+		if (preg_match('/\b(faq|accordion|disclosure|testimonial|form)\b/', $cls)) {
+			return null;
+		}
+		if (count((array) ($node['children'] ?? array())) >= 2) {
+			return null;
+		}
+
 		$text = trim((string) ($node['text'] ?? ''));
 		$html = (string) ($node['html'] ?? '');
 		$combined = $text . ' ' . $html . ' ' . $cls;

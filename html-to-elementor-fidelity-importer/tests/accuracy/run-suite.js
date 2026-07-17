@@ -36,10 +36,17 @@ const DEFAULT_FIXTURES = [
   'petra/angebot-conversion-ready.html',
   'petra/contact.html',
   'petra/blog.html',
+  'petra/blog-detail.html',
+  'petra/buchen.html',
+  'petra/vortraege.html',
+  'petra/feedbacks.html',
   'bootstrap-grid.html',
   'dark-saas.html',
   'portfolio-absolute.html',
   'ecommerce-grid.html',
+  'dashboard-analytics.html',
+  'agency-tailwind.html',
+  'blog-magazine.html',
 ];
 
 function parseArgs(argv) {

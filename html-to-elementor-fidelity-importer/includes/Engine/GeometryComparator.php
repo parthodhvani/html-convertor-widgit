@@ -144,11 +144,16 @@ final class GeometryComparator implements EngineInterface
 	private function walk_source_frames(array $node, array &$frames, string $section, float $base_x, float $base_y, bool $is_root): void
 	{
 		$box = $this->normalized_bbox($node, $base_x, $base_y);
-		$significant = $is_root
+		// Decorative hairlines are rarely emitted as Elementor frames.
+		$hairline = ($box['width'] > 0 && $box['width'] <= 2.0) || ($box['height'] > 0 && $box['height'] <= 2.0);
+		// Atomic form fragments are absorbed into a native Form widget.
+		$form_leaf = !empty($node['atomic']) && 'form_block' === (string) ($node['layoutRole'] ?? '');
+
+		$significant = !$hairline && !$form_leaf && ($is_root
 			|| !empty($node['layoutConstraint'])
 			|| !empty($node['layoutRole'])
 			|| !empty($node['atomic'])
-			|| ($box['width'] > 0 && $box['height'] > 0 && $this->has_visual_weight($node));
+			|| ($box['width'] > 0 && $box['height'] > 0 && $this->has_visual_weight($node)));
 
 		if ($significant && $box['width'] > 0 && $box['height'] > 0) {
 			$constraint = $node['layoutConstraint'] ?? array();
@@ -335,7 +340,9 @@ final class GeometryComparator implements EngineInterface
 			$best_score = PHP_FLOAT_MAX;
 			$best_ei = -1;
 
-			// Same CSS class: pick the nearest instance (not the first).
+			// Same CSS class: pick the nearest same-type instance first
+			// (container↔container), so composite wrappers are not paired with
+			// their inner widget leaf that reuses the parent class.
 			if ('' !== ($s['cls'] ?? '')) {
 				foreach ($emitted as $ei => $e) {
 					if (isset($used[$ei])) {
@@ -344,7 +351,8 @@ final class GeometryComparator implements EngineInterface
 					if ($s['cls'] !== ($e['cls'] ?? '')) {
 						continue;
 					}
-					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.25;
+					$type_penalty = (($s['type'] ?? '') === ($e['type'] ?? '')) ? 0.0 : 120.0;
+					$score = $this->position_delta($s, $e) + $this->size_delta($s, $e) * 0.25 + $type_penalty;
 					if ($score < $best_score) {
 						$best_score = $score;
 						$best = $e;
@@ -376,6 +384,14 @@ final class GeometryComparator implements EngineInterface
 					if ('' === $s_cls || '' === $e_cls) {
 						// Anonymous nodes: require proximity to avoid random pairing.
 						if ($score > 160.0) {
+							continue;
+						}
+						// Reject pairing a small icon leaf to a wide composite widget.
+						$sw = max(1.0, (float) ($s['width'] ?? 0));
+						$ew = max(1.0, (float) ($e['width'] ?? 0));
+						$sh = max(1.0, (float) ($s['height'] ?? 0));
+						$eh = max(1.0, (float) ($e['height'] ?? 0));
+						if ($sw / $ew > 3.0 || $ew / $sw > 3.0 || $sh / $eh > 3.0 || $eh / $sh > 3.0) {
 							continue;
 						}
 					}
