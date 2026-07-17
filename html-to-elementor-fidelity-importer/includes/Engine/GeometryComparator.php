@@ -141,7 +141,7 @@ final class GeometryComparator implements EngineInterface
 	 * @param float                            $base_y  Section base Y.
 	 * @param bool                             $is_root Root flag.
 	 */
-	private function walk_source_frames(array $node, array &$frames, string $section, float $base_x, float $base_y, bool $is_root): void
+	private function walk_source_frames(array $node, array &$frames, string $section, float $base_x, float $base_y, bool $is_root, bool $inside_collapsed = false): void
 	{
 		$box = $this->normalized_bbox($node, $base_x, $base_y);
 		// Decorative hairlines are rarely emitted as Elementor frames.
@@ -149,13 +149,18 @@ final class GeometryComparator implements EngineInterface
 		// Atomic form fragments are absorbed into a native Form widget.
 		$form_leaf = !empty($node['atomic']) && 'form_block' === (string) ($node['layoutRole'] ?? '');
 
+		$role = (string) ($node['layoutRole'] ?? '');
+		// Pure composites collapse to one Elementor widget — count the root
+		// frame only, not nested who/stack/icon leaves that no longer exist.
+		$collapses = in_array($role, array('testimonial', 'social_icons', 'pricing', 'form_block', 'icon_box'), true);
+
 		$significant = !$hairline && !$form_leaf && ($is_root
 			|| !empty($node['layoutConstraint'])
 			|| !empty($node['layoutRole'])
 			|| !empty($node['atomic'])
 			|| ($box['width'] > 0 && $box['height'] > 0 && $this->has_visual_weight($node)));
 
-		if ($significant && $box['width'] > 0 && $box['height'] > 0) {
+		if (!$inside_collapsed && $significant && $box['width'] > 0 && $box['height'] > 0) {
 			$constraint = $node['layoutConstraint'] ?? array();
 			$whitespace = $node['whitespace'] ?? array();
 			$frames[] = array(
@@ -173,7 +178,7 @@ final class GeometryComparator implements EngineInterface
 				'gap' => !empty($node['atomic'])
 					? 0.0
 					: $this->source_gap_px($node, $constraint, $whitespace),
-				'role' => (string) ($node['layoutRole'] ?? ''),
+				'role' => $role,
 			);
 		}
 
@@ -181,7 +186,15 @@ final class GeometryComparator implements EngineInterface
 			if (!is_array($child)) {
 				continue;
 			}
-			$this->walk_source_frames($child, $frames, $section, $base_x, $base_y, false);
+			$this->walk_source_frames(
+				$child,
+				$frames,
+				$section,
+				$base_x,
+				$base_y,
+				false,
+				$inside_collapsed || $collapses
+			);
 		}
 	}
 

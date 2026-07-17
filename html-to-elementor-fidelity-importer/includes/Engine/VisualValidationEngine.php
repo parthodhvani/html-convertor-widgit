@@ -199,25 +199,30 @@ final class VisualValidationEngine implements EngineInterface
 	 * @param int                      $painted    Painted node count.
 	 * @param int                      $gradients  Gradient node count.
 	 */
-	private function count_paint($node, int &$painted, int &$gradients): void
+	private function count_paint($node, int &$painted, int &$gradients, bool $inside_collapsed = false): void
 	{
 		if (!is_array($node)) {
 			return;
 		}
+		$role = (string) ($node['layoutRole'] ?? '');
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		$collapses = in_array($role, array('testimonial', 'social_icons', 'pricing', 'form_block', 'icon_box'), true)
+			|| (bool) preg_match('/\b(socials?|social-icons|social-links)\b/', $cls);
+
 		$s = $node['s'] ?? array();
 		$bg = (string) ($s['bg'] ?? '');
 		$bg_img = (string) ($s['bgImg'] ?? '');
 		$has_solid = '' !== $bg && 'transparent' !== strtolower($bg) && false === stripos($bg, 'rgba(0, 0, 0, 0)');
 		$has_grad = false !== stripos($bg_img, 'gradient') || false !== stripos($bg, 'gradient');
 		$has_img = (bool) preg_match('/url\(/i', $bg_img);
-		if ($has_solid || $has_grad || $has_img) {
+		if (!$inside_collapsed && ($has_solid || $has_grad || $has_img)) {
 			++$painted;
 			if ($has_grad) {
 				++$gradients;
 			}
 		}
 		foreach ((array) ($node['children'] ?? array()) as $child) {
-			$this->count_paint($child, $painted, $gradients);
+			$this->count_paint($child, $painted, $gradients, $inside_collapsed || $collapses);
 		}
 	}
 
