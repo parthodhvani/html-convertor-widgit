@@ -277,12 +277,27 @@ final class WidgetClassifier
             return array('kind' => 'fallback');
         }
 
+        // Button chrome (class or filled+padded) → Button; else linked text.
+        $cls = strtolower((string) ($node['cls'] ?? ''));
+        $s = $node['s'] ?? array();
+        $has_chrome = preg_match('/\b(btn|button|cta)\b/', $cls)
+            || (!empty($s['bg']) && ((float) ($s['pt'] ?? 0) + (float) ($s['pb'] ?? 0) + (float) ($s['pl'] ?? 0) + (float) ($s['pr'] ?? 0)) >= 6);
+        if ($has_chrome) {
+            return array(
+                'kind' => 'widget',
+                'type' => 'button',
+                'settings' => array(
+                    'text' => $text,
+                    'link' => array('url' => $href, 'is_external' => '', 'nofollow' => ''),
+                ),
+            );
+        }
+
         return array(
             'kind' => 'widget',
-            'type' => 'button',
+            'type' => 'text-editor',
             'settings' => array(
-                'text' => $text,
-                'link' => array('url' => $href, 'is_external' => '', 'nofollow' => ''),
+                'editor' => '<p><a href="' . esc_url($href) . '">' . esc_html($text) . '</a></p>',
             ),
         );
     }
@@ -299,7 +314,8 @@ final class WidgetClassifier
             if ('' !== $text) {
                 $items[] = array(
                     'text' => $text,
-                    'selected_icon' => array('value' => 'fas fa-check', 'library' => 'fa-solid'),
+                    // Do not invent icons the source never had.
+                    'selected_icon' => array('value' => '', 'library' => ''),
                 );
             }
         }
@@ -366,10 +382,21 @@ final class WidgetClassifier
             );
         }
         if (preg_match('#(google\.[a-z.]+/maps|maps\.google)#i', $src)) {
+            $address = '';
+            if (preg_match('/[?&]q=([^&]+)/i', $src, $m)) {
+                $address = rawurldecode(str_replace('+', ' ', $m[1]));
+            } elseif (preg_match('/[?&]query=([^&]+)/i', $src, $m)) {
+                $address = rawurldecode(str_replace('+', ' ', $m[1]));
+            } elseif (preg_match('/@(-?\d+\.\d+),(-?\d+\.\d+)/', $src, $m)) {
+                $address = $m[1] . ', ' . $m[2];
+            }
             return array(
                 'kind' => 'widget',
                 'type' => 'google_maps',
-                'settings' => array('address' => '', 'custom_height' => array('unit' => 'px', 'size' => 360)),
+                'settings' => array(
+                    'address' => $address,
+                    'custom_height' => array('unit' => 'px', 'size' => 360),
+                ),
             );
         }
         return array('kind' => 'fallback');

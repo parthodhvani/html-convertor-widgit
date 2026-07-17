@@ -116,6 +116,7 @@ final class VisualValidationEngine implements EngineInterface
 			'compare' => $context['compare'] ?? null,
 			'constraint_coverage' => $this->constraint_coverage($sections),
 			'alignment_coverage' => (int) ($geo['alignment_score'] ?? 0),
+			'scoring_mode' => $screenshot > 0 ? 'screenshot_primary' : 'geometry_primary',
 		));
 	}
 

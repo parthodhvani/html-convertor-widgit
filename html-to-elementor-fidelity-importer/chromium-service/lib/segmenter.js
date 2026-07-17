@@ -27,9 +27,12 @@ function browserPageSegmenter() {
   const CAPTURED_PROPS = [
     'display', 'position', 'backgroundColor', 'backgroundImage', 'color',
     'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight',
-    'marginTop', 'marginBottom', 'flexDirection', 'justifyContent',
-    'alignItems', 'textAlign', 'fontSize', 'fontFamily', 'lineHeight',
-    'borderTopWidth', 'borderBottomWidth', 'minHeight',
+    'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+    'flexDirection', 'justifyContent', 'alignItems', 'textAlign',
+    'fontSize', 'fontFamily', 'lineHeight',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius',
+    'minHeight', 'gap', 'columnGap', 'rowGap', 'gridTemplateColumns', 'overflow',
   ];
 
   const ATOMIC = new Set([
@@ -111,6 +114,7 @@ function browserPageSegmenter() {
   }
 
   // Capture the full computed style set for an element.
+  // Keys are abbreviated for IR size; keep legacy scalars (bdw/br) for PHP CssMapper.
   function styleSet(cs) {
     const s = {
       // Typography.
@@ -141,42 +145,137 @@ function browserPageSegmenter() {
     };
     if (cs.zIndex && cs.zIndex !== 'auto') s.z = cs.zIndex;
     if (cs.overflow && cs.overflow !== 'visible') s.ov = cs.overflow;
+    if (cs.overflowX && cs.overflowX !== 'visible') s.ovX = cs.overflowX;
+    if (cs.overflowY && cs.overflowY !== 'visible') s.ovY = cs.overflowY;
     if (cs.transform && cs.transform !== 'none') s.tf = cs.transform;
+    if (cs.transformOrigin && cs.transformOrigin !== '50% 50% 0px') s.tfo = cs.transformOrigin;
     if (cs.filter && cs.filter !== 'none') s.filter = cs.filter;
     if (cs.clipPath && cs.clipPath !== 'none') s.clip = cs.clipPath;
     if (cs.maskImage && cs.maskImage !== 'none') s.mask = cs.maskImage;
+    if (cs.mixBlendMode && cs.mixBlendMode !== 'normal') s.blend = cs.mixBlendMode;
+    if (cs.isolation && cs.isolation !== 'auto') s.isolation = cs.isolation;
+    if (cs.backdropFilter && cs.backdropFilter !== 'none') s.bdFilter = cs.backdropFilter;
+    else if (cs.webkitBackdropFilter && cs.webkitBackdropFilter !== 'none') s.bdFilter = cs.webkitBackdropFilter;
+    if (cs.contain && cs.contain !== 'none') s.contain = cs.contain;
+    if (cs.willChange && cs.willChange !== 'auto') s.willChange = cs.willChange;
+    if (cs.paintOrder && cs.paintOrder !== 'normal') s.paintOrder = cs.paintOrder;
+    if (cs.perspective && cs.perspective !== 'none') s.perspective = cs.perspective;
     if (cs.transition && cs.transition !== 'all 0s ease 0s') s.transition = cs.transition;
     if (cs.animationName && cs.animationName !== 'none') s.animation = cs.animationName;
+    if (cs.textShadow && cs.textShadow !== 'none') s.tsh = cs.textShadow;
+    if (cs.whiteSpace && cs.whiteSpace !== 'normal') s.ws = cs.whiteSpace;
+    if (cs.wordSpacing && cs.wordSpacing !== '0px') s.wsp = cs.wordSpacing;
+    if (cs.direction && cs.direction !== 'ltr') s.dir = cs.direction;
+
+    // Flex container + item props (item props matter for absolute fidelity).
     if (cs.display.indexOf('flex') !== -1) {
       s.fd = cs.flexDirection;
       s.fw_wrap = cs.flexWrap;
+      if (cs.alignContent && cs.alignContent !== 'normal') s.ac = cs.alignContent;
     }
+    const flexGrow = cs.flexGrow;
+    const flexShrink = cs.flexShrink;
+    const flexBasis = cs.flexBasis;
+    if (flexGrow && flexGrow !== '0') s.fg = flexGrow;
+    if (flexShrink && flexShrink !== '1') s.fsh = flexShrink;
+    if (flexBasis && flexBasis !== 'auto') s.fb = flexBasis;
+    if (cs.order && cs.order !== '0') s.ord = cs.order;
+    if (cs.alignSelf && cs.alignSelf !== 'auto') s.aself = cs.alignSelf;
+
+    // Grid container tracks / areas.
     if (cs.display.indexOf('grid') !== -1) {
       s.gtc = cs.gridTemplateColumns;
+      s.gtr = cs.gridTemplateRows;
+      if (cs.gridTemplateAreas && cs.gridTemplateAreas !== 'none') s.gta = cs.gridTemplateAreas;
+      if (cs.gridAutoFlow && cs.gridAutoFlow !== 'row') s.gaf = cs.gridAutoFlow;
+      if (cs.justifyItems && cs.justifyItems !== 'normal') s.ji = cs.justifyItems;
     }
+    if (cs.gridColumn && cs.gridColumn !== 'auto') s.gc = cs.gridColumn;
+    if (cs.gridRow && cs.gridRow !== 'auto') s.gr = cs.gridRow;
+
     if (cs.justifyContent && cs.justifyContent !== 'normal') s.jc = cs.justifyContent;
     if (cs.alignItems && cs.alignItems !== 'normal') s.ai = cs.alignItems;
     const gap = cs.columnGap !== 'normal' ? cs.columnGap : (cs.gap !== 'normal' ? cs.gap : '');
     if (gap) s.gap = gap;
-    // Background.
+    if (cs.rowGap && cs.rowGap !== 'normal' && cs.rowGap !== gap) s.rgap = cs.rowGap;
+    if (cs.columnGap && cs.columnGap !== 'normal' && cs.columnGap !== gap) s.cgap = cs.columnGap;
+
+    // Background (preserve gradients as structured flag + raw image).
     if (!transparent(cs.backgroundColor)) s.bg = cs.backgroundColor;
     if (cs.backgroundImage && cs.backgroundImage !== 'none') {
       s.bgImg = cs.backgroundImage;
       s.bgSize = cs.backgroundSize;
       s.bgPos = cs.backgroundPosition;
       s.bgRepeat = cs.backgroundRepeat;
+      if (/gradient\(/i.test(cs.backgroundImage)) s.bgGrad = true;
     }
-    // Border (top edge as representative + radius).
-    if (num(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none') {
-      s.bdw = num(cs.borderTopWidth);
-      s.bds = cs.borderTopStyle;
-      s.bdc = cs.borderTopColor;
+
+    // Per-side borders (legacy bdw/bds/bdc = max/first non-zero for backcompat).
+    const bdwT = num(cs.borderTopWidth);
+    const bdwR = num(cs.borderRightWidth);
+    const bdwB = num(cs.borderBottomWidth);
+    const bdwL = num(cs.borderLeftWidth);
+    const bdsT = cs.borderTopStyle;
+    const bdsR = cs.borderRightStyle;
+    const bdsB = cs.borderBottomStyle;
+    const bdsL = cs.borderLeftStyle;
+    const sides = [
+      { w: bdwT, st: bdsT, c: cs.borderTopColor, k: 'T' },
+      { w: bdwR, st: bdsR, c: cs.borderRightColor, k: 'R' },
+      { w: bdwB, st: bdsB, c: cs.borderBottomColor, k: 'B' },
+      { w: bdwL, st: bdsL, c: cs.borderLeftColor, k: 'L' },
+    ];
+    let maxW = 0;
+    let repStyle = '';
+    let repColor = '';
+    sides.forEach((side) => {
+      if (side.w > 0 && side.st && side.st !== 'none') {
+        s['bdw' + side.k] = side.w;
+        s['bds' + side.k] = side.st;
+        if (!transparent(side.c)) s['bdc' + side.k] = side.c;
+        if (side.w > maxW) {
+          maxW = side.w;
+          repStyle = side.st;
+          repColor = side.c;
+        }
+      }
+    });
+    if (maxW > 0) {
+      s.bdw = maxW;
+      s.bds = repStyle;
+      if (!transparent(repColor)) s.bdc = repColor;
+      // Structured per-side widths for CssMapper dimensions controls.
+      s.bd = {
+        t: bdsT !== 'none' ? bdwT : 0,
+        r: bdsR !== 'none' ? bdwR : 0,
+        b: bdsB !== 'none' ? bdwB : 0,
+        l: bdsL !== 'none' ? bdwL : 0,
+      };
     }
-    const radius = num(cs.borderTopLeftRadius);
-    if (radius > 0) s.br = radius;
+
+    // Per-corner radii (legacy br = top-left / max for backcompat).
+    const brTL = num(cs.borderTopLeftRadius);
+    const brTR = num(cs.borderTopRightRadius);
+    const brBR = num(cs.borderBottomRightRadius);
+    const brBL = num(cs.borderBottomLeftRadius);
+    if (brTL > 0 || brTR > 0 || brBR > 0 || brBL > 0) {
+      s.brTL = brTL;
+      s.brTR = brTR;
+      s.brBR = brBR;
+      s.brBL = brBL;
+      s.br = Math.max(brTL, brTR, brBR, brBL);
+      s.brad = { tl: brTL, tr: brTR, br: brBR, bl: brBL };
+    }
+
     // Effects.
     if (cs.boxShadow && cs.boxShadow !== 'none') s.sh = cs.boxShadow;
     if (cs.opacity && parseFloat(cs.opacity) < 1) s.op = parseFloat(cs.opacity);
+    if (cs.position === 'sticky' || cs.position === 'fixed' || cs.position === 'absolute') {
+      const inset = {
+        top: cs.top, right: cs.right, bottom: cs.bottom, left: cs.left,
+      };
+      if (Object.values(inset).some((v) => v && v !== 'auto')) s.inset = inset;
+    }
     return s;
   }
 
@@ -317,9 +416,49 @@ function browserPageSegmenter() {
         filter: cs.filter,
         mixBlendMode: cs.mixBlendMode,
         isolation: cs.isolation,
+        backdropFilter: cs.backdropFilter || cs.webkitBackdropFilter || 'none',
+        overflow: cs.overflow,
+        clipPath: cs.clipPath,
+        contain: cs.contain,
+        willChange: cs.willChange,
+        pointerEvents: cs.pointerEvents,
+        visibility: cs.visibility,
       },
       cssVars: vars,
     };
+
+    // Phase 12 — capture measured text metrics for atomic/text leaves.
+    const direct = node.text;
+    if (direct && (ATOMIC.has(tag) || tag === 'span' || tag === 'a' || tag === 'li')) {
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const tr = range.getBoundingClientRect();
+        const fontPx = num(cs.fontSize) || 16;
+        let lineHeightPx = num(cs.lineHeight);
+        // CSS "normal" parses to 0 — recover from measured box / font size.
+        if (lineHeightPx <= 0) {
+          lineHeightPx = tr.height > 0 ? num(tr.height) : Math.round(fontPx * 1.2 * 100) / 100;
+        }
+        const lineCount = Math.max(1, Math.round(tr.height / Math.max(1, lineHeightPx || fontPx)));
+        node.typography = {
+          textWidth: num(tr.width),
+          textHeight: num(tr.height),
+          lineCount,
+          fontSizePx: fontPx,
+          lineHeightPx,
+          letterSpacingPx: num(cs.letterSpacing),
+          wordSpacingPx: num(cs.wordSpacing),
+          fontAscentApprox: Math.round(fontPx * 0.8 * 100) / 100,
+          fontDescentApprox: Math.round(fontPx * 0.2 * 100) / 100,
+          whiteSpace: cs.whiteSpace,
+          wordBreak: cs.wordBreak,
+          overflowWrap: cs.overflowWrap,
+        };
+      } catch (e) {
+        // ignore measurement failures
+      }
+    }
 
     if (tag === 'img') {
       node.src = el.currentSrc || el.getAttribute('src') || '';
@@ -435,6 +574,103 @@ function browserPageSegmenter() {
     return node;
   }
 
+  function bgKey(cs) {
+    const img = cs.backgroundImage && cs.backgroundImage !== 'none' ? cs.backgroundImage : '';
+    const color = transparent(cs.backgroundColor) ? 'transparent' : cs.backgroundColor;
+    return color + '|' + img;
+  }
+
+  /**
+   * Visual segmentation: prefer whitespace gaps + background continuity over
+   * raw DOM siblings. Groups consecutive siblings that share background and
+   * have small vertical gaps; splits on large whitespace or bg changes.
+   *
+   * @param {Element[]} els Visible sibling candidates.
+   * @returns {Element[]} Section roots (may be original els or wrappers).
+   */
+  function visualSegment(els) {
+    if (els.length <= 1) return els;
+
+    const meta = els.map((el) => {
+      const cs = window.getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        el,
+        y: r.y,
+        bottom: r.y + r.height,
+        h: r.height,
+        bg: bgKey(cs),
+        semantic: isSemantic(el),
+      };
+    });
+
+    // Sort by visual top (DOM order usually matches, but absolute siblings may not).
+    meta.sort((a, b) => {
+      if (Math.abs(a.y - b.y) > 1) return a.y - b.y;
+      return (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1;
+    });
+
+    const gaps = [];
+    for (let i = 0; i < meta.length - 1; i += 1) {
+      gaps.push(Math.max(0, meta[i + 1].y - meta[i].bottom));
+    }
+    const medianGap = gaps.length
+      ? gaps.slice().sort((a, b) => a - b)[Math.floor(gaps.length / 2)]
+      : 0;
+    // Large whitespace separator: max(48px, 2.5× median inter-sibling gap).
+    const splitGap = Math.max(48, medianGap * 2.5);
+
+    const groups = [];
+    let current = [meta[0]];
+    for (let i = 1; i < meta.length; i += 1) {
+      const prev = meta[i - 1];
+      const cur = meta[i];
+      const gap = Math.max(0, cur.y - prev.bottom);
+      const bgBreak = prev.bg !== cur.bg && prev.bg !== 'transparent|' && cur.bg !== 'transparent|';
+      const semanticBreak = cur.semantic && prev.semantic && gap >= 16;
+      if (gap >= splitGap || bgBreak || semanticBreak) {
+        groups.push(current);
+        current = [cur];
+      } else {
+        current.push(cur);
+      }
+    }
+    groups.push(current);
+
+    // Flatten groups: single-element groups stay as-is; multi-element groups
+    // that already share a common parent keep the first as section root only
+    // when they were already separate — prefer emitting each semantic block.
+    const out = [];
+    groups.forEach((group) => {
+      if (group.length === 1) {
+        out.push(group[0].el);
+        return;
+      }
+      // Landmark / semantic blocks must stay independent sections — merging
+      // nav+hero+services destroys geometry matching and layered heroes.
+      const landmark = (g) => {
+        const t = (g.el.tagName || '').toUpperCase();
+        return g.semantic || ['SECTION', 'HEADER', 'FOOTER', 'NAV', 'MAIN', 'ASIDE', 'ARTICLE'].includes(t)
+          || /\b(nav|navbar|hero|banner|footer|header)\b/i.test(g.el.className || '');
+      };
+      if (group.some(landmark)) {
+        group.forEach((g) => out.push(g.el));
+        return;
+      }
+      // Non-semantic cluster → tag every member with the same visual group id
+      // so PHP VisualTreeBuilder can merge them into one visual section.
+      const gid = 'vg-' + String(out.length);
+      const primary = group.reduce((best, g) => (g.h > best.h ? g : best), group[0]);
+      group.forEach((g) => {
+        g.el.setAttribute('data-h2e-visual-group', gid);
+      });
+      primary.el.setAttribute('data-h2e-visual-section', '1');
+      group.forEach((g) => out.push(g.el));
+    });
+
+    return out.length ? out : els;
+  }
+
   // 1. Find the content container by descending single non-semantic wrappers.
   let container = document.body;
   let guard = 0;
@@ -452,6 +688,9 @@ function browserPageSegmenter() {
   if (candidates.length === 0) {
     candidates = [container];
   }
+
+  // Phase 8: visual segmentation overrides pure DOM sibling order.
+  candidates = visualSegment(candidates);
 
   const sections = [];
   candidates.forEach((el, index) => {
@@ -476,6 +715,8 @@ function browserPageSegmenter() {
       bbox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       styles,
       background: cs.backgroundColor,
+      visualGroup: el.getAttribute('data-h2e-visual-group') || '',
+      visualSection: el.hasAttribute('data-h2e-visual-section'),
       tree,
     });
   });

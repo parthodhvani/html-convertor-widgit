@@ -40,7 +40,9 @@ final class VisualReconstructionOrchestrator
 	private VisualValidationEngine $validation;
 	private GeometryComparator $geometry;
 	private PixelRepairEngine $repair;
+	private ClosedLoopValidationEngine $closed_loop;
 	private ImportQualityReport $quality;
+	private bool $use_closed_loop;
 
 	/** @var array<string,mixed> */
 	private array $last_metadata = array();
@@ -49,6 +51,7 @@ final class VisualReconstructionOrchestrator
 	{
 		$threshold = (int) ($opts['confidence'] ?? 95);
 		$max_repair = (int) ($opts['max_repair_iterations'] ?? 3);
+		$this->use_closed_loop = (bool) ($opts['closed_loop'] ?? true);
 
 		$this->extraction = new VisualExtractionEngine();
 		$this->visual_tree = new VisualTreeBuilder();
@@ -68,6 +71,7 @@ final class VisualReconstructionOrchestrator
 		$this->validation = new VisualValidationEngine($threshold, $max_repair);
 		$this->geometry = new GeometryComparator();
 		$this->repair = new PixelRepairEngine($max_repair);
+		$this->closed_loop = new ClosedLoopValidationEngine($threshold, $max_repair);
 		$this->quality = new ImportQualityReport();
 	}
 
@@ -139,19 +143,35 @@ final class VisualReconstructionOrchestrator
 	 */
 	public function validate(array $elementor_data, array $context): array
 	{
-		$validation = $this->validation->score($elementor_data, $context);
+		$repaired = false;
+		$validation = array();
 
-		$repair_result = $this->repair->repair($elementor_data, array_merge($context, array(
-			'validation' => $validation,
-		)));
-
-		if ($repair_result['changed']) {
-			$elementor_data = $repair_result['data'];
+		// Prefer closed-loop screenshot validation when enabled (Phase 7).
+		if ($this->use_closed_loop) {
+			$loop = $this->closed_loop->run($elementor_data, $context);
+			$elementor_data = $loop['data'];
+			$validation = $loop['validation'];
+			$repaired = (bool) $loop['repaired'];
+			if (!empty($loop['preview_html'])) {
+				$context['preview_html'] = $loop['preview_html'];
+			}
+			if (!empty($loop['closed_loop'])) {
+				$context['closed_loop'] = $loop['closed_loop'];
+			}
+		} else {
 			$validation = $this->validation->score($elementor_data, $context);
-			$validation['iterations'] = $repair_result['iterations'];
-			$validation['repairs'] = $repair_result['repairs'];
-			if (isset($repair_result['geometry_similarity'])) {
-				$validation['geometry_similarity'] = $repair_result['geometry_similarity'];
+			$repair_result = $this->repair->repair($elementor_data, array_merge($context, array(
+				'validation' => $validation,
+			)));
+			if ($repair_result['changed']) {
+				$elementor_data = $repair_result['data'];
+				$validation = $this->validation->score($elementor_data, $context);
+				$validation['iterations'] = $repair_result['iterations'];
+				$validation['repairs'] = $repair_result['repairs'];
+				if (isset($repair_result['geometry_similarity'])) {
+					$validation['geometry_similarity'] = $repair_result['geometry_similarity'];
+				}
+				$repaired = true;
 			}
 		}
 
@@ -172,6 +192,7 @@ final class VisualReconstructionOrchestrator
 				'elementor_data' => $elementor_data,
 				'import_duration_ms' => (int) ($context['import_duration_ms'] ?? 0),
 				'container_compression' => $context['container_compression'] ?? array(),
+				'closed_loop' => $context['closed_loop'] ?? null,
 			)
 		);
 
@@ -179,7 +200,7 @@ final class VisualReconstructionOrchestrator
 			'data' => $elementor_data,
 			'validation' => $validation,
 			'quality' => $quality,
-			'repaired' => $repair_result['changed'],
+			'repaired' => $repaired,
 		);
 	}
 

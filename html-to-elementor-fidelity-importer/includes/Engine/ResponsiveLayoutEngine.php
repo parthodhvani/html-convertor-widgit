@@ -70,17 +70,34 @@ final class ResponsiveLayoutEngine implements EngineInterface
 	 */
 	private function infer_stack_rules(array &$node): void
 	{
-		$constraint = $node['layoutConstraint'] ?? array();
-		if ('row' === ($constraint['direction'] ?? '') && !empty($node['responsiveConstraints']['mobile_stack'])) {
-			$node['responsiveLayout'] = array(
-				'mobile' => array(
-					'flex_direction' => 'column',
-					'width' => array('unit' => '%', 'size' => 100),
-				),
-				'tablet' => array(
-					'flex_direction' => 'column',
-				),
+		$rc = $node['responsiveConstraints'] ?? array();
+		$layout = array();
+
+		if (!empty($rc['mobile_stack'])) {
+			$layout['mobile'] = array(
+				'flex_direction' => 'column',
+				'width' => array('unit' => '%', 'size' => 100),
 			);
+		} elseif (!empty($rc['mobile']['fd'])) {
+			$fd = strtolower((string) $rc['mobile']['fd']);
+			$layout['mobile'] = array(
+				'flex_direction' => (false !== strpos($fd, 'column')) ? 'column' : 'row',
+			);
+		}
+
+		if (!empty($rc['tablet_stack'])) {
+			$layout['tablet'] = array(
+				'flex_direction' => 'column',
+			);
+		} elseif (!empty($rc['tablet']['fd'])) {
+			$fd = strtolower((string) $rc['tablet']['fd']);
+			$layout['tablet'] = array(
+				'flex_direction' => (false !== strpos($fd, 'column')) ? 'column' : 'row',
+			);
+		}
+
+		if (!empty($layout)) {
+			$node['responsiveLayout'] = $layout;
 		}
 
 		foreach ((array) ($node['children'] ?? array()) as $i => $child) {

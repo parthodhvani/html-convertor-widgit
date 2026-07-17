@@ -113,7 +113,8 @@ final class WhitespaceAnalyzer implements EngineInterface
 				}
 			}
 
-			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0) {
+			if ($whitespace['padding']['top'] > 0 || $whitespace['padding']['left'] > 0
+				|| $whitespace['padding']['right'] > 0 || $whitespace['padding']['bottom'] > 0) {
 				$node['s']['pt'] = max((float) ($node['s']['pt'] ?? 0), $whitespace['padding']['top']);
 				$node['s']['pl'] = max((float) ($node['s']['pl'] ?? 0), $whitespace['padding']['left']);
 				$node['s']['pr'] = max((float) ($node['s']['pr'] ?? 0), $whitespace['padding']['right']);
@@ -221,6 +222,48 @@ final class WhitespaceAnalyzer implements EngineInterface
 				'bottom' => max(0, $parent_box['y'] + $parent_box['height'] - $max_b),
 			),
 		);
+	}
+
+	/**
+	 * Resolve row vs column from the parent constraint / flex direction / geometry.
+	 *
+	 * @param array<string,mixed>            $parent Parent node.
+	 * @param array<int,array<string,float>> $boxes  Child boxes.
+	 */
+	private function resolve_direction(array $parent, array $boxes): string
+	{
+		$constraint = $parent['layoutConstraint'] ?? array();
+		$dir = strtolower((string) ($constraint['direction'] ?? ''));
+		if ('row' === $dir || 'column' === $dir) {
+			return $dir;
+		}
+
+		$layout_type = strtolower((string) ($parent['layoutType'] ?? ''));
+		if ('row' === $layout_type || 'grid' === $layout_type) {
+			return 'row';
+		}
+		if ('stack' === $layout_type || 'column' === $layout_type) {
+			return 'column';
+		}
+
+		$fd = strtolower((string) ($parent['s']['fd'] ?? ''));
+		if (false !== strpos($fd, 'column')) {
+			return 'column';
+		}
+		if (false !== strpos($fd, 'row')) {
+			return 'row';
+		}
+
+		// Geometry fallback: dominant axis of sibling offsets.
+		if (count($boxes) >= 2) {
+			$dx = abs(($boxes[1]['x'] ?? 0) - ($boxes[0]['x'] ?? 0));
+			$dy = abs(($boxes[1]['y'] ?? 0) - ($boxes[0]['y'] ?? 0));
+			if ($dx > $dy + 4) {
+				return 'row';
+			}
+		}
+
+		return 'column';
 	}
 
 	/**

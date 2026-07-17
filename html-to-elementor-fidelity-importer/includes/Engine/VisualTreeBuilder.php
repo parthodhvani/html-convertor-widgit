@@ -44,8 +44,12 @@ final class VisualTreeBuilder implements EngineInterface
 	public function build(array $sections): array
 	{
 		$this->restructured = 0;
-		$out = array();
 
+		// Phase 8 — Chromium visual segmentation: merge sections that share a
+		// visualGroup id before DOM-driven restructuring. Visual grouping wins.
+		$sections = $this->merge_visual_sections($sections);
+
+		$out = array();
 		foreach ($sections as $section) {
 			$tree = $section['tree'] ?? null;
 			if (is_array($tree)) {
@@ -55,12 +59,161 @@ final class VisualTreeBuilder implements EngineInterface
 				$section['visual_tree'] = array(
 					'root_bbox' => Geometry::bbox($tree),
 					'restructured' => $this->restructured,
+					'visual_group' => (string) ($section['visualGroup'] ?? ''),
 				);
 			}
 			$out[] = $section;
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Merge consecutive Chromium sections that share a visualGroup id into one
+	 * section whose tree children are the former section roots (column stack).
+	 *
+	 * @param array<int,array<string,mixed>> $sections Sections.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function merge_visual_sections(array $sections): array
+	{
+		if (count($sections) < 2) {
+			return $sections;
+		}
+
+		$merged = array();
+		$i = 0;
+		$count = count($sections);
+		while ($i < $count) {
+			$current = $sections[$i];
+			$gid = trim((string) ($current['visualGroup'] ?? ''));
+			if ('' === $gid) {
+				$merged[] = $current;
+				++$i;
+				continue;
+			}
+
+			$group = array($current);
+			$j = $i + 1;
+			while ($j < $count) {
+				$next_gid = trim((string) ($sections[$j]['visualGroup'] ?? ''));
+				if ($next_gid !== $gid) {
+					break;
+				}
+				$group[] = $sections[$j];
+				++$j;
+			}
+
+			if (count($group) === 1) {
+				$merged[] = $current;
+				++$i;
+				continue;
+			}
+
+			// Never merge across landmark section tags — preserves hero/nav/footer
+			// geometry and layered absolute layouts.
+			if ($this->group_has_landmarks($group)) {
+				foreach ($group as $section) {
+					$merged[] = $section;
+				}
+				$i = $j;
+				continue;
+			}
+
+			$merged[] = $this->compose_visual_section($group, $gid);
+			$this->restructured += count($group) - 1;
+			$i = $j;
+		}
+
+		// Re-index.
+		foreach ($merged as $idx => $section) {
+			$merged[$idx]['index'] = $idx;
+		}
+
+		return $merged;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $group Sections.
+	 */
+	private function group_has_landmarks(array $group): bool
+	{
+		foreach ($group as $section) {
+			$tag = strtolower((string) ($section['tag'] ?? ''));
+			$cls = strtolower((string) ($section['classes'] ?? ($section['tree']['cls'] ?? '')));
+			if (!empty($section['semantic'])) {
+				return true;
+			}
+			if (in_array($tag, array('section', 'header', 'footer', 'nav', 'main', 'aside', 'article'), true)) {
+				return true;
+			}
+			if (preg_match('/\b(nav|navbar|hero|banner|footer|header)\b/', $cls)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $group Sections in one visual group.
+	 * @param string                         $gid   Group id.
+	 * @return array<string,mixed>
+	 */
+	private function compose_visual_section(array $group, string $gid): array
+	{
+		$primary = $group[0];
+		foreach ($group as $section) {
+			if (!empty($section['visualSection'])) {
+				$primary = $section;
+				break;
+			}
+		}
+
+		$children = array();
+		$min_x = PHP_FLOAT_MAX;
+		$min_y = PHP_FLOAT_MAX;
+		$max_x = 0.0;
+		$max_y = 0.0;
+		foreach ($group as $section) {
+			$tree = $section['tree'] ?? null;
+			if (!is_array($tree)) {
+				continue;
+			}
+			$box = Geometry::bbox($tree);
+			$min_x = min($min_x, $box['x']);
+			$min_y = min($min_y, $box['y']);
+			$max_x = max($max_x, $box['x'] + $box['width']);
+			$max_y = max($max_y, $box['y'] + $box['height']);
+			$tree['visualGroupMember'] = $gid;
+			$children[] = $tree;
+		}
+
+		$width = max(0.0, $max_x - $min_x);
+		$height = max(0.0, $max_y - $min_y);
+		$primary['tree'] = array(
+			'tag' => 'div',
+			'cls' => 'h2e-visual-section',
+			'visualGroup' => 'column',
+			'visualSectionRoot' => true,
+			's' => array(
+				'disp' => 'flex',
+				'fd' => 'column',
+				'w' => $width,
+				'h' => $height,
+			),
+			'bbox' => array(
+				'x' => $min_x === PHP_FLOAT_MAX ? 0.0 : $min_x,
+				'y' => $min_y === PHP_FLOAT_MAX ? 0.0 : $min_y,
+				'width' => $width,
+				'height' => $height,
+			),
+			'children' => $children,
+		);
+		$primary['visualGroup'] = $gid;
+		$primary['visualSection'] = true;
+		$primary['bbox'] = $primary['tree']['bbox'];
+
+		return $primary;
 	}
 
 	/**
@@ -158,7 +311,9 @@ final class VisualTreeBuilder implements EngineInterface
 		$col_score = 0;
 
 		for ($i = 0; $i < count($boxes) - 1; ++$i) {
-			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1]) && Geometry::horizontal_gap($boxes[$i], $boxes[$i + 1]) > 0) {
+			// Flush flex/grid tracks often have hgap=0 (gutters via padding).
+			// Overlapping Y is enough to count as a visual row.
+			if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1])) {
 				++$row_score;
 			}
 			if (Geometry::overlaps_x($boxes[$i], $boxes[$i + 1]) && Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 0) {
@@ -171,7 +326,7 @@ final class VisualTreeBuilder implements EngineInterface
 		$similar_height = $this->shared_size_axis($boxes, 'height');
 		$similar_width = $this->shared_size_axis($boxes, 'width');
 
-		if (($row_score > $col_score && $row_score >= 1) || ($similar_height && $shared_bg)) {
+		if (($row_score > $col_score && $row_score >= 1) || ($similar_height && $shared_bg && $row_score >= $col_score)) {
 			usort($siblings, function (array $a, array $b): int {
 				return Geometry::bbox($a)['x'] <=> Geometry::bbox($b)['x'];
 			});

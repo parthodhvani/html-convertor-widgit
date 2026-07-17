@@ -78,7 +78,13 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->alignment($node, 'align'),
 				$this->mapper->spacing($node, true),
 				$this->mapper->border($node),
-				$this->mapper->box_shadow($node)
+				$this->mapper->box_shadow($node),
+				$this->mapper->image_media($node),
+				$this->mapper->effects($node)
+			),
+			default => array_merge(
+				$this->mapper->spacing($node, false),
+				$this->mapper->effects($node)
 			),
 			// Painted composites must retain browser backgrounds (incl. gradients).
 			'call-to-action', 'price-table', 'icon-box', 'testimonial' => $this->map_painted_composite($node, $widget_type),
@@ -273,6 +279,7 @@ final class CssMappingEngine implements EngineInterface
 			$this->mapper->border($node),
 			$this->mapper->box_shadow($node),
 			$this->mapper->sizing($node),
+			$this->mapper->effects($node),
 			$this->map_constraint_spacing($node, $is_section)
 		);
 

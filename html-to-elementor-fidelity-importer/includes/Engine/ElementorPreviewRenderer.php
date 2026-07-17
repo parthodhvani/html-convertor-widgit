@@ -1,0 +1,404 @@
+<?php
+/**
+ * Renders Elementor JSON as approximate HTML for closed-loop Chromium compare.
+ *
+ * @package HtmlToElementor
+ */
+
+declare(strict_types=1);
+
+namespace HtmlToElementor\Engine;
+
+if (!defined('ABSPATH')) {
+	exit;
+}
+
+/**
+ * Elementor Preview Renderer — produces a flex-based HTML approximation of
+ * generated Elementor data so Chromium can screenshot it without WordPress.
+ *
+ * This is intentionally a fidelity oracle, not a full Elementor runtime.
+ */
+final class ElementorPreviewRenderer implements EngineInterface
+{
+
+	public function name(): string
+	{
+		return 'elementor_preview_renderer';
+	}
+
+	/**
+	 * Build a full HTML document from Elementor _elementor_data.
+	 *
+	 * @param array<int,array<string,mixed>> $elements Elementor tree.
+	 * @param array<string,mixed>            $opts     { title, width, css }.
+	 */
+	public function render(array $elements, array $opts = array()): string
+	{
+		$title = htmlspecialchars((string) ($opts['title'] ?? 'H2E Preview'), ENT_QUOTES);
+		$width = (int) ($opts['width'] ?? 1440);
+		$extra_css = (string) ($opts['css'] ?? '');
+		$body = '';
+		foreach ($elements as $el) {
+			if (is_array($el)) {
+				$body .= $this->render_element($el);
+			}
+		}
+
+		return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{$title}</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{width:{$width}px;max-width:100%;font-family:system-ui,sans-serif}
+.e-con{display:flex;flex-direction:column;width:100%;position:relative}
+.e-con.e-con-full{width:100%}
+.e-con img{max-width:100%;height:auto;display:block}
+.e-widget{width:100%}
+.e-widget-heading{margin:0}
+.e-widget-text p{margin:0 0 .5em}
+.e-widget-button a{
+  display:inline-flex;align-items:center;justify-content:center;
+  text-decoration:none;padding:.6em 1.2em;border-radius:3px
+}
+{$extra_css}
+</style>
+</head>
+<body>
+{$body}
+</body>
+</html>
+HTML;
+	}
+
+	/**
+	 * @param array<string,mixed> $el Element.
+	 */
+	private function render_element(array $el): string
+	{
+		$type = (string) ($el['elType'] ?? '');
+		if ('container' === $type) {
+			return $this->render_container($el);
+		}
+		if ('widget' === $type) {
+			return $this->render_widget($el);
+		}
+		return '';
+	}
+
+	/**
+	 * @param array<string,mixed> $el Container.
+	 */
+	private function render_container(array $el): string
+	{
+		$s = (array) ($el['settings'] ?? array());
+		$id = htmlspecialchars((string) ($el['id'] ?? ''), ENT_QUOTES);
+		$style = $this->container_style($s);
+		$cls = 'e-con e-con-full elementor-element-' . $id;
+		if (!empty($s['_css_classes'])) {
+			$cls .= ' ' . htmlspecialchars((string) $s['_css_classes'], ENT_QUOTES);
+		}
+		$inner = '';
+		foreach ((array) ($el['elements'] ?? array()) as $child) {
+			if (is_array($child)) {
+				$inner .= $this->render_element($child);
+			}
+		}
+		$custom = trim((string) ($s['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
+		$attr_style = $style;
+		if ('' !== $custom) {
+			$attr_style .= ';' . $custom;
+		}
+		return '<div class="' . $cls . '" style="' . htmlspecialchars($attr_style, ENT_QUOTES) . '">' . $inner . '</div>';
+	}
+
+	/**
+	 * @param array<string,mixed> $s Settings.
+	 */
+	private function container_style(array $s): string
+	{
+		$css = array();
+		$css[] = 'display:flex';
+		$css[] = 'flex-direction:' . ($s['flex_direction'] ?? 'column');
+		if (!empty($s['flex_wrap'])) {
+			$css[] = 'flex-wrap:' . $s['flex_wrap'];
+		}
+		if (!empty($s['flex_justify_content'])) {
+			$css[] = 'justify-content:' . $s['flex_justify_content'];
+		}
+		if (!empty($s['flex_align_items'])) {
+			$css[] = 'align-items:' . $s['flex_align_items'];
+		}
+		$gap = $s['flex_gap']['size'] ?? null;
+		if (null !== $gap && '' !== $gap) {
+			$css[] = 'gap:' . (float) $gap . 'px';
+		}
+		$css = array_merge($css, $this->box_styles($s));
+		$css = array_merge($css, $this->background_styles($s));
+		if (!empty($s['min_height']['size'])) {
+			$css[] = 'min-height:' . (float) $s['min_height']['size'] . ($s['min_height']['unit'] ?? 'px');
+		}
+		if (!empty($s['width']['size'])) {
+			$unit = (string) ($s['width']['unit'] ?? '%');
+			$css[] = 'width:' . (float) $s['width']['size'] . $unit;
+			$css[] = 'max-width:100%';
+		}
+		if (!empty($s['position'])) {
+			$css[] = 'position:' . $s['position'];
+		}
+		foreach (array('top', 'right', 'bottom', 'left') as $side) {
+			if (!empty($s[$side]['size'])) {
+				$css[] = $side . ':' . (float) $s[$side]['size'] . ($s[$side]['unit'] ?? 'px');
+			}
+		}
+		if (isset($s['_opacity']['size'])) {
+			$css[] = 'opacity:' . (float) $s['_opacity']['size'];
+		}
+		if (!empty($s['z_index'])) {
+			$css[] = 'z-index:' . (int) $s['z_index'];
+		}
+		return implode(';', $css);
+	}
+
+	/**
+	 * @param array<string,mixed> $el Widget.
+	 */
+	private function render_widget(array $el): string
+	{
+		$s = (array) ($el['settings'] ?? array());
+		$type = (string) ($el['widgetType'] ?? 'html');
+		$id = htmlspecialchars((string) ($el['id'] ?? ''), ENT_QUOTES);
+		$style = implode(';', array_merge($this->box_styles($s), $this->typography_styles($s), $this->background_styles($s)));
+		$custom = trim((string) ($s['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
+		if ('' !== $custom) {
+			$style .= ('' === $style ? '' : ';') . $custom;
+		}
+		$cls = 'e-widget e-widget-' . preg_replace('/[^a-z0-9_-]/i', '', $type) . ' elementor-element-' . $id;
+		if (!empty($s['_css_classes'])) {
+			$cls .= ' ' . htmlspecialchars((string) $s['_css_classes'], ENT_QUOTES);
+		}
+		$inner = $this->widget_inner_html($type, $s);
+		return '<div class="' . $cls . '" style="' . htmlspecialchars($style, ENT_QUOTES) . '">' . $inner . '</div>';
+	}
+
+	/**
+	 * @param array<string,mixed> $s Settings.
+	 */
+	private function widget_inner_html(string $type, array $s): string
+	{
+		switch ($type) {
+			case 'heading':
+				$tag = preg_match('/^h[1-6]$/', (string) ($s['header_size'] ?? 'h2')) ? (string) $s['header_size'] : 'h2';
+				$text = htmlspecialchars((string) ($s['title'] ?? ''), ENT_QUOTES);
+				$color = !empty($s['title_color']) ? ' style="color:' . htmlspecialchars((string) $s['title_color'], ENT_QUOTES) . '"' : '';
+				$align = !empty($s['align']) ? ' style="text-align:' . htmlspecialchars((string) $s['align'], ENT_QUOTES) . '"' : '';
+				// Prefer color; merge align into one style attr.
+				$st = array();
+				if (!empty($s['title_color'])) {
+					$st[] = 'color:' . (string) $s['title_color'];
+				}
+				if (!empty($s['align'])) {
+					$st[] = 'text-align:' . (string) $s['align'];
+				}
+				$attr = empty($st) ? '' : ' style="' . htmlspecialchars(implode(';', $st), ENT_QUOTES) . '"';
+				return '<' . $tag . ' class="e-widget-heading"' . $attr . '>' . $text . '</' . $tag . '>';
+			case 'text-editor':
+				return '<div class="e-widget-text">' . (string) ($s['editor'] ?? '') . '</div>';
+			case 'button':
+				$text = htmlspecialchars((string) ($s['text'] ?? 'Button'), ENT_QUOTES);
+				$url = htmlspecialchars((string) ($s['link']['url'] ?? '#'), ENT_QUOTES);
+				$st = array();
+				if (!empty($s['button_text_color'])) {
+					$st[] = 'color:' . (string) $s['button_text_color'];
+				}
+				if (!empty($s['background_color'])) {
+					$st[] = 'background-color:' . (string) $s['background_color'];
+				}
+				$attr = empty($st) ? '' : ' style="' . htmlspecialchars(implode(';', $st), ENT_QUOTES) . '"';
+				return '<div class="e-widget-button"><a href="' . $url . '"' . $attr . '>' . $text . '</a></div>';
+			case 'image':
+				$url = htmlspecialchars((string) ($s['image']['url'] ?? ''), ENT_QUOTES);
+				$alt = htmlspecialchars((string) ($s['alt'] ?? ''), ENT_QUOTES);
+				$img_style = array();
+				if (!empty($s['_h2e_object_fit'])) {
+					$img_style[] = 'object-fit:' . (string) $s['_h2e_object_fit'];
+				}
+				if (!empty($s['_h2e_aspect_ratio'])) {
+					$img_style[] = 'aspect-ratio:' . (string) $s['_h2e_aspect_ratio'];
+				}
+				$attr = empty($img_style) ? '' : ' style="' . htmlspecialchars(implode(';', $img_style), ENT_QUOTES) . '"';
+				return '' !== $url ? '<img src="' . $url . '" alt="' . $alt . '"' . $attr . '>' : '';
+			case 'price-table':
+				$heading = htmlspecialchars((string) ($s['heading'] ?? ''), ENT_QUOTES);
+				$price = htmlspecialchars((string) ($s['currency_symbol'] ?? '') . (string) ($s['price'] ?? ''), ENT_QUOTES);
+				$period = htmlspecialchars((string) ($s['period'] ?? ''), ENT_QUOTES);
+				$btn = htmlspecialchars((string) ($s['button_text'] ?? ''), ENT_QUOTES);
+				$features = '';
+				foreach ((array) ($s['features_list'] ?? array()) as $item) {
+					$features .= '<li>' . htmlspecialchars((string) ($item['item_text'] ?? ''), ENT_QUOTES) . '</li>';
+				}
+				return '<div class="e-price-table" style="text-align:center;padding:1rem">'
+					. ($heading !== '' ? '<h4 style="margin:0 0 .5rem">' . $heading . '</h4>' : '')
+					. '<div style="font-size:2rem;font-weight:700;margin:.5rem 0">' . $price
+					. ($period !== '' ? '<small style="font-size:.9rem;opacity:.7">/' . $period . '</small>' : '')
+					. '</div>'
+					. ($features !== '' ? '<ul style="list-style:none;padding:0;margin:1rem 0;text-align:left">' . $features . '</ul>' : '')
+					. ($btn !== '' ? '<div class="e-widget-button"><a href="#">' . $btn . '</a></div>' : '')
+					. '</div>';
+			case 'divider':
+				return '<hr style="border:none;border-top:1px solid #ccc;margin:0">';
+			case 'spacer':
+				$h = (float) ($s['space']['size'] ?? $s['space'] ?? 50);
+				return '<div style="height:' . $h . 'px"></div>';
+			case 'html':
+				return (string) ($s['html'] ?? '');
+			case 'icon-list':
+				$items = '';
+				foreach ((array) ($s['icon_list'] ?? array()) as $item) {
+					$items .= '<li>' . htmlspecialchars((string) ($item['text'] ?? ''), ENT_QUOTES) . '</li>';
+				}
+				return '<ul style="margin:0;padding-left:1.2em">' . $items . '</ul>';
+			case 'video':
+				$url = (string) ($s['youtube_url'] ?? $s['vimeo_url'] ?? $s['hosted_url']['url'] ?? '');
+				return '<div style="background:#111;color:#fff;padding:40px;text-align:center">Video</div>';
+			case 'google_maps':
+				$h = (float) ($s['custom_height']['size'] ?? 360);
+				$addr = htmlspecialchars((string) ($s['address'] ?? ''), ENT_QUOTES);
+				return '<div style="height:' . $h . 'px;background:#e8e8e8;display:flex;align-items:center;justify-content:center">Map: ' . $addr . '</div>';
+			case 'accordion':
+				$html = '';
+				foreach ((array) ($s['tabs'] ?? array()) as $tab) {
+					$html .= '<details open><summary>' . htmlspecialchars((string) ($tab['tab_title'] ?? ''), ENT_QUOTES)
+						. '</summary><div>' . (string) ($tab['tab_content'] ?? '') . '</div></details>';
+				}
+				return $html;
+			default:
+				$title = htmlspecialchars((string) ($s['title'] ?? $type), ENT_QUOTES);
+				return '<div data-widget="' . htmlspecialchars($type, ENT_QUOTES) . '">' . $title . '</div>';
+		}
+	}
+
+	/**
+	 * @param array<string,mixed> $s Settings.
+	 * @return array<int,string>
+	 */
+	private function box_styles(array $s): array
+	{
+		$css = array();
+		foreach (array('padding', 'margin') as $box) {
+			if (!empty($s[$box]) && is_array($s[$box])) {
+				$u = (string) ($s[$box]['unit'] ?? 'px');
+				$css[] = $box . ':' . (float) ($s[$box]['top'] ?? 0) . $u . ' '
+					. (float) ($s[$box]['right'] ?? 0) . $u . ' '
+					. (float) ($s[$box]['bottom'] ?? 0) . $u . ' '
+					. (float) ($s[$box]['left'] ?? 0) . $u;
+			}
+		}
+		if (!empty($s['border_border']) && !empty($s['border_width'])) {
+			$bw = $s['border_width'];
+			$u = (string) ($bw['unit'] ?? 'px');
+			$css[] = 'border-style:' . (string) $s['border_border'];
+			$css[] = 'border-width:' . (float) ($bw['top'] ?? 0) . $u . ' '
+				. (float) ($bw['right'] ?? 0) . $u . ' '
+				. (float) ($bw['bottom'] ?? 0) . $u . ' '
+				. (float) ($bw['left'] ?? 0) . $u;
+			if (!empty($s['border_color'])) {
+				$css[] = 'border-color:' . (string) $s['border_color'];
+			}
+		}
+		if (!empty($s['border_radius']) && is_array($s['border_radius'])) {
+			$br = $s['border_radius'];
+			$u = (string) ($br['unit'] ?? 'px');
+			$css[] = 'border-radius:' . (float) ($br['top'] ?? 0) . $u . ' '
+				. (float) ($br['right'] ?? 0) . $u . ' '
+				. (float) ($br['bottom'] ?? 0) . $u . ' '
+				. (float) ($br['left'] ?? 0) . $u;
+		}
+		if (!empty($s['box_shadow_box_shadow']) && is_array($s['box_shadow_box_shadow'])) {
+			$sh = $s['box_shadow_box_shadow'];
+			$css[] = 'box-shadow:' . (float) ($sh['horizontal'] ?? 0) . 'px '
+				. (float) ($sh['vertical'] ?? 0) . 'px '
+				. (float) ($sh['blur'] ?? 0) . 'px '
+				. (float) ($sh['spread'] ?? 0) . 'px '
+				. (string) ($sh['color'] ?? 'rgba(0,0,0,.2)')
+				. (!empty($sh['position']) ? ' inset' : '');
+		}
+		if (!empty($s['text_color'])) {
+			$css[] = 'color:' . (string) $s['text_color'];
+		}
+		if (!empty($s['align'])) {
+			$css[] = 'text-align:' . (string) $s['align'];
+		}
+		return $css;
+	}
+
+	/**
+	 * @param array<string,mixed> $s Settings.
+	 * @return array<int,string>
+	 */
+	private function typography_styles(array $s): array
+	{
+		$css = array();
+		if (!empty($s['typography_font_family'])) {
+			$css[] = 'font-family:' . (string) $s['typography_font_family'];
+		}
+		if (!empty($s['typography_font_size']['size'])) {
+			$css[] = 'font-size:' . (float) $s['typography_font_size']['size'] . ($s['typography_font_size']['unit'] ?? 'px');
+		}
+		if (!empty($s['typography_font_weight'])) {
+			$css[] = 'font-weight:' . (string) $s['typography_font_weight'];
+		}
+		if (!empty($s['typography_font_style'])) {
+			$css[] = 'font-style:' . (string) $s['typography_font_style'];
+		}
+		if (!empty($s['typography_line_height']['size'])) {
+			$u = (string) ($s['typography_line_height']['unit'] ?? 'em');
+			$css[] = 'line-height:' . (float) $s['typography_line_height']['size'] . ('em' === $u || '' === $u ? $u : $u);
+		}
+		if (!empty($s['typography_letter_spacing']['size'])) {
+			$css[] = 'letter-spacing:' . (float) $s['typography_letter_spacing']['size'] . ($s['typography_letter_spacing']['unit'] ?? 'px');
+		}
+		if (!empty($s['typography_text_transform'])) {
+			$css[] = 'text-transform:' . (string) $s['typography_text_transform'];
+		}
+		if (!empty($s['text_shadow_text_shadow']) && is_array($s['text_shadow_text_shadow'])) {
+			$t = $s['text_shadow_text_shadow'];
+			$css[] = 'text-shadow:' . (float) ($t['horizontal'] ?? 0) . 'px '
+				. (float) ($t['vertical'] ?? 0) . 'px '
+				. (float) ($t['blur'] ?? 0) . 'px '
+				. (string) ($t['color'] ?? 'rgba(0,0,0,.4)');
+		}
+		return $css;
+	}
+
+	/**
+	 * @param array<string,mixed> $s Settings.
+	 * @return array<int,string>
+	 */
+	private function background_styles(array $s): array
+	{
+		$css = array();
+		$type = (string) ($s['background_background'] ?? '');
+		if ('gradient' === $type) {
+			$a = (string) ($s['background_color'] ?? '#000');
+			$b = (string) ($s['background_color_b'] ?? '#fff');
+			$angle = (float) ($s['background_gradient_angle']['size'] ?? 180);
+			$css[] = 'background-image:linear-gradient(' . $angle . 'deg,' . $a . ',' . $b . ')';
+		} else {
+			if (!empty($s['background_color'])) {
+				$css[] = 'background-color:' . (string) $s['background_color'];
+			}
+			if (!empty($s['background_image']['url'])) {
+				$css[] = 'background-image:url(' . (string) $s['background_image']['url'] . ')';
+				$css[] = 'background-size:' . (string) ($s['background_size'] ?? 'cover');
+				$css[] = 'background-position:' . (string) ($s['background_position'] ?? 'center center');
+				$css[] = 'background-repeat:' . (string) ($s['background_repeat'] ?? 'no-repeat');
+			}
+		}
+		return $css;
+	}
+}

@@ -413,6 +413,7 @@ final class LayoutTreeConverter
                 $this->css->border($node),
                 $this->css->box_shadow($node),
                 $this->css->sizing($node),
+                $this->css->effects($node),
                 $this->css->spacing($node, !$is_section)
             );
         }
@@ -434,8 +435,10 @@ final class LayoutTreeConverter
                 $settings['width'] = array('unit' => '%', 'size' => $pct);
                 $settings['flex_grow'] = 0;
                 $settings['flex_shrink'] = 1;
-                // Stack to full width on the smallest breakpoint.
-                $settings['width_mobile'] = array('unit' => '%', 'size' => 100);
+                // Full-width on mobile only when the parent row actually stacks.
+                if (!empty($node['responsiveConstraints']['full_width_mobile'])) {
+                    $settings['width_mobile'] = array('unit' => '%', 'size' => 100);
+                }
             } elseif ($width > 0) {
                 $settings['width'] = array('unit' => 'px', 'size' => round($width, 0));
             }
@@ -566,13 +569,18 @@ final class LayoutTreeConverter
                 'size' => round($gap),
             );
         }
-        if (!empty($alignment['justify'])) {
+        // Prefer inferred constraint intents (Phase 9) over raw CSS alignment.
+        if (!empty($constraint['justify'])) {
+            $out['flex_justify_content'] = (string) $constraint['justify'];
+        } elseif (!empty($alignment['justify'])) {
             $out['flex_justify_content'] = (string) $alignment['justify'];
         }
-        if (!empty($alignment['align_items'])) {
+        if (!empty($constraint['align_items'])) {
+            $out['flex_align_items'] = (string) $constraint['align_items'];
+        } elseif (!empty($alignment['align_items'])) {
             $out['flex_align_items'] = (string) $alignment['align_items'];
         }
-		if (!empty($constraint['stretch'])) {
+		if (!empty($constraint['stretch']) && empty($constraint['align_items'])) {
 			$out['flex_align_items'] = 'stretch';
 		}
 		if (!empty($constraint['fill'])) {
@@ -580,6 +588,15 @@ final class LayoutTreeConverter
 		}
 		if (!empty($constraint['auto_width'])) {
 			$out['width'] = array('unit' => '%', 'size' => 100);
+		}
+		if (!empty($constraint['intents']['sticky']) || 'sticky' === ($node['s']['pos'] ?? '')) {
+			$out['position'] = 'sticky';
+		}
+		if (!empty($constraint['intents']['aspect_locked']) && !empty($node['s']['ar']) && 'auto' !== $node['s']['ar']) {
+			$out['_h2e_custom_css'] = trim(
+				((string) ($out['_h2e_custom_css'] ?? '')) . ';aspect-ratio:' . $node['s']['ar'],
+				" \t\n\r\0\x0B;"
+			);
 		}
 
 		$responsive = (array) ($node['responsiveLayout'] ?? array());
@@ -620,9 +637,14 @@ final class LayoutTreeConverter
             $out['width_tablet'] = $responsive['tablet']['width'];
         }
 
-        $mobile_stack = (bool) (($node['responsiveConstraints']['mobile_stack'] ?? false));
-        if ($mobile_stack && empty($out['flex_direction_mobile'])) {
+        $rc = $node['responsiveConstraints'] ?? array();
+        if (!empty($rc['mobile_stack']) && empty($out['flex_direction_mobile'])) {
             $out['flex_direction_mobile'] = 'column';
+        }
+        if (!empty($rc['tablet_stack']) && empty($out['flex_direction_tablet'])) {
+            $out['flex_direction_tablet'] = 'column';
+        }
+        if (!empty($rc['full_width_mobile']) && empty($out['width_mobile'])) {
             $out['width_mobile'] = array('unit' => '%', 'size' => 100);
         }
 
@@ -760,7 +782,9 @@ final class LayoutTreeConverter
                     $this->css->alignment($node, 'align'),
                     $this->css->spacing($node, true),
                     $this->css->border($node),
-                    $this->css->box_shadow($node)
+                    $this->css->box_shadow($node),
+                    $this->css->image_media($node),
+                    $this->css->effects($node)
                 );
             case 'icon':
                 $out = array();

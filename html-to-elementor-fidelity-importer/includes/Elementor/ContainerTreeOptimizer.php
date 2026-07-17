@@ -16,13 +16,18 @@ if (!defined('ABSPATH')) {
 /**
  * Compresses redundant Elementor containers after layout-graph emission.
  *
- * Merges single-child wrappers, identical parent/child stacks, and adjacent
- * containers that share the same layout signature. Visual styling is preserved.
+ * Phase 13 — Widget Optimizer goals:
+ * - Merge redundant single-child / identical-signature wrappers
+ * - Split oversized flat widget stacks into designer-like groups
+ * - Preserve visual styling and layout controls (never change pixels)
  */
 final class ContainerTreeOptimizer
 {
 
+	private const OVERSIZED_WIDGET_THRESHOLD = 8;
+
 	private int $removed = 0;
+	private int $split = 0;
 	private int $containers_before = 0;
 	private int $containers_after = 0;
 
@@ -35,6 +40,7 @@ final class ContainerTreeOptimizer
 	public function optimize(array $elements): array
 	{
 		$this->removed = 0;
+		$this->split = 0;
 		$this->containers_before = $this->count_containers($elements);
 
 		$optimized = array();
@@ -63,6 +69,7 @@ final class ContainerTreeOptimizer
 			'containers_before' => $this->containers_before,
 			'containers_after' => $after,
 			'redundant_containers_removed' => $this->removed,
+			'oversized_containers_split' => $this->split,
 			'compression_ratio' => round(1 - ($after / $before), 3),
 			'average_container_depth' => 0.0,
 			'max_container_depth' => 0,

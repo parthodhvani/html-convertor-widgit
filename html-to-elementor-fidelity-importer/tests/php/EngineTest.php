@@ -20,6 +20,7 @@ use HtmlToElementor\Engine\PixelRepairEngine;
 use HtmlToElementor\Engine\SemanticComponentGraph;
 use HtmlToElementor\Engine\SemanticComponentRecognizer;
 use HtmlToElementor\Engine\VisualLeafClassifier;
+use HtmlToElementor\Engine\CompilerConfidence;
 use HtmlToElementor\Engine\VisualTreeBuilder;
 use HtmlToElementor\Engine\WhitespaceAnalyzer;
 use HtmlToElementor\Engine\DesignTokenExtractor;
@@ -31,6 +32,8 @@ use HtmlToElementor\Engine\VisualExtractionEngine;
 use HtmlToElementor\Engine\VisualReconstructionOrchestrator;
 use HtmlToElementor\Engine\VisualValidationEngine;
 use HtmlToElementor\Engine\WrapperEliminationEngine;
+use HtmlToElementor\Engine\ElementorPreviewRenderer;
+use HtmlToElementor\Engine\ClosedLoopValidationEngine;
 use HtmlToElementor\Services\RenderResult;
 use PHPUnit\Framework\TestCase;
 
@@ -118,7 +121,8 @@ final class EngineTest extends TestCase
 		);
 		$sections = $solver->solve($sections);
 		$out = $graph->build($sections);
-		$this->assertSame('layered_block', $out[0]['tree']['layoutRole']);
+		// Tall first layered section with image → hero (Phase 10 semantic upgrade).
+		$this->assertSame('hero', $out[0]['tree']['layoutRole']);
 		$this->assertSame('horizontal_bar', $out[1]['tree']['layoutRole']);
 	}
 
@@ -223,6 +227,30 @@ final class EngineTest extends TestCase
 		);
 		$out = $analyzer->analyze($sections);
 		$this->assertGreaterThan(0, $out[0]['tree']['whitespace']['gap'] ?? 0);
+		$this->assertSame('constraint', $out[0]['tree']['s']['_gap_source'] ?? '');
+		$this->assertSame('24px', $out[0]['tree']['s']['gap'] ?? '');
+	}
+
+	public function test_whitespace_analyzer_uses_parent_row_direction(): void
+	{
+		$analyzer = new WhitespaceAnalyzer();
+		$sections = array(
+			array(
+				'tree' => array(
+					'tag' => 'div',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 700, 'height' => 220),
+					's' => array('disp' => 'flex', 'fd' => 'row'),
+					'layoutConstraint' => array('direction' => 'row'),
+					'children' => array(
+						array('tag' => 'div', 'bbox' => array('x' => 0, 'y' => 0, 'width' => 300, 'height' => 200), 's' => array(), 'children' => array()),
+						array('tag' => 'div', 'bbox' => array('x' => 324, 'y' => 0, 'width' => 300, 'height' => 200), 's' => array(), 'children' => array()),
+					),
+				),
+			),
+		);
+		$out = $analyzer->analyze($sections);
+		$this->assertSame('row', $out[0]['tree']['whitespace']['direction'] ?? '');
+		$this->assertEqualsWithDelta(24.0, (float) ($out[0]['tree']['whitespace']['gap'] ?? 0), 0.5);
 	}
 
 	public function test_whitespace_analyzer_ignores_block_flow_geometry_gap(): void
@@ -287,6 +315,67 @@ final class EngineTest extends TestCase
 		);
 		$out = $builder->build($sections);
 		$this->assertSame('card', $out[0]['tree']['cls'] ?? '');
+	}
+
+	public function test_visual_tree_merges_chromium_visual_groups(): void
+	{
+		$builder = new VisualTreeBuilder();
+		$sections = array(
+			array(
+				'visualGroup' => 'vg-0',
+				'visualSection' => true,
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'block-a',
+					's' => array('bg' => 'rgb(255,255,255)'),
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 800, 'height' => 120),
+					'children' => array(),
+				),
+			),
+			array(
+				'visualGroup' => 'vg-0',
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'block-b',
+					's' => array('bg' => 'rgb(255,255,255)'),
+					'bbox' => array('x' => 0, 'y' => 140, 'width' => 800, 'height' => 100),
+					'children' => array(),
+				),
+			),
+			array(
+				'visualGroup' => '',
+				'tree' => array(
+					'tag' => 'div',
+					'cls' => 'solo',
+					's' => array('bg' => 'rgb(0,0,0)'),
+					'bbox' => array('x' => 0, 'y' => 300, 'width' => 800, 'height' => 80),
+					'children' => array(),
+				),
+			),
+		);
+		$out = $builder->build($sections);
+		$this->assertCount(2, $out);
+		$this->assertSame('h2e-visual-section', $out[0]['tree']['cls'] ?? '');
+		$this->assertCount(2, $out[0]['tree']['children'] ?? array());
+		$this->assertSame('solo', $out[1]['tree']['cls'] ?? '');
+	}
+
+	public function test_compiler_confidence_gates_ambiguous_button(): void
+	{
+		$engine = new CompilerConfidence();
+		$node = array(
+			'tag' => 'a',
+			'text' => 'x',
+			's' => array(),
+		);
+		$scored = $engine->score($node, 'button', array(), array('ambiguous_link'));
+		$this->assertTrue($scored['prefer_html']);
+		$gated = $engine->gate(array(
+			'kind' => 'widget',
+			'type' => 'button',
+			'confidence' => 40,
+		), $node);
+		$this->assertSame('fallback', $gated['kind']);
 	}
 
 	public function test_pixel_repair_applies_flex_gap(): void
@@ -364,6 +453,69 @@ final class EngineTest extends TestCase
 		$this->assertSame(16.7, $stats['html_pct']);
 	}
 
+	public function test_preview_renderer_emits_gradient_and_widgets(): void
+	{
+		$renderer = new ElementorPreviewRenderer();
+		$html = $renderer->render(array(
+			array(
+				'id' => 'aaaaaaa',
+				'elType' => 'container',
+				'settings' => array(
+					'flex_direction' => 'column',
+					'background_background' => 'gradient',
+					'background_color' => 'rgb(26, 58, 74)',
+					'background_color_b' => 'rgb(13, 31, 40)',
+					'background_gradient_angle' => array('unit' => 'deg', 'size' => 135),
+				),
+				'elements' => array(
+					array(
+						'id' => 'bbbbbbb',
+						'elType' => 'widget',
+						'widgetType' => 'heading',
+						'settings' => array('title' => 'Hello', 'header_size' => 'h1'),
+						'elements' => array(),
+					),
+				),
+				'isInner' => false,
+			),
+		));
+		$this->assertStringContainsString('linear-gradient(135deg', $html);
+		$this->assertStringContainsString('<h1', $html);
+		$this->assertStringContainsString('Hello', $html);
+	}
+
+	public function test_closed_loop_without_screenshots_still_repairs(): void
+	{
+		$engine = new ClosedLoopValidationEngine(95, 2);
+		$result = $engine->run(
+			array(
+				array(
+					'id' => 'c1',
+					'elType' => 'container',
+					'settings' => array('flex_direction' => 'column'),
+					'elements' => array(
+						array(
+							'id' => 'w1',
+							'elType' => 'widget',
+							'widgetType' => 'html',
+							'settings' => array('html' => '<h2>Title</h2>'),
+							'elements' => array(),
+						),
+					),
+					'isInner' => false,
+				),
+			),
+			array(
+				'sections' => array(),
+				'report' => array('native_widgets' => 1, 'html_widgets' => 0),
+				'work_dir' => sys_get_temp_dir() . '/h2e-cl-test',
+			)
+		);
+		$this->assertArrayHasKey('validation', $result);
+		$this->assertArrayHasKey('preview_html', $result);
+		$this->assertStringContainsString('<h2', $result['data'][0]['elements'][0]['settings']['html'] ?? $result['preview_html']);
+	}
+
 	public function test_responsive_engine_normalizes_breakpoints(): void
 	{
 		$engine = new ResponsiveReconstructionEngine();
@@ -371,6 +523,46 @@ final class EngineTest extends TestCase
 		$this->assertSame(1920, $bps['wide']);
 		$this->assertSame(1200, $bps['desktop']);
 		$this->assertSame(375, $bps['mobile']);
+	}
+
+	public function test_responsive_does_not_blindly_stack_all_rows(): void
+	{
+		$engine = new ResponsiveReconstructionEngine();
+		$nav = array(
+			'tree' => array(
+				'tag' => 'nav',
+				'layoutRole' => 'horizontal_bar',
+				'layoutType' => 'row',
+				'layoutConstraint' => array('direction' => 'row'),
+				's' => array('disp' => 'flex', 'fd' => 'row', 'w' => 1200),
+				'children' => array(
+					array('tag' => 'a', 'atomic' => true, 'text' => 'Home', 's' => array('w' => 80), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 80, 'height' => 40)),
+					array('tag' => 'a', 'atomic' => true, 'text' => 'About', 's' => array('w' => 80), 'bbox' => array('x' => 100, 'y' => 0, 'width' => 80, 'height' => 40)),
+				),
+			),
+		);
+		$out = $engine->annotate(array($nav));
+		$this->assertFalse((bool) ($out[0]['tree']['responsiveConstraints']['mobile_stack'] ?? false));
+
+		$cards = array(
+			'tree' => array(
+				'tag' => 'div',
+				'layoutType' => 'row',
+				'layoutConstraint' => array('direction' => 'row'),
+				's' => array('disp' => 'flex', 'fd' => 'row', 'w' => 1200),
+				'r' => array(
+					'mobile' => array('fd' => 'column', 'disp' => 'flex', 'w' => 375),
+				),
+				'children' => array(
+					array('tag' => 'div', 's' => array('w' => 360, 'bg' => 'rgb(255,255,255)', 'br' => 8), 'bbox' => array('x' => 0, 'y' => 0, 'width' => 360, 'height' => 200), 'children' => array()),
+					array('tag' => 'div', 's' => array('w' => 360, 'bg' => 'rgb(255,255,255)', 'br' => 8), 'bbox' => array('x' => 400, 'y' => 0, 'width' => 360, 'height' => 200), 'children' => array()),
+					array('tag' => 'div', 's' => array('w' => 360, 'bg' => 'rgb(255,255,255)', 'br' => 8), 'bbox' => array('x' => 800, 'y' => 0, 'width' => 360, 'height' => 200), 'children' => array()),
+				),
+			),
+		);
+		$stacked = $engine->annotate(array($cards));
+		$this->assertTrue((bool) ($stacked[0]['tree']['responsiveConstraints']['mobile_stack'] ?? false));
+		$this->assertTrue((bool) ($stacked[0]['tree']['children'][0]['responsiveConstraints']['full_width_mobile'] ?? false));
 	}
 
 	public function test_animation_engine_maps_fade_transition(): void
@@ -444,6 +636,92 @@ final class EngineTest extends TestCase
 		$this->assertArrayHasKey('bbox_delta', $result);
 		$this->assertArrayHasKey('position_rmse', $result);
 		$this->assertGreaterThan(0, $result['geometry_similarity']);
+	}
+
+	public function test_visual_validation_prioritizes_geometry_over_widget_coverage(): void
+	{
+		$engine = new VisualValidationEngine(95);
+		// Empty Elementor tree vs a real source section → low geometry.
+		$sections = array(
+			array(
+				'bbox' => array('x' => 0, 'y' => 0, 'width' => 1200, 'height' => 800),
+				'tree' => array(
+					'tag' => 'section',
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 1200, 'height' => 800),
+					'layoutConstraint' => array('direction' => 'row', 'gap' => 40),
+					'children' => array(
+						array(
+							'tag' => 'div',
+							'bbox' => array('x' => 0, 'y' => 0, 'width' => 600, 'height' => 800),
+							'children' => array(),
+						),
+						array(
+							'tag' => 'div',
+							'bbox' => array('x' => 640, 'y' => 0, 'width' => 560, 'height' => 800),
+							'children' => array(),
+						),
+					),
+				),
+			),
+		);
+		$score = $engine->score(
+			array(),
+			array(
+				'sections' => $sections,
+				'report' => array(
+					'native_widgets' => 100,
+					'html_widgets' => 0,
+				),
+			)
+		);
+
+		$this->assertSame('geometry_primary', $score['scoring_mode']);
+		$this->assertSame(100, $score['widget_coverage']);
+		// Perfect widget coverage must not alone push fidelity to the old 90%+ floor.
+		$this->assertLessThan(90, $score['fidelity']);
+		$this->assertSame(0, $score['matched_frames']);
+		$this->assertGreaterThan(0, $score['source_frames']);
+	}
+
+	public function test_leaf_classifier_plain_link_is_text_not_button(): void
+	{
+		$classifier = new VisualLeafClassifier();
+		$link = $classifier->classify(array(
+			'tag' => 'a',
+			'atomic' => true,
+			'text' => 'Read more',
+			'href' => 'https://example.com/post',
+			's' => array('fs' => '16px', 'h' => 24, 'w' => 90),
+			'bbox' => array('x' => 0, 'y' => 0, 'width' => 90, 'height' => 24),
+		));
+		$this->assertNotNull($link);
+		$this->assertSame('text-editor', $link['type']);
+		$this->assertStringContainsString('https://example.com/post', $link['settings']['editor']);
+
+		$btn = $classifier->classify(array(
+			'tag' => 'a',
+			'atomic' => true,
+			'text' => 'Book now',
+			'href' => 'https://example.com/book',
+			'cls' => 'btn btn-primary',
+			's' => array('bg' => 'rgb(0,0,0)', 'pt' => 12, 'pb' => 12, 'pl' => 20, 'pr' => 20, 'h' => 44, 'w' => 140),
+			'bbox' => array('x' => 0, 'y' => 0, 'width' => 140, 'height' => 44),
+		));
+		$this->assertSame('button', $btn['type']);
+	}
+
+	public function test_leaf_classifier_maps_address_from_embed(): void
+	{
+		$classifier = new VisualLeafClassifier();
+		$map = $classifier->classify(array(
+			'tag' => 'iframe',
+			'atomic' => true,
+			'src' => 'https://www.google.com/maps/embed/v1/place?q=Zurich%2C+Switzerland',
+			'html' => '<iframe src="https://www.google.com/maps/embed/v1/place?q=Zurich%2C+Switzerland"></iframe>',
+			's' => array('h' => 400, 'w' => 600),
+		));
+		$this->assertSame('google_maps', $map['type']);
+		$this->assertSame('Zurich, Switzerland', $map['settings']['address']);
 	}
 
 	public function test_layout_graph_emitter_hoists_transparent_wrapper(): void
