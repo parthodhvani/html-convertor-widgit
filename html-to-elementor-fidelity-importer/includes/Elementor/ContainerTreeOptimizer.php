@@ -123,7 +123,91 @@ final class ContainerTreeOptimizer
 		}
 
 		$element = $this->compress_container_chain($element);
+		$element = $this->split_oversized_widget_stack($element);
 		return $this->drop_noop_flex_gap($element);
+	}
+
+	/**
+	 * Split a container with many direct widget children into smaller stacks
+	 * grouped by consecutive widget-type runs (designer-like editability).
+	 * Layout direction / gap are preserved on the parent; groups inherit direction.
+	 *
+	 * @param array<string,mixed> $container Container.
+	 * @return array<string,mixed>
+	 */
+	private function split_oversized_widget_stack(array $container): array
+	{
+		$children = (array) ($container['elements'] ?? array());
+		if (count($children) < self::OVERSIZED_WIDGET_THRESHOLD) {
+			return $container;
+		}
+
+		$all_widgets = true;
+		foreach ($children as $child) {
+			if ('widget' !== ($child['elType'] ?? '')) {
+				$all_widgets = false;
+				break;
+			}
+		}
+		if (!$all_widgets) {
+			return $container;
+		}
+
+		// Do not split rows — equal-width card grids must stay flat.
+		$direction = (string) (($container['settings']['flex_direction'] ?? 'column'));
+		if ('row' === $direction) {
+			return $container;
+		}
+
+		$runs = array();
+		$current = array($children[0]);
+		$current_type = (string) ($children[0]['widgetType'] ?? '');
+		for ($i = 1; $i < count($children); ++$i) {
+			$type = (string) ($children[$i]['widgetType'] ?? '');
+			// Keep heading+text / text+button pairs together (common designer pattern).
+			$pair = ('heading' === $current_type && 'text-editor' === $type)
+				|| ('text-editor' === $current_type && 'button' === $type)
+				|| ('heading' === $current_type && 'button' === $type);
+			if ($type !== $current_type && !$pair && count($current) >= 1) {
+				if ('heading' === $type && count($current) >= 2) {
+					$runs[] = $current;
+					$current = array($children[$i]);
+					$current_type = $type;
+					continue;
+				}
+			}
+			$current[] = $children[$i];
+			$current_type = $type;
+		}
+		$runs[] = $current;
+
+		if (count($runs) < 2) {
+			return $container;
+		}
+
+		$grouped = array();
+		foreach ($runs as $run_index => $run) {
+			if (1 === count($run)) {
+				$grouped[] = $run[0];
+				continue;
+			}
+			$seed = (string) ($container['id'] ?? 'root') . ':grp:' . $run_index;
+			$grouped[] = array(
+				'id' => substr(md5($seed), 0, 8),
+				'elType' => 'container',
+				'isInner' => true,
+				'settings' => array(
+					'content_width' => 'full',
+					'flex_direction' => $direction,
+					'_h2e_designer_group' => 1,
+				),
+				'elements' => $run,
+			);
+			++$this->split;
+		}
+
+		$container['elements'] = $grouped;
+		return $container;
 	}
 
 	/**
