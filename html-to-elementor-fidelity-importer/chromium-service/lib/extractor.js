@@ -32,13 +32,27 @@ const DEFAULT_CONFIG = {
     mobile_landscape: 480,
     mobile: 375,
   },
-  waitUntil: 'networkidle0',
+  // Prefer `load` over networkidle*: pasted HTML often references missing
+  // local assets or long-lived CDN connections that never reach idle.
+  waitUntil: 'load',
   timeout: 60000,
   captureScreenshots: true,
   conversionMode: 'native',
   widgetConfidence: 95,
   debug: false,
 };
+
+/** Tiny transparent GIF for missing local images. */
+const EMPTY_GIF = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+/** Empty SVG placeholder for missing local vector assets. */
+const EMPTY_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+  'utf8'
+);
 
 /**
  * Render and extract a layout document from an HTML entry file.
@@ -87,15 +101,27 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
     page.setDefaultNavigationTimeout(config.timeout);
     page.setDefaultTimeout(config.timeout);
 
+    // Stub missing local file:// assets so paste/upload without a ZIP package
+    // still renders (broken CSS/JS/images must not hang navigation).
+    await installMissingAssetStubs(page, path.dirname(inputPath));
+
     const fileUrl = pathToFileURL(inputPath).href;
 
     // Desktop pass — full extraction + segmentation.
     await page.setViewport({ width: config.breakpoints.desktop, height: 900, deviceScaleFactor: 1 });
-    await page.goto(fileUrl, { waitUntil: config.waitUntil, timeout: config.timeout });
+    await gotoResilient(page, fileUrl, config);
     await waitForStable(page, config);
 
-    // Expand collapsed FAQ/accordion panels so answer content is extractable.
+    // Expand collapsed panels and force reveal animations visible for extraction.
     await page.evaluate(() => {
+      document.documentElement.classList.remove('js');
+      document.body && document.body.classList.remove('js');
+      document.querySelectorAll('.reveal').forEach((el) => {
+        el.classList.add('in', 'show', 'visible');
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+        el.style.visibility = 'visible';
+      });
       document.querySelectorAll('details:not([open])').forEach((el) => {
         el.open = true;
       });
@@ -197,29 +223,144 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
 }
 
 /**
+ * Navigate with fallbacks when the preferred waitUntil never settles
+ * (missing assets, sticky CDN connections, etc.).
+ *
+ * @param {import('puppeteer').Page} page    Page.
+ * @param {string}                   fileUrl file:// URL.
+ * @param {object}                   config  Config.
+ */
+async function gotoResilient(page, fileUrl, config) {
+  const preferred = config.waitUntil || 'load';
+  const chain = [preferred, 'load', 'domcontentloaded'].filter(
+    (v, i, arr) => arr.indexOf(v) === i
+  );
+  let lastError = null;
+  for (const waitUntil of chain) {
+    try {
+      await page.goto(fileUrl, { waitUntil, timeout: config.timeout });
+      return;
+    } catch (e) {
+      lastError = e;
+      if (config.debug) {
+        // eslint-disable-next-line no-console
+        console.error(`goto(${waitUntil}) failed:`, e.message);
+      }
+    }
+  }
+  throw lastError || new Error('Navigation failed');
+}
+
+/**
+ * Intercept missing local file:// requests and fulfill with empty stubs so
+ * pasted HTML (no ZIP package) does not leave hung network activity.
+ *
+ * @param {import('puppeteer').Page} page    Page.
+ * @param {string}                   baseDir Directory of the entry HTML.
+ */
+async function installMissingAssetStubs(page, baseDir) {
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    const url = req.url();
+    if (!url.startsWith('file://')) {
+      req.continue().catch(() => {});
+      return;
+    }
+    let filePath = '';
+    try {
+      filePath = decodeURIComponent(url.replace(/^file:\/\//, ''));
+      // Linux absolute paths are file:///path → /path; keep as-is.
+      if (!filePath.startsWith('/')) {
+        filePath = path.resolve(baseDir, filePath);
+      }
+    } catch (e) {
+      req.continue().catch(() => {});
+      return;
+    }
+
+    if (fs.existsSync(filePath)) {
+      req.continue().catch(() => {});
+      return;
+    }
+
+    const resource = req.resourceType();
+    if (resource === 'stylesheet') {
+      req.respond({ status: 200, contentType: 'text/css', body: '/* missing */' }).catch(() => {});
+      return;
+    }
+    if (resource === 'script') {
+      req.respond({ status: 200, contentType: 'application/javascript', body: '/* missing */' }).catch(() => {});
+      return;
+    }
+    if (resource === 'image' || resource === 'media' || resource === 'other') {
+      if (/\.svg(\?|$)/i.test(filePath)) {
+        req.respond({ status: 200, contentType: 'image/svg+xml', body: EMPTY_SVG }).catch(() => {});
+      } else {
+        req.respond({ status: 200, contentType: 'image/gif', body: EMPTY_GIF }).catch(() => {});
+      }
+      return;
+    }
+    if (resource === 'font') {
+      req.respond({ status: 200, contentType: 'application/octet-stream', body: Buffer.alloc(0) }).catch(() => {});
+      return;
+    }
+    // Abort other missing locals (favicon, etc.) without hanging.
+    req.abort('blockedbyclient').catch(() => {});
+  });
+}
+
+/**
  * Wait for fonts and images to settle in addition to the navigation wait.
+ *
+ * Lazy-loaded images below the fold never fire load/error until scrolled into
+ * view — waiting on them without a timeout hangs the entire conversion.
  *
  * @param {import('puppeteer').Page} page   Page.
  * @param {object}                   config Config.
  */
 async function waitForStable(page, config) {
+  const settleMs = Math.min(12000, Math.max(2500, Math.floor((config.timeout || 60000) / 5)));
   try {
-    await page.evaluate(async () => {
-      if (document.fonts && document.fonts.ready) {
-        await document.fonts.ready;
-      }
-      const imgs = Array.from(document.images || []);
-      await Promise.all(
-        imgs.map((img) =>
-          img.complete
-            ? Promise.resolve()
-            : new Promise((res) => {
-              img.addEventListener('load', res, { once: true });
-              img.addEventListener('error', res, { once: true });
-            })
-        )
-      );
+    // Kick lazy images so they start loading (or error) immediately.
+    await page.evaluate(() => {
+      document.querySelectorAll('img[loading="lazy"]').forEach((img) => {
+        try {
+          img.loading = 'eager';
+        } catch (e) {
+          // ignore
+        }
+        const src = img.getAttribute('src');
+        if (src && !img.complete) {
+          img.setAttribute('src', src);
+        }
+      });
     });
+
+    await Promise.race([
+      page.evaluate(async () => {
+        if (document.fonts && document.fonts.ready) {
+          await document.fonts.ready;
+        }
+        const imgs = Array.from(document.images || []);
+        await Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise((res) => {
+                if (img.complete) {
+                  res();
+                  return;
+                }
+                const done = () => res();
+                img.addEventListener('load', done, { once: true });
+                img.addEventListener('error', done, { once: true });
+                // Race: complete may flip true between the check and listeners.
+                if (img.complete) res();
+              })
+          )
+        );
+      }),
+      sleep(settleMs),
+    ]);
   } catch (e) {
     if (config.debug) {
       // eslint-disable-next-line no-console

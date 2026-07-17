@@ -42,11 +42,14 @@ async function screenshotHtml(htmlPath, outPng, opts = {}) {
     const page = await browser.newPage();
     page.setDefaultTimeout(timeout);
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
-    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle0', timeout });
+    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load', timeout });
     try {
-      await page.evaluate(async () => {
-        if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      });
+      await Promise.race([
+        page.evaluate(async () => {
+          if (document.fonts && document.fonts.ready) await document.fonts.ready;
+        }),
+        new Promise((res) => setTimeout(res, 8000)),
+      ]);
     } catch (e) {
       // ignore
     }

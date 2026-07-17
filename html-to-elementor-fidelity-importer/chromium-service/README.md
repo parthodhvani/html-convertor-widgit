@@ -24,7 +24,7 @@ node cli.js --input page.html --out layout.json [--config config.json]
 ```json
 {
   "breakpoints": { "desktop": 1280, "tablet": 768, "mobile": 375 },
-  "waitUntil": "networkidle0",
+  "waitUntil": "load",
   "timeout": 60000,
   "captureScreenshots": true,
   "debug": false
