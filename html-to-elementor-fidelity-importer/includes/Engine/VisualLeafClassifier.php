@@ -93,10 +93,13 @@ final class VisualLeafClassifier
 
 		// Buttons / CTAs — visual chrome or explicit button semantics only.
 		if (VisualSignals::looks_button($node) || $this->looks_link_button($node, $text)) {
-			return $this->result('button', array(
+			$settings = array(
 				'text' => $text ?: 'Button',
 				'link' => array('url' => (string) ($node['href'] ?? ''), 'is_external' => '', 'nofollow' => ''),
-			), 88);
+			);
+			// Nested FA icons live in outerHTML; innerText never includes icon-font glyphs.
+			$settings = array_merge($settings, $this->nested_button_icon($node));
+			return $this->result('button', $settings, 88);
 		}
 
 		// Plain text links stay editable text (not buttons).
@@ -277,6 +280,68 @@ final class VisualLeafClassifier
 			'icon_list' => $items,
 			'space_between' => array('unit' => 'px', 'size' => 8),
 		), 86);
+	}
+
+	/**
+	 * Extract a nested Font Awesome <i> from a button/link's outerHTML and map
+	 * it onto Elementor Button selected_icon + icon_align.
+	 *
+	 * Elementor Button (button-trait.php): selected_icon (ICONS), icon_align
+	 * (left/right via selectors_dictionary → row / row-reverse).
+	 *
+	 * @param array<string,mixed> $node Button node.
+	 * @return array<string,mixed>
+	 */
+	private function nested_button_icon(array $node): array
+	{
+		$html = (string) ($node['html'] ?? '');
+		if ('' === $html) {
+			$html = (string) ($node['outerHTML'] ?? '');
+		}
+		if ('' === $html || !preg_match('/<i\b[^>]*\bclass\s*=\s*["\']([^"\']+)["\'][^>]*>/i', $html, $m)) {
+			return array();
+		}
+
+		$icon_cls = trim(preg_replace('/\s+/', ' ', $m[1]) ?? '');
+		if ('' === $icon_cls || !preg_match('/\bfa-[\w-]+/', $icon_cls)) {
+			return array();
+		}
+
+		$library = 'fa-solid';
+		$value = $icon_cls;
+		if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+(fa-[\w-]+)/i', $icon_cls, $im)) {
+			$prefix = strtolower($im[1]);
+			$name = strtolower($im[2]);
+			$value = $prefix . ' ' . $name;
+			if ('fab' === $prefix || 'fa-brands' === $prefix) {
+				$library = 'fa-brands';
+			} elseif ('far' === $prefix || 'fa-regular' === $prefix) {
+				$library = 'fa-regular';
+			} else {
+				$library = 'fa-solid';
+				// Normalise fa4-style "fas fa-arrow-right" etc.
+				if (in_array($prefix, array('fas', 'far', 'fab', 'fal'), true)) {
+					$value = $prefix . ' ' . $name;
+				} elseif (str_starts_with($prefix, 'fa-')) {
+					$value = $prefix . ' ' . $name;
+				}
+			}
+		} elseif (preg_match('/\b(fa-[\w-]+)\b/', $icon_cls, $im)) {
+			$value = 'fas ' . strtolower($im[1]);
+		}
+
+		// Icon before visible text → leading (left); otherwise trailing (right).
+		$icon_pos = (int) strpos($html, $m[0]);
+		$text_before = trim(wp_strip_all_tags(substr($html, 0, $icon_pos)));
+		$align = '' === $text_before ? 'left' : 'right';
+
+		return array(
+			'selected_icon' => array(
+				'value' => $value,
+				'library' => $library,
+			),
+			'icon_align' => $align,
+		);
 	}
 
 	/**

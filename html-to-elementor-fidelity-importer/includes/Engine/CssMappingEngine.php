@@ -84,7 +84,13 @@ final class CssMappingEngine implements EngineInterface
 			),
 			// Painted composites must retain browser backgrounds (incl. gradients).
 			'call-to-action', 'price-table', 'icon-box', 'testimonial' => $this->map_painted_composite($node, $widget_type),
-			'accordion', 'form', 'social-icons', 'star-rating', 'icon-list',
+			'accordion' => array_merge(
+				$this->mapper->spacing($node, true),
+				$this->mapper->background($node),
+				$this->mapper->border($node),
+				$this->mapper->box_shadow($node)
+			),
+			'form', 'social-icons', 'star-rating', 'icon-list',
 			'divider', 'spacer', 'video', 'google_maps', 'icon' => array_merge(
 				$this->mapper->spacing($node, true),
 				$this->map_icon_paint($node, $widget_type)
