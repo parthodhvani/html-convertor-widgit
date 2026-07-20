@@ -277,6 +277,13 @@ final class CssMapper
             $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
         }
 
+        // Drop local background images that cannot be loaded (broken CSS-relative
+        // urls like assets/css/assets/img/…). Keep the gradient layer instead so
+        // heroes/CTAs still paint.
+        if ('' !== $bg_image && !$this->background_url_reachable($bg_image)) {
+            $bg_image = '';
+        }
+
         if ('' !== $bg_image) {
             $out['background_background'] = 'classic';
             $out['background_image'] = array(
@@ -537,6 +544,20 @@ final class CssMapper
             $out['_h2e_aspect_ratio'] = $ar;
         }
 
+        // Lock display size from computed style / bbox. SVGs (logos) otherwise
+        // render at intrinsic width/height and blow up headers/footers.
+        $w = (float) ($s['w'] ?? $node['bbox']['width'] ?? 0);
+        $h = (float) ($s['h'] ?? $node['bbox']['height'] ?? 0);
+        if ($w >= 8 && $w <= 1200) {
+            $out['width'] = array('unit' => 'px', 'size' => round($w, 2));
+            $css[] = 'width:' . round($w, 2) . 'px';
+            $css[] = 'max-width:100%';
+        }
+        if ($h >= 8 && $h <= 1200) {
+            $out['height'] = array('unit' => 'px', 'size' => round($h, 2));
+            $css[] = 'height:' . round($h, 2) . 'px';
+        }
+
         if (!empty($css)) {
             $out = $this->merge_custom_css($out, implode(';', $css));
             $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
@@ -544,6 +565,7 @@ final class CssMapper
                 array_filter(array(
                     '' !== $object_fit && 'fill' !== $object_fit ? 'object-fit' : '',
                     ('' !== $ar && 'auto' !== $ar) ? 'aspect-ratio' : '',
+                    ($w >= 8 && $w <= 1200) || ($h >= 8 && $h <= 1200) ? 'image-size-lock' : '',
                 ))
             )));
         }
@@ -1247,6 +1269,41 @@ final class CssMapper
             return $m[2];
         }
         return '';
+    }
+
+    /**
+     * True when a mapped background URL looks loadable.
+     *
+     * Remote http(s) URLs are assumed reachable (checked at import sideload).
+     * Local file:// / absolute paths must exist on disk — broken CSS-relative
+     * resolutions (e.g. …/css/assets/img/missing.jpg) are rejected so gradients win.
+     */
+    private function background_url_reachable(string $url): bool
+    {
+        $url = trim($url);
+        if ('' === $url || 'none' === strtolower($url)) {
+            return false;
+        }
+        if (0 === stripos($url, 'data:')) {
+            return true;
+        }
+        if (preg_match('#^https?://#i', $url)) {
+            return true;
+        }
+        $path = $url;
+        if (0 === stripos($path, 'file://')) {
+            $path = substr($path, 7);
+            // file:///path → /path
+            if (preg_match('#^/[A-Za-z]:#', $path)) {
+                // Windows file:///C:/...
+                $path = ltrim($path, '/');
+            }
+        }
+        if ('' !== $path && $path[0] === '/') {
+            return is_file($path) && is_readable($path);
+        }
+        // Relative paths without a base — keep and let import resolve.
+        return true;
     }
 
     /**
