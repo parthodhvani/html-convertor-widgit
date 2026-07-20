@@ -1,0 +1,64 @@
+/* Responsive rules */
+
+@media (max-width: 1024px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
+  .hero-grid, .split { grid-template-columns: 1fr; gap: 40px; }
+  .hero { padding: 80px 0 100px; }
+  .split-visual { order: -1; }
+  .reviews { padding: 40px; }
+  .cta-banner { padding: 48px 32px; }
+}
+
+@media (max-width: 768px) {
+  .section { padding: 72px 0; }
+  .grid-3, .grid-2, .grid-4 { grid-template-columns: 1fr; }
+  .contact-cards { grid-template-columns: 1fr; }
+  h1 { font-size: 2.2rem; }
+  h2 { font-size: 1.7rem; }
+
+  .menu-toggle { display: block; }
+  .nav-list {
+    position: fixed;
+    top: 78px; left: 0; right: 0;
+    flex-direction: column;
+    background: #fff;
+    padding: 24px;
+    gap: 8px;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-20px);
+    opacity: 0; visibility: hidden;
+    transition: all .3s ease;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav.open .nav-list {
+    transform: translateY(0); opacity: 1; visibility: visible;
+  }
+  .nav-list a { padding: 12px 0; font-size: 1rem; }
+  .nav .btn { display: none; }
+  .nav.open .btn { display: inline-flex; margin-top: 12px; }
+
+  .footer-grid { grid-template-columns: 1fr; gap: 36px; }
+  .footer-bottom { flex-direction: column; align-items: flex-start; }
+  .footer-bottom a { margin-left: 0; margin-right: 16px; }
+
+  .hero-meta { gap: 24px; }
+  .hero-badge.top, .hero-badge.bot { display: none; }
+
+  .cta-banner { padding: 40px 24px; }
+  .reviews { padding: 32px 24px; }
+  .reviews-header { flex-direction: column; align-items: flex-start; }
+
+  .event-card { grid-template-columns: 1fr; text-align: center; }
+  .event-date { max-width: 120px; margin: 0 auto; }
+
+  .article-meta { flex-wrap: wrap; gap: 12px; }
+}
+
+@media (max-width: 480px) {
+  .container { padding: 0 18px; }
+  .btn { padding: 12px 22px; font-size: .9rem; }
+  .hero h1 { font-size: 1.9rem; }
+  .card, .testimonial { padding: 24px; }
+  .founder-frame { max-width: 320px; }
+}
