@@ -951,22 +951,47 @@ final class CompositePatternBuilder implements EngineInterface
 		if (null !== $title_node) {
 			$out = array_merge($out, $mapper->text_color($title_node, 'title_color'));
 			$out = array_merge($out, $this->prefix_typography($mapper->typography($title_node), 'title_'));
+			$mb = (float) ($title_node['s']['mb'] ?? 0);
+			if ($mb > 0) {
+				$out['title_spacing'] = array('unit' => 'px', 'size' => $mb);
+			}
 		}
 
 		$desc_node = $this->find_descendant_by_tag($node, array('p'));
 		if (null !== $desc_node) {
 			$out = array_merge($out, $mapper->text_color($desc_node, 'description_color'));
 			$out = array_merge($out, $this->prefix_typography($mapper->typography($desc_node), 'description_'));
+			$max_raw = trim((string) ($desc_node['s']['maxW'] ?? ''));
+			if ('' !== $max_raw && !in_array(strtolower($max_raw), array('none', 'auto'), true)
+				&& preg_match('/^(\d+(?:\.\d+)?)\s*px$/i', $max_raw, $mw)
+			) {
+				$out['description_max_width'] = array('unit' => 'px', 'size' => (float) $mw[1]);
+			} else {
+				$mw = (float) ($desc_node['s']['w'] ?? 0);
+				if ($mw >= 200 && $mw <= 900) {
+					$out['description_max_width'] = array('unit' => 'px', 'size' => round($mw, 0));
+				}
+			}
+			$mb = (float) ($desc_node['s']['mb'] ?? 0);
+			if ($mb > 0) {
+				$out['description_spacing'] = array('unit' => 'px', 'size' => $mb);
+			}
 		}
 
+		// Prefer a real btn/button descendant — never the CTA root itself
+		// (cta-banner matches VisualSignals::looks_button via \bcta\b).
 		$btn_node = null;
-		$this->walk_text($node, function (array $n) use (&$btn_node): void {
-			if (null !== $btn_node) {
+		$this->walk_text($node, function (array $n) use (&$btn_node, $node): void {
+			if (null !== $btn_node || $n === $node) {
 				return;
 			}
 			$cls = strtolower((string) ($n['cls'] ?? ''));
 			$tag = strtolower((string) ($n['tag'] ?? ''));
-			if (VisualSignals::looks_button($n) || preg_match('/\b(btn|button)\b/', $cls) || 'button' === $tag) {
+			if (preg_match('/\b(btn|button)\b/', $cls) || 'button' === $tag) {
+				$btn_node = $n;
+				return;
+			}
+			if ('a' === $tag && VisualSignals::looks_button($n)) {
 				$btn_node = $n;
 			}
 		});
@@ -980,6 +1005,9 @@ final class CompositePatternBuilder implements EngineInterface
 				$grad = $mapper->parse_gradient((string) ($btn_node['s']['bgImg'] ?? $btn_node['s']['bg'] ?? ''));
 				if (null !== $grad) {
 					$out['button_background_color'] = $grad['color_a'];
+					if (!empty($grad['color_b'])) {
+						$out['button_background_color_b'] = $grad['color_b'];
+					}
 				}
 			}
 

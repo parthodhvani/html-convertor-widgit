@@ -494,7 +494,11 @@ HTML;
 				$btn_bg = (string) ($s['button_background_color'] ?? '');
 				$html = '<div class="e-cta" style="text-align:center">';
 				if ('' !== $title) {
-					$tst = array('margin:0 0 .5rem');
+					$tst = array();
+					$title_mb = !empty($s['title_spacing']['size'])
+						? (float) $s['title_spacing']['size']
+						: 14;
+					$tst[] = 'margin:0 0 ' . $title_mb . 'px';
 					if ('' !== $title_c) {
 						$tst[] = 'color:' . $title_c;
 					}
@@ -515,9 +519,18 @@ HTML;
 					$html .= '<h2 style="' . htmlspecialchars(implode(';', $tst), ENT_QUOTES) . '">' . $title . '</h2>';
 				}
 				if ('' !== $desc) {
-					$dst = array('margin:0 0 1.25rem');
+					$desc_mb = !empty($s['description_spacing']['size'])
+						? (float) $s['description_spacing']['size']
+						: 28;
+					$dst = array('margin:0 0 ' . $desc_mb . 'px');
 					if ('' !== $desc_c) {
 						$dst[] = 'color:' . $desc_c;
+					}
+					if (!empty($s['description_max_width']['size'])) {
+						$dst[] = 'max-width:' . (float) $s['description_max_width']['size']
+							. (string) ($s['description_max_width']['unit'] ?? 'px');
+						$dst[] = 'margin-left:auto';
+						$dst[] = 'margin-right:auto';
 					}
 					foreach (array(
 						'description_typography_font_family' => 'font-family',
@@ -556,7 +569,10 @@ HTML;
 					if ('' !== $btn_c) {
 						$bst[] = 'color:' . $btn_c;
 					}
-					if ('' !== $btn_bg) {
+					$btn_bg_b = (string) ($s['button_background_color_b'] ?? '');
+					if ('' !== $btn_bg && '' !== $btn_bg_b) {
+						$bst[] = 'background-image:linear-gradient(135deg,' . $btn_bg . ',' . $btn_bg_b . ')';
+					} elseif ('' !== $btn_bg) {
 						$bst[] = 'background:' . $btn_bg;
 					}
 					$box_shadow = $s['button_box_shadow_box_shadow'] ?? null;

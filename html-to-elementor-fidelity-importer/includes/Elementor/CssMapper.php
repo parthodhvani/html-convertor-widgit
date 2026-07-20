@@ -327,6 +327,30 @@ final class CssMapper
             }
         }
 
+        // Multi-layer gradient stacks (CTA glows, hero washes) cannot fit in
+        // Elementor's 2-stop controls — reinject the full background-image list
+        // so preview/custom CSS keep the gold/violet radial atmosphere.
+        if ('' !== $raw_bg_img && false !== stripos($raw_bg_img, 'gradient')) {
+            $layers = $this->split_background_layers($raw_bg_img);
+            $grad_layers = array();
+            foreach ($layers as $layer) {
+                $layer = trim($layer);
+                if ('' !== $layer && false !== stripos($layer, 'gradient')) {
+                    $grad_layers[] = $layer;
+                }
+            }
+            if (count($grad_layers) > 1) {
+                $out = $this->merge_custom_css(
+                    $out,
+                    'background-image:' . implode(',', $grad_layers)
+                );
+                $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                    (array) ($out['_h2e_unsupported'] ?? array()),
+                    array('multi-layer-gradient')
+                )));
+            }
+        }
+
         return $out;
     }
 
