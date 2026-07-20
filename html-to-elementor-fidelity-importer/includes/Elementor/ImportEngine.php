@@ -193,10 +193,34 @@ final class ImportEngine
 			$css = rtrim($css) . "\n\n/* h2e element custom css */\n" . $generated;
 		}
 		update_post_meta($post_id, '_h2e_source_css', $css);
-		update_post_meta($post_id, '_h2e_source_links', array_values((array) ($assets['stylesheets'] ?? array())));
-		if ($inject_js) {
+		update_post_meta(
+			$post_id,
+			'_h2e_source_links',
+			array_values($this->filter_icon_font_stylesheets((array) ($assets['stylesheets'] ?? array())))
+		);		if ($inject_js) {
 			update_post_meta($post_id, '_h2e_source_js', (string) ($assets['combinedJs'] ?? ''));
 		}
+	}
+	/**
+	 * Drop icon-font stylesheets (Font Awesome, etc.) from the preserved
+	 * source <link> list. Elementor's Icon widget renders icons natively
+	 * (inline SVG); re-including the original icon-font CSS only causes
+	 * its unscoped `.fa-xxx:before` rules to double-paint on top of
+	 * Elementor's own icon markup, which also carries the fa-* classes.
+	 *
+	 * @param array<int,string> $links Stylesheet URLs.
+	 * @return array<int,string>
+	 */
+	private function filter_icon_font_stylesheets(array $links): array
+	{
+		return array_filter(
+			$links,
+			static function ($href): bool {
+				$href = strtolower((string) $href);
+				return '' !== $href
+					&& !preg_match('/font-?awesome|fontawesome|\/fa-|fa[- ]?icons?/i', $href);
+			}
+		);
 	}
 
 	/**
