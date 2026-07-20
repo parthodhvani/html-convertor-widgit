@@ -461,9 +461,9 @@ final class CssMappingEngine implements EngineInterface
 			if ('' !== $bg && false === stripos($bg, 'gradient') && !$this->is_transparent_color($bg)) {
 				$style['background_background'] = 'classic';
 				$style['background_color'] = $bg;
-			} elseif (!empty($style['border_border'])) {
-				// Outline / ghost buttons: source has no fill. Explicit transparent
-				// prevents Elementor's default accent background from painting over.
+			} else {
+				// Unfilled links/buttons (outline, ghost, text CTAs): force transparent
+				// so Elementor's kit accent (often green) cannot paint a solid fill.
 				$style['background_background'] = 'classic';
 				$style['background_color'] = 'rgba(0,0,0,0)';
 			}
