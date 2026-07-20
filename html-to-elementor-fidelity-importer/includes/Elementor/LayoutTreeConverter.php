@@ -371,8 +371,16 @@ final class LayoutTreeConverter
      */
     private function widget(string $type, array $settings, array $node): array
     {
-        $settings = array_merge($settings, $this->style_for_widget($type, $node), $this->identity($node));
-
+        $identity = $this->identity($node);
+        if ('button' === $type) {
+            // Buttons are now fully styled via native Elementor settings
+            // (background, border, radius, padding, typography, shadow) above —
+            // keeping the original `btn`/`btn-golden`/`hero-badge` classes only
+            // causes unstyled/mismatched rendering since that source CSS isn't
+            // reliably available in the Elementor editor context.
+            unset($identity['_css_classes']);
+        }
+        $settings = array_merge($settings, $this->style_for_widget($type, $node), $identity);
         $this->stats['widgets']++;
         $this->stats['native_widgets']++;
         $this->stats['widget_breakdown'][$type] = ($this->stats['widget_breakdown'][$type] ?? 0) + 1;
@@ -882,6 +890,14 @@ final class LayoutTreeConverter
                     if ('' !== $bg && false === stripos($bg, 'gradient')) {
                         $style['background_color'] = $bg;
                     }
+                }
+                // Button widget's internal chip padding is its own control
+                // (`text_padding`, not the generic `padding` used elsewhere) —
+                // without this the pill/badge shape collapses to Elementor's
+                // tiny default and the button relies on source CSS instead.
+                $padding = $this->css->spacing($node, false);
+                if (!empty($padding['padding'])) {
+                    $style['text_padding'] = $padding['padding'];
                 }
                 return $style;
             case 'image':
