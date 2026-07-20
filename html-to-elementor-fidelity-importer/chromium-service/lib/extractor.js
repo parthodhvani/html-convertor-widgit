@@ -116,11 +116,17 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
     await page.evaluate(() => {
       document.documentElement.classList.remove('js');
       document.body && document.body.classList.remove('js');
+
+      // Scroll-reveal systems use `.reveal { opacity:0 }` until IntersectionObserver
+      // adds `.in`. In headless extraction that never fires for below-fold cards, and
+      // the segmenter drops opacity:0 nodes — emptying entire grids. Strip the
+      // reveal token and force visibility so geometry is captured.
       document.querySelectorAll('.reveal').forEach((el) => {
-        el.classList.add('in', 'show', 'visible');
-        el.style.opacity = '1';
-        el.style.transform = 'none';
-        el.style.visibility = 'visible';
+        el.classList.remove('reveal');
+        el.classList.add('in', 'show', 'visible', 'h2e-reveal-forced');
+        el.style.setProperty('opacity', '1', 'important');
+        el.style.setProperty('transform', 'none', 'important');
+        el.style.setProperty('visibility', 'visible', 'important');
       });
       document.querySelectorAll('details:not([open])').forEach((el) => {
         el.open = true;

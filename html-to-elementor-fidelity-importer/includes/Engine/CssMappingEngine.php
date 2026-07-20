@@ -317,6 +317,7 @@ final class CssMappingEngine implements EngineInterface
 			$this->mapper->box_shadow($node),
 			$this->mapper->sizing($node),
 			$this->mapper->effects($node),
+			$this->mapper->text_color($node, 'text_color'),
 			$this->map_constraint_spacing($node, $is_section)
 		);
 
