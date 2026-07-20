@@ -279,9 +279,7 @@ final class LayoutGraphEmitter
 		if (1 === count($children) && is_array($children[0]) && empty($node['text'])) {
 			$signals = VisualSignals::analyze($node);
 			if (!$signals['has_background'] && !$signals['has_border'] && !$signals['has_shadow']
-				&& !$signals['has_padding'] && empty($signals['has_clip_shape'])
-				&& '' === $role && empty($node['layoutConstraint'])
-			) {
+				&& !$signals['has_padding'] && '' === $role && empty($node['layoutConstraint'])) {
 				return $this->emit_node($children[0], $is_section, $parent_row, $parent_width);
 			}
 		}
@@ -345,9 +343,7 @@ final class LayoutGraphEmitter
 		}
 
 		$signals = VisualSignals::analyze($node);
-		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']
-			|| $signals['has_padding'] || !empty($signals['has_clip_shape'])
-		) {
+		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow'] || $signals['has_padding']) {
 			return true;
 		}
 
