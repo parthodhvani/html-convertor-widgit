@@ -371,7 +371,7 @@ final class LayoutTreeConverter
      */
     private function widget(string $type, array $settings, array $node): array
     {
-        $settings = array_merge($settings, $this->style_for_widget($type, $node), $this->identity($node));
+        $settings = array_merge($settings, $this->style_for_widget($type, $node), $this->identity($node, $type));
         $this->stats['widgets']++;
         $this->stats['native_widgets']++;
         $this->stats['widget_breakdown'][$type] = ($this->stats['widget_breakdown'][$type] ?? 0) + 1;
@@ -407,7 +407,7 @@ final class LayoutTreeConverter
             if (empty($settings['flex_direction'])) {
                 $settings['flex_direction'] = 'column';
             }
-            $settings = array_merge(
+            $settings = $this->css->combine(
                 $settings,
                 $this->css->background($node),
                 $this->css->border($node),
@@ -849,7 +849,7 @@ final class LayoutTreeConverter
         }
         switch ($type) {
             case 'heading':
-                return array_merge(
+                return $this->css->combine(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'title_color'),
                     $this->css->alignment($node, 'align'),
@@ -858,7 +858,7 @@ final class LayoutTreeConverter
                     $this->css->border($node)
                 );
             case 'text-editor':
-                return array_merge(
+                return $this->css->combine(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'text_color'),
                     $this->css->alignment($node, 'align'),
@@ -867,7 +867,7 @@ final class LayoutTreeConverter
                     $this->css->border($node)
                 );
             case 'button':
-                $style = array_merge(
+                $style = $this->css->combine(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'button_text_color'),
                     $this->css->alignment($node, 'align'),
@@ -905,7 +905,7 @@ final class LayoutTreeConverter
                 }
                 return $style;
             case 'image':
-                return array_merge(
+                return $this->css->combine(
                     $this->css->alignment($node, 'align'),
                     $this->css->spacing($node, true),
                     $this->css->border($node),
@@ -929,7 +929,7 @@ final class LayoutTreeConverter
             case 'price-table':
             case 'testimonial':
             case 'call-to-action':
-                return array_merge(
+                return $this->css->combine(
                     $this->css->spacing($node, true),
                     $this->css->background($node),
                     $this->css->border($node),
@@ -1068,13 +1068,18 @@ final class LayoutTreeConverter
      * Retain original id/classes so the imported page benefits from the source
      * stylesheet (kept editable in Elementor's Advanced tab).
      *
-     * @param array<string,mixed> $node Source node.
+     * Font Awesome / btn utility classes are stripped for native widgets — see
+     * sanitize_css_classes() — otherwise source CSS + Elementor controls double
+     * paint (2× FA ::before icons, messy button shadows).
+     *
+     * @param array<string,mixed> $node         Source node.
+     * @param string              $widget_type  Elementor widget type when emitting a widget.
      * @return array<string,mixed>
      */
-    private function identity(array $node): array
+    private function identity(array $node, string $widget_type = ''): array
     {
         $out = array();
-        $classes = trim((string) ($node['cls'] ?? ''));
+        $classes = $this->sanitize_css_classes(trim((string) ($node['cls'] ?? '')), $widget_type);
         if ('' !== $classes) {
             $out['_css_classes'] = $classes;
         }
@@ -1094,6 +1099,48 @@ final class LayoutTreeConverter
             );
         }
         return $out;
+    }
+
+    /**
+     * Strip classes that must not land on the Elementor wrapper.
+     *
+     * @param string $classes     Raw class attribute.
+     * @param string $widget_type Elementor widget type when known.
+     */
+    private function sanitize_css_classes(string $classes, string $widget_type = ''): string
+    {
+        if ('' === $classes) {
+            return '';
+        }
+        $parts = preg_split('/\s+/', $classes) ?: array();
+        $kept = array();
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ('' === $part) {
+                continue;
+            }
+            // Font Awesome 4/5/6 tokens — FA CSS injects ::before on the wrapper.
+            if (preg_match('/^fa(?:s|r|b|l|d)?$/', $part)
+                || preg_match('/^fa-(?:solid|regular|brands|light|duotone|thin)$/', $part)
+                || preg_match('/^fa-[\w-]+$/', $part)
+            ) {
+                continue;
+            }
+            // Button chrome — Elementor Button already carries mapped paint; keeping
+            // btn/btn-gold re-applies injected source CSS on the wrapper (double glow).
+            if (in_array($widget_type, array('button', 'call-to-action'), true)
+                && (preg_match('/^btn(?:-[\w-]+)?$/', $part) || 'button' === $part)
+            ) {
+                continue;
+            }
+            if (in_array($widget_type, array('icon', 'icon-box', 'social-icons'), true)
+                && preg_match('/^(?:icon|glyphicon)(?:-[\w-]+)?$/', $part)
+            ) {
+                continue;
+            }
+            $kept[] = $part;
+        }
+        return trim(implode(' ', array_unique($kept)));
     }
 
     /**

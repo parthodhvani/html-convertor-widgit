@@ -124,7 +124,8 @@ final class WrapperEliminationEngine implements EngineInterface
 			return false;
 		}
 		$s = $node['s'] ?? array();
-		$has_visual = !empty($s['bg']) || !empty($s['bgImg']) || !empty($s['bdw']) || !empty($s['sh']);
+		$has_visual = !empty($s['bg']) || !empty($s['bgImg']) || !empty($s['bdw']) || !empty($s['sh'])
+			|| VisualSignals::has_clip_shape($s);
 		if ($has_visual) {
 			return false;
 		}

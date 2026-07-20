@@ -539,6 +539,19 @@ final class CssMapper
             }
         }
 
+        // Elliptical / percent radii (organic hero frames) cannot fit Elementor's
+        // four px controls — reinject the raw CSS border-radius string.
+        $br_raw = trim((string) ($s['brRaw'] ?? ''));
+        if ('' !== $br_raw && '0px' !== $br_raw
+            && (false !== strpos($br_raw, '/') || false !== strpos($br_raw, '%'))
+        ) {
+            $out = $this->merge_custom_css($out, 'border-radius:' . $br_raw);
+            $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                (array) ($out['_h2e_unsupported'] ?? array()),
+                array('elliptical-border-radius')
+            )));
+        }
+
         return $out;
     }
 
@@ -845,19 +858,24 @@ final class CssMapper
             $gap_css = ((string) (int) round($gap['size'])) . $gap['unit'];
         }
 
-        $out = array(
-            'flex_direction' => 'row',
-            'flex_wrap' => in_array(strtolower((string) ($s['fw_wrap'] ?? '')), array('nowrap', 'wrap', 'wrap-reverse'), true)
-                ? strtolower((string) $s['fw_wrap'])
-                : 'wrap',
-            '_h2e_display' => 'grid',
-            'custom_css' => sprintf(
-                'selector { display: grid !important; grid-template-columns: %s; gap: %s; align-items: %s; }',
-                $columns,
-                $gap_css,
-                $this->css_align_keyword((string) ($s['ai'] ?? 'stretch'))
-            ),
-        );
+		$out = array(
+			'flex_direction' => 'row',
+			'flex_wrap' => in_array(strtolower((string) ($s['fw_wrap'] ?? '')), array('nowrap', 'wrap', 'wrap-reverse'), true)
+				? strtolower((string) $s['fw_wrap'])
+				: 'wrap',
+			'_h2e_display' => 'grid',
+			// Force direct children to fill grid tracks. Geometry %-shares (32%) are
+			// kept for flex fallback when custom CSS is unavailable, but inside a
+			// real CSS grid those percentages shrink cards to a fraction of each
+			// cell (skinny columns + huge gaps — Petra service/why grids).
+			'custom_css' => sprintf(
+				'selector { display: grid !important; grid-template-columns: %s; gap: %s; align-items: %s; }'
+				. ' selector > .e-con, selector > .elementor-element { width: 100%% !important; max-width: 100%%; min-width: 0; }',
+				$columns,
+				$gap_css,
+				$this->css_align_keyword((string) ($s['ai'] ?? 'stretch'))
+			),
+		);
 
         if ($gap) {
             $size = $gap['size'];
@@ -1458,6 +1476,45 @@ final class CssMapper
         $existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
         $settings['_h2e_custom_css'] = '' === $existing ? $css : ($existing . ';' . $css);
         return $settings;
+    }
+
+    /**
+     * Merge mapper result bags without clobbering `_h2e_custom_css` /
+     * `_h2e_unsupported` (plain array_merge would drop multi-layer gradients
+     * when a later effects() bag only carries overflow/filter).
+     *
+     * @param array<string,mixed> ...$parts Setting bags.
+     * @return array<string,mixed>
+     */
+    public function combine(array ...$parts): array
+    {
+        $out = array();
+        $custom = array();
+        $unsupported = array();
+        foreach ($parts as $part) {
+            if (!is_array($part) || empty($part)) {
+                continue;
+            }
+            if (isset($part['_h2e_custom_css'])) {
+                $chunk = trim((string) $part['_h2e_custom_css'], " \t\n\r\0\x0B;");
+                if ('' !== $chunk) {
+                    $custom[] = $chunk;
+                }
+                unset($part['_h2e_custom_css']);
+            }
+            if (isset($part['_h2e_unsupported']) && is_array($part['_h2e_unsupported'])) {
+                $unsupported = array_merge($unsupported, $part['_h2e_unsupported']);
+                unset($part['_h2e_unsupported']);
+            }
+            $out = array_merge($out, $part);
+        }
+        if (!empty($custom)) {
+            $out['_h2e_custom_css'] = implode(';', $custom);
+        }
+        if (!empty($unsupported)) {
+            $out['_h2e_unsupported'] = array_values(array_unique(array_filter($unsupported)));
+        }
+        return $out;
     }
 
     /**

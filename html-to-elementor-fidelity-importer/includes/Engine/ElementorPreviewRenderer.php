@@ -81,14 +81,9 @@ final class ElementorPreviewRenderer implements EngineInterface
 			? implode(', ', array_map(static fn($f) => '"' . str_replace('"', '', $f) . '"', $fonts)) . ', system-ui, sans-serif'
 			: 'system-ui, sans-serif';
 
-		return <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>{$title}</title>
-{$font_link}
-<style>
+		// Cascade: Elementor approximation first, then uploaded/source CSS so
+		// design-system class rules win (matches WordPress Frontend order).
+		$base_css = <<<CSS
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{width:{$width}px;max-width:100%;font-family:{$font_stack}}
@@ -104,11 +99,29 @@ p,ul,ol,figure,blockquote{margin:0}
 .e-con[style*="flex-direction:column"] > .e-widget{width:100%}
 .e-widget-heading{margin:0}
 .e-widget-text p{margin:0}
+.e-widget-text a{color:inherit;text-decoration:none}
+.e-widget-icon{display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .e-widget-button a{
   display:inline-flex;align-items:center;justify-content:center;
   text-decoration:none;padding:0;border-radius:0;background:transparent
 }
-{$extra_css}
+CSS;
+
+		$style_block = $base_css;
+		if ('' !== trim($extra_css)) {
+			$style_block = $base_css . "\n/* h2e uploaded/source css (wins over approximation) */\n" . $extra_css;
+		}
+
+		return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{$title}</title>
+{$font_link}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+{$style_block}
 </style>
 </head>
 <body{$body_attr}>
@@ -131,8 +144,17 @@ HTML;
 					continue;
 				}
 				$s = (array) ($el['settings'] ?? array());
-				$family = trim((string) ($s['typography_font_family'] ?? ''));
-				if ('' !== $family) {
+				foreach (array(
+					'typography_font_family',
+					'title_typography_font_family',
+					'description_typography_font_family',
+					'button_typography_font_family',
+					'name_typography_font_family',
+				) as $key) {
+					$family = trim((string) ($s[$key] ?? ''));
+					if ('' === $family) {
+						continue;
+					}
 					$first = trim(explode(',', $family)[0], " \t\"'");
 					if ('' !== $first && !in_array($first, $fonts, true)) {
 						$fonts[] = $first;
@@ -319,7 +341,18 @@ HTML;
 		$s = (array) ($el['settings'] ?? array());
 		$type = (string) ($el['widgetType'] ?? 'html');
 		$id = htmlspecialchars((string) ($el['id'] ?? ''), ENT_QUOTES);
-		$style = implode(';', array_merge($this->box_styles($s), $this->typography_styles($s), $this->background_styles($s), $this->position_styles($s)));
+		// Button / icon paint lives on the inner control (anchor / <i>), not the
+		// Elementor wrapper — avoid double gradient / glow in preview compares.
+		$parts = array_merge($this->typography_styles($s), $this->position_styles($s));
+		if (!in_array($type, array('button', 'icon'), true)) {
+			$parts = array_merge($this->box_styles($s), $parts, $this->background_styles($s));
+		} elseif ('button' === $type) {
+			// Keep alignment on the wrapper so left/center/right still layout.
+			if (!empty($s['align'])) {
+				$parts[] = 'text-align:' . (string) $s['align'];
+			}
+		}
+		$style = implode(';', $parts);
 		foreach (array('_h2e_custom_css', 'custom_css') as $key) {
 			$custom = $this->flatten_custom_css((string) ($s[$key] ?? ''));
 			if ('' !== $custom) {
@@ -357,6 +390,22 @@ HTML;
 				return '<' . $tag . ' class="e-widget-heading"' . $attr . '>' . $text . '</' . $tag . '>';
 			case 'text-editor':
 				return '<div class="e-widget-text">' . (string) ($s['editor'] ?? '') . '</div>';
+			case 'icon':
+				$icon_val = trim((string) ($s['selected_icon']['value'] ?? ''));
+				if ('' === $icon_val) {
+					return '';
+				}
+				$ic_st = array('line-height:1');
+				if (!empty($s['primary_color'])) {
+					$ic_st[] = 'color:' . (string) $s['primary_color'];
+				}
+				$size = $s['size']['size'] ?? null;
+				if (null !== $size && '' !== $size) {
+					$ic_st[] = 'font-size:' . (float) $size . (string) ($s['size']['unit'] ?? 'px');
+				}
+				return '<span class="e-widget-icon-inner"><i class="'
+					. htmlspecialchars($icon_val, ENT_QUOTES) . '" aria-hidden="true" style="'
+					. htmlspecialchars(implode(';', $ic_st), ENT_QUOTES) . '"></i></span>';
 			case 'button':
 				$text = htmlspecialchars((string) ($s['text'] ?? 'Button'), ENT_QUOTES);
 				$url = htmlspecialchars((string) ($s['link']['url'] ?? '#'), ENT_QUOTES);
@@ -420,8 +469,11 @@ HTML;
 				$icon_val = (string) ($s['selected_icon']['value'] ?? '');
 				if ('' !== $icon_val) {
 					$gap = (float) ($s['icon_indent']['size'] ?? 10);
+					$margin = ('right' === ($s['icon_align'] ?? 'left') || 'row-reverse' === ($s['icon_align'] ?? ''))
+						? 'margin-inline-start:' . $gap . 'px'
+						: 'margin-inline-end:' . $gap . 'px';
 					$icon_html = ' <i class="' . htmlspecialchars($icon_val, ENT_QUOTES)
-						. '" aria-hidden="true" style="margin-inline-start:' . $gap . 'px"></i>';
+						. '" aria-hidden="true" style="' . $margin . '"></i>';
 				}
 				$align = (string) ($s['icon_align'] ?? 'left');
 				$label = ('right' === $align || 'row-reverse' === $align)

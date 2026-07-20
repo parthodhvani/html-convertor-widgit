@@ -213,4 +213,39 @@ final class GeneratorTest extends TestCase
 		$layered['layeredLayout'] = array('background' => null, 'content' => array(), 'in_flow' => array());
 		$this->assertFalse($recognition->container_needs_fallback($layered));
 	}
+
+	public function test_css_mapper_combine_preserves_custom_css_bags(): void
+	{
+		$mapper = new CssMapper();
+		$combined = $mapper->combine(
+			array(
+				'_h2e_custom_css' => 'background-image:linear-gradient(red,blue)',
+				'_h2e_unsupported' => array('multi-layer-gradient'),
+				'background_background' => 'gradient',
+			),
+			array(
+				'_h2e_custom_css' => 'overflow:hidden',
+				'_h2e_unsupported' => array('overflow'),
+			)
+		);
+		$this->assertSame('gradient', $combined['background_background']);
+		$this->assertStringContainsString('background-image:linear-gradient(red,blue)', $combined['_h2e_custom_css']);
+		$this->assertStringContainsString('overflow:hidden', $combined['_h2e_custom_css']);
+		$this->assertContains('multi-layer-gradient', $combined['_h2e_unsupported']);
+		$this->assertContains('overflow', $combined['_h2e_unsupported']);
+	}
+
+	public function test_css_mapper_elliptical_border_radius_emits_raw_css(): void
+	{
+		$mapper = new CssMapper();
+		$border = $mapper->border(array(
+			's' => array(
+				'brRaw' => '40% 60% 42% 58% / 55% 45%',
+				'brad' => array('tl' => 40, 'tr' => 60, 'br' => 42, 'bl' => 58),
+			),
+		));
+		$this->assertSame('40', (string) $border['border_radius']['top']);
+		$this->assertStringContainsString('border-radius:40% 60% 42% 58% / 55% 45%', $border['_h2e_custom_css']);
+		$this->assertContains('elliptical-border-radius', $border['_h2e_unsupported']);
+	}
 }

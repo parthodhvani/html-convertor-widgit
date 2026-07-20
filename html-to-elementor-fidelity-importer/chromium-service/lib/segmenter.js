@@ -253,18 +253,34 @@ function browserPageSegmenter() {
       };
     }
 
-    // Per-corner radii (legacy br = top-left / max for backcompat).
-    const brTL = num(cs.borderTopLeftRadius);
-    const brTR = num(cs.borderTopRightRadius);
-    const brBR = num(cs.borderBottomRightRadius);
-    const brBL = num(cs.borderBottomLeftRadius);
-    if (brTL > 0 || brTR > 0 || brBR > 0 || brBL > 0) {
+    // Per-corner radii. Preserve units + elliptical "a / b" form — getComputedStyle
+    // often returns "40% 60% 42% 58% / 55% 45%" for organic frames. Parsing with
+    // num() alone strips % and the slash radii, turning blob masks into boxes.
+    const brRaw = (cs.borderRadius || '').trim();
+    const brTLRaw = (cs.borderTopLeftRadius || '').trim();
+    const brTRRaw = (cs.borderTopRightRadius || '').trim();
+    const brBRRaw = (cs.borderBottomRightRadius || '').trim();
+    const brBLRaw = (cs.borderBottomLeftRadius || '').trim();
+    const brTL = num(brTLRaw);
+    const brTR = num(brTRRaw);
+    const brBR = num(brBRRaw);
+    const brBL = num(brBLRaw);
+    const hasElliptical = brRaw.indexOf('/') !== -1
+      || brTLRaw.indexOf('/') !== -1
+      || brTRRaw.indexOf('%') !== -1
+      || brTLRaw.indexOf('%') !== -1
+      || brBRRaw.indexOf('%') !== -1
+      || brBLRaw.indexOf('%') !== -1;
+    if (brTL > 0 || brTR > 0 || brBR > 0 || brBL > 0 || (brRaw && brRaw !== '0px')) {
       s.brTL = brTL;
       s.brTR = brTR;
       s.brBR = brBR;
       s.brBL = brBL;
       s.br = Math.max(brTL, brTR, brBR, brBL);
       s.brad = { tl: brTL, tr: brTR, br: brBR, bl: brBL };
+      if (hasElliptical && brRaw && brRaw !== '0px') {
+        s.brRaw = brRaw;
+      }
     }
 
     // Effects.
