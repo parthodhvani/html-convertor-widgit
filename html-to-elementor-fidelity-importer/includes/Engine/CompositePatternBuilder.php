@@ -235,8 +235,18 @@ final class CompositePatternBuilder implements EngineInterface
 		}
 
 		$plus = $this->find_descendant_by_class($item, '/\bplus\b/');
-		if (null !== $plus) {
-			$out = array_merge($out, $mapper->text_color($plus, 'icon_color'));
+		$plus_in_html = false;
+		if (null === $plus && null !== $title_node) {
+			$html = (string) ($title_node['html'] ?? '');
+			$plus_in_html = (bool) preg_match('/class=["\'][^"\']*\bplus\b/', $html);
+		}
+		if (null !== $plus || $plus_in_html) {
+			if (null !== $plus) {
+				$out = array_merge($out, $mapper->text_color($plus, 'icon_color'));
+			} elseif (!empty($out['title_color'])) {
+				// Atomic faq-q leaves keep .plus only in outerHTML; colour matches title.
+				$out['icon_color'] = $out['title_color'];
+			}
 			// Source FAQs place the "+" badge after the question text.
 			$out['icon_align'] = 'right';
 			if (empty($out['selected_icon'])) {
