@@ -366,13 +366,13 @@ HTML;
 				} elseif (!empty($s['background_color'])) {
 					$st[] = 'background-color:' . (string) $s['background_color'];
 				}
-				if (!empty($s['padding']) && is_array($s['padding'])) {
-					$p = $s['padding'];
-					$u = (string) ($p['unit'] ?? 'px');
-					$st[] = 'padding:' . (float) ($p['top'] ?? 0) . $u . ' '
-						. (float) ($p['right'] ?? 0) . $u . ' '
-						. (float) ($p['bottom'] ?? 0) . $u . ' '
-						. (float) ($p['left'] ?? 0) . $u;
+				$pad = $s['text_padding'] ?? $s['padding'] ?? null;
+				if (!empty($pad) && is_array($pad)) {
+					$u = (string) ($pad['unit'] ?? 'px');
+					$st[] = 'padding:' . (float) ($pad['top'] ?? 0) . $u . ' '
+						. (float) ($pad['right'] ?? 0) . $u . ' '
+						. (float) ($pad['bottom'] ?? 0) . $u . ' '
+						. (float) ($pad['left'] ?? 0) . $u;
 				}
 				if (!empty($s['border_radius']) && is_array($s['border_radius'])) {
 					$br = $s['border_radius'];
@@ -391,15 +391,36 @@ HTML;
 						$st[] = 'border-color:' . (string) $s['border_color'];
 					}
 				}
+				$box_shadow = $s['button_box_shadow_box_shadow'] ?? $s['box_shadow_box_shadow'] ?? null;
+				if (!empty($box_shadow) && is_array($box_shadow)) {
+					$st[] = 'box-shadow:'
+						. (float) ($box_shadow['horizontal'] ?? 0) . 'px '
+						. (float) ($box_shadow['vertical'] ?? 0) . 'px '
+						. (float) ($box_shadow['blur'] ?? 0) . 'px '
+						. (float) ($box_shadow['spread'] ?? 0) . 'px '
+						. (string) ($box_shadow['color'] ?? 'rgba(0,0,0,.2)');
+				}
+				if (!empty($s['typography_font_size']['size'])) {
+					$st[] = 'font-size:' . (float) $s['typography_font_size']['size']
+						. (string) ($s['typography_font_size']['unit'] ?? 'px');
+				}
+				if (!empty($s['typography_font_weight'])) {
+					$st[] = 'font-weight:' . (string) $s['typography_font_weight'];
+				}
+				if (!empty($s['typography_font_family'])) {
+					$st[] = 'font-family:' . (string) $s['typography_font_family'];
+				}
 				$icon_html = '';
 				$icon_val = (string) ($s['selected_icon']['value'] ?? '');
 				if ('' !== $icon_val) {
-					$icon_html = ' <i class="' . htmlspecialchars($icon_val, ENT_QUOTES) . '" aria-hidden="true"></i>';
+					$gap = (float) ($s['icon_indent']['size'] ?? 10);
+					$icon_html = ' <i class="' . htmlspecialchars($icon_val, ENT_QUOTES)
+						. '" aria-hidden="true" style="margin-inline-start:' . $gap . 'px"></i>';
 				}
 				$align = (string) ($s['icon_align'] ?? 'left');
 				$label = ('right' === $align || 'row-reverse' === $align)
 					? ($text . $icon_html)
-					: ($icon_html . $text);
+					: (ltrim($icon_html) . ($icon_html !== '' ? ' ' : '') . $text);
 				$attr = empty($st) ? '' : ' style="' . htmlspecialchars(implode(';', $st), ENT_QUOTES) . '"';
 				return '<div class="e-widget-button"><a href="' . $url . '"' . $attr . '>' . $label . '</a></div>';
 			case 'star-rating':

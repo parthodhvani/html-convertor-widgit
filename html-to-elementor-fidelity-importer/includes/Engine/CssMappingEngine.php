@@ -431,18 +431,77 @@ final class CssMappingEngine implements EngineInterface
 			$this->mapper->text_color($node, 'button_text_color'),
 			$this->mapper->alignment($node, 'align'),
 			$this->mapper->border($node),
-			$this->mapper->box_shadow($node),
 			$this->mapper->background($node),
-			$this->mapper->spacing($node, true),
 			$this->mapper->position($node)
 		);
-		if (empty($style['background_background']) && empty($style['background_color'])) {
-			$bg = (string) ($node['s']['bg'] ?? '');
-			if ('' !== $bg && false === stripos($bg, 'gradient')) {
-				$style['background_color'] = $bg;
+
+		// Elementor Button uses text_padding (not padding) and button_box_shadow
+		// (not box_shadow) — see includes/widgets/traits/button-trait.php.
+		$spacing = $this->mapper->spacing($node, false);
+		if (!empty($spacing['padding']) && is_array($spacing['padding'])) {
+			$style['text_padding'] = $spacing['padding'];
+		}
+		foreach ($spacing as $key => $value) {
+			if (is_string($key) && preg_match('/^padding_(tablet|mobile|laptop|widescreen)$/', $key, $m)) {
+				$style['text_padding_' . $m[1]] = $value;
 			}
 		}
+
+		$shadow = $this->mapper->box_shadow($node);
+		if (!empty($shadow['box_shadow_box_shadow_type'])) {
+			$style['button_box_shadow_box_shadow_type'] = $shadow['box_shadow_box_shadow_type'];
+		}
+		if (!empty($shadow['box_shadow_box_shadow'])) {
+			$style['button_box_shadow_box_shadow'] = $shadow['box_shadow_box_shadow'];
+		}
+
+		if (empty($style['background_background']) && empty($style['background_color'])) {
+			$bg = (string) ($node['s']['bg'] ?? '');
+			if ('' !== $bg && false === stripos($bg, 'gradient') && !$this->is_transparent_color($bg)) {
+				$style['background_background'] = 'classic';
+				$style['background_color'] = $bg;
+			} elseif (!empty($style['border_border'])) {
+				// Outline / ghost buttons: source has no fill. Explicit transparent
+				// prevents Elementor's default accent background from painting over.
+				$style['background_background'] = 'classic';
+				$style['background_color'] = 'rgba(0,0,0,0)';
+			}
+		}
+
+		// Source .btn { gap: 10px } → Elementor icon_indent.
+		$gap = $this->css_gap_px($node);
+		if ($gap > 0) {
+			$style['icon_indent'] = array(
+				'unit' => 'px',
+				'size' => $gap,
+			);
+		}
+
 		return $style;
+	}
+
+	/**
+	 * @param string $color Colour string.
+	 */
+	private function is_transparent_color(string $color): bool
+	{
+		$c = strtolower(preg_replace('/\s+/', '', $color) ?? '');
+		return '' === $c || 'transparent' === $c || 'rgba(0,0,0,0)' === $c;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Tree node.
+	 */
+	private function css_gap_px(array $node): float
+	{
+		$raw = $node['s']['gap'] ?? null;
+		if (is_numeric($raw)) {
+			return (float) $raw;
+		}
+		if (is_string($raw) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($raw), $m)) {
+			return (float) $m[1];
+		}
+		return 0.0;
 	}
 
 	/**
