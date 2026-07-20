@@ -81,15 +81,9 @@ final class ElementorPreviewRenderer implements EngineInterface
 			? implode(', ', array_map(static fn($f) => '"' . str_replace('"', '', $f) . '"', $fonts)) . ', system-ui, sans-serif'
 			: 'system-ui, sans-serif';
 
-		return <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>{$title}</title>
-{$font_link}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
-<style>
+		// Cascade: uploaded/source CSS first, then Elementor approximation defaults.
+		// Mapped typography/layout on widgets still win via inline styles.
+		$base_css = <<<CSS
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{width:{$width}px;max-width:100%;font-family:{$font_stack}}
@@ -111,7 +105,25 @@ p,ul,ol,figure,blockquote{margin:0}
   display:inline-flex;align-items:center;justify-content:center;
   text-decoration:none;padding:0;border-radius:0;background:transparent
 }
-{$extra_css}
+CSS;
+
+		$style_block = $extra_css;
+		if ('' !== trim($extra_css)) {
+			$style_block = "/* h2e uploaded/source css */\n" . $extra_css . "\n/* h2e elementor approximation */\n" . $base_css;
+		} else {
+			$style_block = $base_css;
+		}
+
+		return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{$title}</title>
+{$font_link}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+{$style_block}
 </style>
 </head>
 <body{$body_attr}>
@@ -134,8 +146,17 @@ HTML;
 					continue;
 				}
 				$s = (array) ($el['settings'] ?? array());
-				$family = trim((string) ($s['typography_font_family'] ?? ''));
-				if ('' !== $family) {
+				foreach (array(
+					'typography_font_family',
+					'title_typography_font_family',
+					'description_typography_font_family',
+					'button_typography_font_family',
+					'name_typography_font_family',
+				) as $key) {
+					$family = trim((string) ($s[$key] ?? ''));
+					if ('' === $family) {
+						continue;
+					}
 					$first = trim(explode(',', $family)[0], " \t\"'");
 					if ('' !== $first && !in_array($first, $fonts, true)) {
 						$fonts[] = $first;
