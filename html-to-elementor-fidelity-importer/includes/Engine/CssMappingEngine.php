@@ -55,7 +55,7 @@ final class CssMappingEngine implements EngineInterface
 	public function map_widget(array $node, string $widget_type): array
 	{
 		$settings = match ($widget_type) {
-			'heading' => $this->mapper->combine(
+			'heading' => array_merge(
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'title_color'),
 				$this->mapper->alignment($node, 'align'),
@@ -64,7 +64,7 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->border($node),
 				$this->mapper->position($node)
 			),
-			'text-editor' => $this->mapper->combine(
+			'text-editor' => array_merge(
 				$this->mapper->typography($node),
 				$this->mapper->text_color($node, 'text_color'),
 				$this->mapper->alignment($node, 'align'),
@@ -74,7 +74,7 @@ final class CssMappingEngine implements EngineInterface
 				$this->mapper->position($node)
 			),
 			'button' => $this->map_button($node),
-			'image' => $this->mapper->combine(
+			'image' => array_merge(
 				$this->mapper->alignment($node, 'align'),
 				$this->mapper->spacing($node, true),
 				$this->mapper->border($node),
@@ -84,25 +84,25 @@ final class CssMappingEngine implements EngineInterface
 			),
 			// Painted composites must retain browser backgrounds (incl. gradients).
 			'call-to-action', 'price-table', 'icon-box', 'testimonial' => $this->map_painted_composite($node, $widget_type),
-			'accordion' => $this->mapper->combine(
+			'accordion' => array_merge(
 				$this->mapper->spacing($node, true),
 				$this->mapper->background($node),
 				$this->mapper->border($node),
 				$this->mapper->box_shadow($node)
 			),
 			'form', 'social-icons', 'star-rating', 'icon-list',
-			'divider', 'spacer', 'video', 'google_maps', 'icon' => $this->mapper->combine(
+			'divider', 'spacer', 'video', 'google_maps', 'icon' => array_merge(
 				$this->mapper->spacing($node, true),
 				$this->map_icon_paint($node, $widget_type)
 			),
-			default => $this->mapper->combine(
+			default => array_merge(
 				$this->mapper->spacing($node, true),
 				$this->mapper->effects($node)
 			),
 		};
 
 		if (in_array($widget_type, array('text-editor', 'heading'), true)) {
-			$settings = $this->mapper->combine($settings, $this->single_line_text_guard($node));
+			$settings = array_merge($settings, $this->single_line_text_guard($node));
 		}
 
 		return $this->apply_token_references($settings);
@@ -145,7 +145,7 @@ final class CssMappingEngine implements EngineInterface
 	 */
 	private function map_painted_composite(array $node, string $widget_type): array
 	{
-		$out = $this->mapper->combine(
+		$out = array_merge(
 			$this->mapper->spacing($node, true),
 			$this->mapper->background($node),
 			$this->mapper->border($node),
@@ -310,7 +310,7 @@ final class CssMappingEngine implements EngineInterface
 	 */
 	public function map_container(array $node, bool $is_section = false): array
 	{
-		$settings = $this->mapper->combine(
+		$settings = array_merge(
 			$this->mapper->flex($node),
 			$this->mapper->background($node),
 			$this->mapper->border($node),
@@ -426,7 +426,7 @@ final class CssMappingEngine implements EngineInterface
 	 */
 	private function map_button(array $node): array
 	{
-		$style = $this->mapper->combine(
+		$style = array_merge(
 			$this->mapper->typography($node),
 			$this->mapper->text_color($node, 'button_text_color'),
 			$this->mapper->alignment($node, 'align'),
