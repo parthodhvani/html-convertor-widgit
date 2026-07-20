@@ -36,6 +36,7 @@ final class VisualSignals
 			'has_border' => !empty($s['bdw']),
 			'has_shadow' => !empty($s['sh']),
 			'has_padding' => self::padding_sum($s) > 0,
+			'has_clip_shape' => self::has_clip_shape($s),
 			'is_layered' => self::is_layered($node),
 			'child_count' => count($children),
 			'atomic_child_count' => self::count_atomic($children),
@@ -46,6 +47,29 @@ final class VisualSignals
 			'position' => strtolower((string) ($s['pos'] ?? 'static')),
 			'aria_role' => strtolower((string) ($node['ariaRole'] ?? $node['role'] ?? '')),
 		);
+	}
+
+	/**
+	 * Organic / clipped media frames (elliptical radius, overflow clip, clip-path).
+	 *
+	 * @param array<string,mixed> $s Computed styles.
+	 */
+	public static function has_clip_shape(array $s): bool
+	{
+		$br_raw = trim((string) ($s['brRaw'] ?? ''));
+		if ('' !== $br_raw && '0px' !== $br_raw
+			&& (false !== strpos($br_raw, '/') || false !== strpos($br_raw, '%'))
+		) {
+			return true;
+		}
+		$ov = strtolower((string) ($s['ov'] ?? $s['ovX'] ?? $s['ovY'] ?? 'visible'));
+		if (in_array($ov, array('hidden', 'clip'), true)
+			&& ((float) ($s['br'] ?? 0) > 0 || !empty($s['brad']))
+		) {
+			return true;
+		}
+		$clip = trim((string) ($s['clip'] ?? ''));
+		return '' !== $clip && 'none' !== strtolower($clip);
 	}
 
 	/**

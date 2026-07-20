@@ -81,8 +81,8 @@ final class ElementorPreviewRenderer implements EngineInterface
 			? implode(', ', array_map(static fn($f) => '"' . str_replace('"', '', $f) . '"', $fonts)) . ', system-ui, sans-serif'
 			: 'system-ui, sans-serif';
 
-		// Cascade: uploaded/source CSS first, then Elementor approximation defaults.
-		// Mapped typography/layout on widgets still win via inline styles.
+		// Cascade: Elementor approximation first, then uploaded/source CSS so
+		// design-system class rules win (matches WordPress Frontend order).
 		$base_css = <<<CSS
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -107,11 +107,9 @@ p,ul,ol,figure,blockquote{margin:0}
 }
 CSS;
 
-		$style_block = $extra_css;
+		$style_block = $base_css;
 		if ('' !== trim($extra_css)) {
-			$style_block = "/* h2e uploaded/source css */\n" . $extra_css . "\n/* h2e elementor approximation */\n" . $base_css;
-		} else {
-			$style_block = $base_css;
+			$style_block = $base_css . "\n/* h2e uploaded/source css (wins over approximation) */\n" . $extra_css;
 		}
 
 		return <<<HTML
