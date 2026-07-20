@@ -251,6 +251,12 @@ final class CssMapper
      * @param array<string,mixed> $node Tree node.
      * @return array<string,mixed>
      */
+    /**
+     * Build background settings (color, gradient, image) for a node.
+     *
+     * @param array<string,mixed> $node Tree node.
+     * @return array<string,mixed>
+     */
     public function background(array $node): array
     {
         $s = $node['s'] ?? array();
@@ -260,6 +266,12 @@ final class CssMapper
         // Prefer real image URLs over gradients when both appear — but keep the
         // gradient as an Elementor background overlay so multi-layer heroes survive.
         $bg_image = $this->css_url($raw_bg_img);
+
+        // Don't duplicate a font-icon that will render as its own Icon widget.
+        if ('' !== $bg_image && $this->has_icon_font_child($node)) {
+            $bg_image = '';
+        }
+
         $gradient = $this->parse_gradient($raw_bg_img);
         if (null === $gradient) {
             $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
@@ -309,6 +321,34 @@ final class CssMapper
         }
 
         return $out;
+    }
+
+    /**
+     * True when this node's own markup (or a direct child) is a Font Awesome /
+     * icon-font element — meaning it will already be mapped to a native Icon
+     * widget elsewhere in the pipeline, so a background-image on the same
+     * wrapper would render as a duplicate, not real content.
+     *
+     * @param array<string,mixed> $node Node.
+     */
+    private function has_icon_font_child(array $node): bool
+    {
+        $cls = (string) ($node['cls'] ?? '');
+        $html = (string) ($node['html'] ?? '');
+        if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+fa-[\w-]+/i', $cls . ' ' . $html)) {
+            return true;
+        }
+        foreach ((array) ($node['children'] ?? array()) as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+            $ccls = (string) ($child['cls'] ?? '');
+            $chtml = (string) ($child['html'] ?? '');
+            if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+fa-[\w-]+/i', $ccls . ' ' . $chtml)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
