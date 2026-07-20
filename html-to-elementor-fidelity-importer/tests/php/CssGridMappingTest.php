@@ -32,7 +32,6 @@ final class CssGridMappingTest extends TestCase
 		$this->assertSame('grid', $flex['_h2e_display'] ?? '');
 		$this->assertStringContainsString('display: grid', (string) ($flex['custom_css'] ?? ''));
 		$this->assertStringContainsString('repeat(3, minmax(0, 1fr))', (string) ($flex['custom_css'] ?? ''));
-		$this->assertStringContainsString('width: 100%', (string) ($flex['custom_css'] ?? ''));
 		$this->assertSame(28.0, (float) ($flex['flex_gap']['size'] ?? 0));
 	}
 

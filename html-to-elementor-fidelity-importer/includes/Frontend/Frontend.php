@@ -19,15 +19,15 @@ if (!defined('ABSPATH')) {
  * do not cover (pseudo-elements, descendant rules, hover states, ...) without
  * resorting to HTML widgets, while widgets keep their original CSS classes.
  *
- * Cascade order (intentional — design CSS must win over Elementor kit defaults):
- *   1. Uploaded stylesheet <link>s (fonts/icons)     — early enqueue
- *   2. Elementor kit / widget / document CSS         — default priorities
- *   3. Uploaded combinedCss (design system)          — late, after Elementor
- *   4. H2E per-element custom CSS                    — last (grids, transforms,
- *      elliptical radii Elementor cannot express)
+ * Cascade order (intentional):
+ *   1. Uploaded / source stylesheets + combinedCss  (early — foundation)
+ *   2. Elementor kit / widget CSS                   (default priorities)
+ *   3. H2E per-element custom CSS                   (late — transforms, grids,
+ *      multi-layer gradients that Elementor cannot express natively)
  *
- * Conversion still *reads* uploaded CSS first (Chromium computed styles →
- * Elementor controls). Front-end print order keeps the HTML look matching.
+ * Uploaded CSS is therefore read and applied first; Elementor defaults layer on
+ * top for structure. Typography/colours that must match the HTML are also mapped
+ * into Elementor widget controls during conversion so Elementor's own CSS agrees.
  */
 final class Frontend
 {
@@ -37,17 +37,16 @@ final class Frontend
      */
     public function register(): void
     {
-        // Early: font/icon stylesheet links so they are available before paint.
+        // Early: uploaded package CSS before Elementor enqueues its kit/widget CSS.
         add_action('wp_enqueue_scripts', array($this, 'enqueue_source_styles'), 5);
-        // Late: uploaded design CSS after Elementor so class rules win.
-        add_action('wp_head', array($this, 'output_source_css'), 99);
-        // Last: generated per-element custom CSS.
-        add_action('wp_head', array($this, 'output_element_css'), 100);
+        add_action('wp_head', array($this, 'output_source_css'), 1);
+        // Late: generated per-element custom CSS after Elementor prints its sheets.
+        add_action('wp_head', array($this, 'output_element_css'), 99);
         add_action('wp_footer', array($this, 'output_scripts'), 99);
     }
 
     /**
-     * Enqueue remote stylesheet links from the uploaded package (fonts/icons).
+     * Enqueue remote/local stylesheet links from the uploaded package first.
      */
     public function enqueue_source_styles(): void
     {
@@ -78,7 +77,7 @@ final class Frontend
     }
 
     /**
-     * Print the uploaded package's combined CSS after Elementor defaults.
+     * Print the uploaded package's combined CSS early (before Elementor).
      */
     public function output_source_css(): void
     {
@@ -111,7 +110,7 @@ final class Frontend
     }
 
     /**
-     * Print H2E-generated per-element CSS after uploaded design CSS.
+     * Print H2E-generated per-element CSS after Elementor defaults.
      */
     public function output_element_css(): void
     {
