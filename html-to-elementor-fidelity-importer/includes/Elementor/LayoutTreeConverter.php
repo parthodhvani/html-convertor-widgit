@@ -1042,13 +1042,18 @@ final class LayoutTreeConverter
      * Retain original id/classes so the imported page benefits from the source
      * stylesheet (kept editable in Elementor's Advanced tab).
      *
+     * Font Awesome / icon-font tokens (fa, fas, far, fab, fa-solid, fa-moon…)
+     * are stripped here: Elementor's Icon widget already renders the icon
+     * natively (SVG), and carrying the original class over makes the page's
+     * own Font Awesome CSS double-paint the glyph via ::before.
+     *
      * @param array<string,mixed> $node Source node.
      * @return array<string,mixed>
      */
     private function identity(array $node): array
     {
         $out = array();
-        $classes = trim((string) ($node['cls'] ?? ''));
+        $classes = $this->strip_icon_font_classes(trim((string) ($node['cls'] ?? '')));
         if ('' !== $classes) {
             $out['_css_classes'] = $classes;
         }
@@ -1069,7 +1074,28 @@ final class LayoutTreeConverter
         }
         return $out;
     }
-
+    /**
+     * Remove Font Awesome / icon-font class tokens from a class string.
+     * These carry no useful styling once ported into Elementor (the icon
+     * is rendered natively) and only risk colliding with the page's own
+     * Font Awesome CSS, causing a duplicate ::before glyph.
+     *
+     * @param string $classes Space-separated class list.
+     */
+    private function strip_icon_font_classes(string $classes): string
+    {
+        if ('' === $classes) {
+            return '';
+        }
+        $kept = array_filter(
+            preg_split('/\s+/', $classes) ?: array(),
+            static function (string $token): bool {
+                return '' !== $token
+                    && !preg_match('/^(fa|fas|far|fab|fal|fad|fa-solid|fa-regular|fa-brands|fa-light|fa-duotone|fa-[\w-]+)$/i', $token);
+            }
+        );
+        return implode(' ', $kept);
+    }
     /**
      * Heuristic: an empty block with height that acts as vertical spacing.
      *
