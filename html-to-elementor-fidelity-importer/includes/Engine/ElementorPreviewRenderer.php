@@ -391,8 +391,17 @@ HTML;
 						$st[] = 'border-color:' . (string) $s['border_color'];
 					}
 				}
+				$icon_html = '';
+				$icon_val = (string) ($s['selected_icon']['value'] ?? '');
+				if ('' !== $icon_val) {
+					$icon_html = ' <i class="' . htmlspecialchars($icon_val, ENT_QUOTES) . '" aria-hidden="true"></i>';
+				}
+				$align = (string) ($s['icon_align'] ?? 'left');
+				$label = ('right' === $align || 'row-reverse' === $align)
+					? ($text . $icon_html)
+					: ($icon_html . $text);
 				$attr = empty($st) ? '' : ' style="' . htmlspecialchars(implode(';', $st), ENT_QUOTES) . '"';
-				return '<div class="e-widget-button"><a href="' . $url . '"' . $attr . '>' . $text . '</a></div>';
+				return '<div class="e-widget-button"><a href="' . $url . '"' . $attr . '>' . $label . '</a></div>';
 			case 'star-rating':
 				$rating = (float) ($s['rating'] ?? 5);
 				$scale = max(1, (int) ($s['rating_scale'] ?? 5));
@@ -452,9 +461,27 @@ HTML;
 				return '<div style="height:' . $h . 'px;background:#e8e8e8;display:flex;align-items:center;justify-content:center">Map: ' . $addr . '</div>';
 			case 'accordion':
 				$html = '';
+				$title_color = (string) ($s['title_color'] ?? '');
+				$content_color = (string) ($s['content_color'] ?? '');
+				$icon_color = (string) ($s['icon_color'] ?? '');
+				$icon_val = (string) ($s['selected_icon']['value'] ?? '');
+				$icon_align = (string) ($s['icon_align'] ?? 'left');
 				foreach ((array) ($s['tabs'] ?? array()) as $tab) {
-					$html .= '<details open><summary>' . htmlspecialchars((string) ($tab['tab_title'] ?? ''), ENT_QUOTES)
-						. '</summary><div>' . (string) ($tab['tab_content'] ?? '') . '</div></details>';
+					$sum_st = array();
+					if ('' !== $title_color) {
+						$sum_st[] = 'color:' . $title_color;
+					}
+					$sum_attr = empty($sum_st) ? '' : ' style="' . htmlspecialchars(implode(';', $sum_st), ENT_QUOTES) . '"';
+					$icon_html = '';
+					if ('' !== $icon_val) {
+						$ic_st = '' !== $icon_color ? ' style="color:' . htmlspecialchars($icon_color, ENT_QUOTES) . '"' : '';
+						$icon_html = ' <i class="' . htmlspecialchars($icon_val, ENT_QUOTES) . '"' . $ic_st . ' aria-hidden="true"></i>';
+					}
+					$title = htmlspecialchars((string) ($tab['tab_title'] ?? ''), ENT_QUOTES);
+					$label = ('right' === $icon_align) ? ($title . $icon_html) : ($icon_html . $title);
+					$body_st = '' !== $content_color ? ' style="color:' . htmlspecialchars($content_color, ENT_QUOTES) . '"' : '';
+					$html .= '<details open><summary' . $sum_attr . '>' . $label
+						. '</summary><div' . $body_st . '>' . (string) ($tab['tab_content'] ?? '') . '</div></details>';
 				}
 				return $html;
 			case 'social-icons':

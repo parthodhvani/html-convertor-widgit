@@ -196,7 +196,12 @@ final class CompositePatternBuilder implements EngineInterface
 	}
 
 	/**
-	 * Carry painted FAQ item backgrounds onto the accordion widget.
+	 * Carry painted FAQ item chrome + title/content/icon colours onto accordion.
+	 *
+	 * Elementor Accordion style controls (verified against elementor accordion.php):
+	 * - title_color, content_color, icon_color, icon_align, selected_icon
+	 * - border_color / border_width (widget-level); border_radius + box_shadow via
+	 *   CssMapper Group_Control keys (preview + Advanced/custom CSS consumers)
 	 *
 	 * @param array<string,mixed> $node FAQ root.
 	 * @return array<string,mixed>
@@ -204,22 +209,115 @@ final class CompositePatternBuilder implements EngineInterface
 	private function accordion_paint_settings(array $node): array
 	{
 		$mapper = new \HtmlToElementor\Elementor\CssMapper();
+		$item = $this->first_faq_item($node);
+		if (null === $item) {
+			return array();
+		}
+
+		$out = array_merge(
+			$mapper->background($item),
+			$mapper->border($item),
+			$mapper->box_shadow($item)
+		);
+
+		$title_node = $this->find_descendant_by_class($item, '/\b(faq-q|accordion-button|accordion-header)\b/')
+			?? $this->find_descendant_by_tag($item, array('summary', 'button', 'h3', 'h4'));
+		if (null !== $title_node) {
+			$out = array_merge($out, $mapper->text_color($title_node, 'title_color'));
+		}
+
+		$content_node = $this->find_descendant_by_class($item, '/\b(faq-a|accordion-body|accordion-collapse)\b/');
+		$content_p = null !== $content_node
+			? ($this->find_descendant_by_tag($content_node, array('p')) ?? $content_node)
+			: $this->find_descendant_by_tag($item, array('p'));
+		if (null !== $content_p) {
+			$out = array_merge($out, $mapper->text_color($content_p, 'content_color'));
+		}
+
+		$plus = $this->find_descendant_by_class($item, '/\bplus\b/');
+		if (null !== $plus) {
+			$out = array_merge($out, $mapper->text_color($plus, 'icon_color'));
+			// Source FAQs place the "+" badge after the question text.
+			$out['icon_align'] = 'right';
+			if (empty($out['selected_icon'])) {
+				$out['selected_icon'] = array(
+					'value' => 'fas fa-plus',
+					'library' => 'fa-solid',
+				);
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @param array<string,mixed> $node FAQ root.
+	 * @return array<string,mixed>|null
+	 */
+	private function first_faq_item(array $node): ?array
+	{
 		foreach ((array) ($node['children'] ?? array()) as $child) {
 			if (!is_array($child)) {
 				continue;
 			}
 			$tag = strtolower((string) ($child['tag'] ?? ''));
 			$cls = strtolower((string) ($child['cls'] ?? ''));
-			$is_item = 'details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls);
-			if (!$is_item) {
-				continue;
+			if ('details' === $tag || (bool) preg_match('/\b(faq-item|accordion-item)\b/', $cls)) {
+				return $child;
 			}
-			$bg = $mapper->background($child);
-			if (!empty($bg)) {
-				return $bg;
+			// Items may sit one wrapper deep (e.g. .faq > .container > .faq-item).
+			$nested = $this->first_faq_item($child);
+			if (null !== $nested) {
+				return $nested;
 			}
 		}
-		return array();
+		return null;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Root.
+	 * @param string              $pattern Class regex.
+	 * @return array<string,mixed>|null
+	 */
+	private function find_descendant_by_class(array $node, string $pattern): ?array
+	{
+		$cls = strtolower((string) ($node['cls'] ?? ''));
+		if ('' !== $cls && (bool) preg_match($pattern, $cls)) {
+			return $node;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$found = $this->find_descendant_by_class($child, $pattern);
+			if (null !== $found) {
+				return $found;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * @param array<string,mixed> $node Root.
+	 * @param array<int,string>   $tags Tag names.
+	 * @return array<string,mixed>|null
+	 */
+	private function find_descendant_by_tag(array $node, array $tags): ?array
+	{
+		$tag = strtolower((string) ($node['tag'] ?? ''));
+		if (in_array($tag, $tags, true)) {
+			return $node;
+		}
+		foreach ((array) ($node['children'] ?? array()) as $child) {
+			if (!is_array($child)) {
+				continue;
+			}
+			$found = $this->find_descendant_by_tag($child, $tags);
+			if (null !== $found) {
+				return $found;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -469,15 +567,59 @@ final class CompositePatternBuilder implements EngineInterface
 			return null;
 		}
 
+		$settings = array(
+			'testimonial_content' => $content,
+			'testimonial_name' => $name ?: 'Client',
+			'testimonial_job' => $job,
+		);
+
 		return array(
 			'type' => 'testimonial',
 			'role' => 'testimonial',
-			'settings' => array(
-				'testimonial_content' => $content,
-				'testimonial_name' => $name ?: 'Client',
-				'testimonial_job' => $job,
-			),
+			'settings' => array_merge($settings, $this->testimonial_paint_settings($node)),
 		);
+	}
+
+	/**
+	 * Map quote / name / job colours onto Elementor Testimonial style controls.
+	 *
+	 * Controls (elementor testimonial.php): content_content_color, name_text_color,
+	 * job_text_color — plus shared border/shadow/background via style_for_widget.
+	 *
+	 * @param array<string,mixed> $node Testimonial root.
+	 * @return array<string,mixed>
+	 */
+	private function testimonial_paint_settings(array $node): array
+	{
+		$mapper = new \HtmlToElementor\Elementor\CssMapper();
+		$out = array();
+
+		$quote = $this->find_descendant_by_tag($node, array('p', 'blockquote'));
+		if (null !== $quote) {
+			$out = array_merge($out, $mapper->text_color($quote, 'content_content_color'));
+		}
+
+		$name_node = $this->find_descendant_by_tag($node, array('strong', 'b'));
+		if (null !== $name_node) {
+			$out = array_merge($out, $mapper->text_color($name_node, 'name_text_color'));
+		}
+
+		$job_node = null;
+		$this->walk_text($node, function (array $n) use (&$job_node): void {
+			if (null !== $job_node) {
+				return;
+			}
+			$tag = strtolower((string) ($n['tag'] ?? ''));
+			$text = trim((string) ($n['text'] ?? ''));
+			if ('span' === $tag && '' !== $text && strlen($text) < 40 && !preg_match('/★|⭐/', $text)) {
+				$job_node = $n;
+			}
+		});
+		if (null !== $job_node) {
+			$out = array_merge($out, $mapper->text_color($job_node, 'job_text_color'));
+		}
+
+		return $out;
 	}
 
 	/**
@@ -758,16 +900,77 @@ final class CompositePatternBuilder implements EngineInterface
 			return null;
 		}
 
+		$settings = array(
+			'title' => $title,
+			'description' => $description,
+			'button' => $button,
+			'link' => array('url' => $link, 'is_external' => '', 'nofollow' => ''),
+		);
+
 		return array(
 			'type' => 'call-to-action',
 			'role' => 'cta',
-			'settings' => array(
-				'title' => $title,
-				'description' => $description,
-				'button' => $button,
-				'link' => array('url' => $link, 'is_external' => '', 'nofollow' => ''),
-			),
+			'settings' => array_merge($settings, $this->cta_paint_settings($node)),
 		);
+	}
+
+	/**
+	 * Map CTA title/description/button colours onto Elementor Call to Action controls.
+	 *
+	 * Controls: title_color, description_color, button_text_color,
+	 * button_background_color (Pro CTA). Border/shadow/bg still come from
+	 * style_for_widget / map_painted_composite on the root.
+	 *
+	 * @param array<string,mixed> $node CTA root.
+	 * @return array<string,mixed>
+	 */
+	private function cta_paint_settings(array $node): array
+	{
+		$mapper = new \HtmlToElementor\Elementor\CssMapper();
+		$out = array();
+
+		$title_node = $this->find_descendant_by_tag($node, array('h1', 'h2', 'h3'));
+		if (null === $title_node) {
+			$this->walk_text($node, function (array $n) use (&$title_node): void {
+				if (null === $title_node && VisualSignals::looks_heading($n)) {
+					$title_node = $n;
+				}
+			});
+		}
+		if (null !== $title_node) {
+			$out = array_merge($out, $mapper->text_color($title_node, 'title_color'));
+		}
+
+		$desc_node = $this->find_descendant_by_tag($node, array('p'));
+		if (null !== $desc_node) {
+			$out = array_merge($out, $mapper->text_color($desc_node, 'description_color'));
+		}
+
+		$btn_node = null;
+		$this->walk_text($node, function (array $n) use (&$btn_node): void {
+			if (null !== $btn_node) {
+				return;
+			}
+			$cls = strtolower((string) ($n['cls'] ?? ''));
+			$tag = strtolower((string) ($n['tag'] ?? ''));
+			if (VisualSignals::looks_button($n) || preg_match('/\b(btn|button)\b/', $cls) || 'button' === $tag) {
+				$btn_node = $n;
+			}
+		});
+		if (null !== $btn_node) {
+			$out = array_merge($out, $mapper->text_color($btn_node, 'button_text_color'));
+			$bg = (string) ($btn_node['s']['bg'] ?? '');
+			if ('' !== $bg && false === stripos($bg, 'gradient') && 'transparent' !== strtolower($bg)) {
+				$out['button_background_color'] = $bg;
+			} else {
+				$grad = $mapper->parse_gradient((string) ($btn_node['s']['bgImg'] ?? $btn_node['s']['bg'] ?? ''));
+				if (null !== $grad) {
+					$out['button_background_color'] = $grad['color_a'];
+				}
+			}
+		}
+
+		return $out;
 	}
 
 	/**
@@ -912,8 +1115,32 @@ final class CompositePatternBuilder implements EngineInterface
 		return array(
 			'type' => 'icon-box',
 			'role' => 'feature',
-			'settings' => $settings,
+			'settings' => array_merge($settings, $this->icon_box_paint_settings($node)),
 		);
+	}
+
+	/**
+	 * Map icon-box title/description colours onto Elementor Icon Box controls.
+	 *
+	 * @param array<string,mixed> $node Icon-box root.
+	 * @return array<string,mixed>
+	 */
+	private function icon_box_paint_settings(array $node): array
+	{
+		$mapper = new \HtmlToElementor\Elementor\CssMapper();
+		$out = array();
+
+		$title_node = $this->find_descendant_by_tag($node, array('h1', 'h2', 'h3', 'h4', 'h5', 'h6'));
+		if (null !== $title_node) {
+			$out = array_merge($out, $mapper->text_color($title_node, 'title_color'));
+		}
+
+		$desc_node = $this->find_descendant_by_tag($node, array('p'));
+		if (null !== $desc_node) {
+			$out = array_merge($out, $mapper->text_color($desc_node, 'description_color'));
+		}
+
+		return $out;
 	}
 
 	/**

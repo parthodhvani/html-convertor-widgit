@@ -915,6 +915,12 @@ final class LayoutTreeConverter
                     $this->css->box_shadow($node)
                 );
             case 'accordion':
+                return array_merge(
+                    $this->css->spacing($node, true),
+                    $this->css->background($node),
+                    $this->css->border($node),
+                    $this->css->box_shadow($node)
+                );
             case 'form':
             case 'social-icons':
             case 'star-rating':

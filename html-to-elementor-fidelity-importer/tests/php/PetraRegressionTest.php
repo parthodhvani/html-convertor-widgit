@@ -51,7 +51,7 @@ final class PetraRegressionTest extends TestCase
 				'href' => $href,
 				'atomic' => true,
 				'cls' => 'btn btn-gold',
-				'html' => "<a class=\"btn btn-gold\" href=\"$href\">$t</a>",
+				'html' => "<a class=\"btn btn-gold\" href=\"$href\">$t <i class=\"fa-solid fa-arrow-right\"></i></a>",
 				's' => array('bg' => 'rgb(201,162,39)', 'color' => 'rgb(42,31,0)', 'pt' => 14, 'pb' => 14, 'pl' => 28, 'pr' => 28, 'h' => 48, 'w' => 180),
 			);
 		};
@@ -84,14 +84,45 @@ final class PetraRegressionTest extends TestCase
 			return array(
 				'tag' => 'div',
 				'cls' => 'faq-item',
+				's' => array(
+					'bg' => 'rgb(13,20,36)',
+					'bdw' => '1px',
+					'bdc' => 'rgba(255,255,255,0.08)',
+					'bds' => 'solid',
+					'br' => 18,
+					'sh' => '0 4px 14px rgba(0,0,0,0.35)',
+				),
 				'children' => array(
-					array('tag' => 'button', 'cls' => 'faq-q', 'text' => $q, 'atomic' => true, 'html' => '<button class="faq-q">' . $q . '</button>', 's' => array('fw' => '600')),
+					array(
+						'tag' => 'button',
+						'cls' => 'faq-q',
+						'text' => $q,
+						'atomic' => true,
+						'html' => '<button class="faq-q">' . $q . '<span class="plus">+</span></button>',
+						's' => array('fw' => '600', 'color' => 'rgb(244,236,214)'),
+						'children' => array(
+							array(
+								'tag' => 'span',
+								'cls' => 'plus',
+								'text' => '+',
+								'atomic' => true,
+								'html' => '<span class="plus">+</span>',
+								's' => array('color' => 'rgb(244,236,214)', 'bg' => 'rgba(255,255,255,0.06)'),
+							),
+						),
+					),
 					array(
 						'tag' => 'div',
 						'cls' => 'faq-a',
 						'html' => '<div class="faq-a"><p>' . $a . '</p></div>',
 						'children' => array(
-							array('tag' => 'p', 'text' => $a, 'atomic' => true, 'html' => '<p>' . $a . '</p>', 's' => array('fs' => '15px')),
+							array(
+								'tag' => 'p',
+								'text' => $a,
+								'atomic' => true,
+								'html' => '<p>' . $a . '</p>',
+								's' => array('fs' => '15px', 'color' => 'rgb(163,176,199)'),
+							),
 						),
 						's' => array(),
 					),
@@ -308,6 +339,51 @@ final class PetraRegressionTest extends TestCase
 		$this->assertGreaterThanOrEqual(1, $result['report']['widget_breakdown']['accordion'] ?? 0);
 	}
 
+	public function test_petra_accordion_carries_faq_item_chrome_and_colours(): void
+	{
+		$gen = new ElementorJsonGenerator();
+		$result = $gen->generate(RenderResult::from_array($this->petra_layout()), array('mode' => 'native'));
+		$accordion = $this->find_widget($result['data'], 'accordion');
+		$this->assertNotNull($accordion);
+		$s = $accordion['settings'];
+
+		$this->assertNotEmpty($s['background_color'] ?? $s['background_background'] ?? null);
+		$this->assertArrayHasKey('border_radius', $s);
+		$this->assertSame('yes', $s['box_shadow_box_shadow_type'] ?? null);
+		$this->assertSame('rgb(244,236,214)', $s['title_color'] ?? null);
+		$this->assertSame('rgb(163,176,199)', $s['content_color'] ?? null);
+		$this->assertSame('rgb(244,236,214)', $s['icon_color'] ?? null);
+		$this->assertSame('right', $s['icon_align'] ?? null);
+		$this->assertSame('fas fa-plus', $s['selected_icon']['value'] ?? null);
+	}
+
+	public function test_petra_buttons_keep_trailing_fa_icons(): void
+	{
+		$gen = new ElementorJsonGenerator();
+		$result = $gen->generate(RenderResult::from_array($this->petra_layout()), array('mode' => 'native'));
+		$buttons = $this->find_all_widgets($result['data'], 'button');
+		$this->assertNotEmpty($buttons);
+
+		$with_icon = array_filter($buttons, static function (array $el): bool {
+			return !empty($el['settings']['selected_icon']['value']);
+		});
+		$this->assertNotEmpty($with_icon, 'At least one button should carry a nested FA icon');
+		$sample = array_values($with_icon)[0];
+		$this->assertStringContainsString('fa-arrow-right', (string) $sample['settings']['selected_icon']['value']);
+		$this->assertSame('right', $sample['settings']['icon_align'] ?? null);
+	}
+
+	public function test_petra_cta_carries_title_and_button_colours(): void
+	{
+		$gen = new ElementorJsonGenerator();
+		$result = $gen->generate(RenderResult::from_array($this->petra_layout()), array('mode' => 'native'));
+		$cta = $this->find_widget($result['data'], 'call-to-action');
+		$this->assertNotNull($cta);
+		$s = $cta['settings'];
+		$this->assertSame('rgb(255,255,255)', $s['title_color'] ?? null);
+		$this->assertNotEmpty($s['button_text_color'] ?? null);
+	}
+
 	public function test_petra_service_cards_emit_structured_native_widgets(): void
 	{
 		$gen = new ElementorJsonGenerator();
@@ -358,5 +434,36 @@ final class PetraRegressionTest extends TestCase
 			}
 		}
 		return $types;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @return array<string,mixed>|null
+	 */
+	private function find_widget(array $elements, string $type): ?array
+	{
+		$all = $this->find_all_widgets($elements, $type);
+		return $all[0] ?? null;
+	}
+
+	/**
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function find_all_widgets(array $elements, string $type): array
+	{
+		$found = array();
+		foreach ($elements as $el) {
+			if (!is_array($el)) {
+				continue;
+			}
+			if ('widget' === ($el['elType'] ?? '') && $type === ($el['widgetType'] ?? '')) {
+				$found[] = $el;
+			}
+			foreach ((array) ($el['elements'] ?? array()) as $child) {
+				$found = array_merge($found, $this->find_all_widgets(array($child), $type));
+			}
+		}
+		return $found;
 	}
 }
