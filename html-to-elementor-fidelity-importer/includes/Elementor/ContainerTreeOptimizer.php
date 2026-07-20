@@ -59,9 +59,10 @@ final class ContainerTreeOptimizer
 	/**
 	 * Ensure nesting levels 2–10 fill their parent in Elementor (Full Width + 100%).
 	 *
-	 * Nested containers (including former column shares like 51%) are forced to
-	 * width 100% through depth 10. Tiny px chrome boxes and absolute/fixed layers
-	 * are left alone so icons/overlays keep their measure.
+	 * Nested containers inside column stacks are forced to width 100% through
+	 * depth 10 so Elementor does not leave orphaned %-shares. Row children keep
+	 * their geometry-derived widths (header nav, split columns). Tiny px chrome
+	 * boxes and absolute/fixed layers are left alone.
 	 *
 	 * @param array<int,array<string,mixed>> $elements Root elements.
 	 * @return array<int,array<string,mixed>>
@@ -683,7 +684,13 @@ final class ContainerTreeOptimizer
 				$settings = (array) ($element['settings'] ?? array());
 				$settings['content_width'] = 'full';
 
-				if ($depth >= 2 && $depth <= 10 && $this->should_force_full_percent_width($settings)) {
+				// Only force width:100% inside column stacks. Row children must keep
+				// geometry-derived shares (e.g. header logo + nav) — forcing 100%
+				// with flex_shrink:0 wraps the bar and blows header height.
+				if ($depth >= 2 && $depth <= 10
+					&& 'row' !== $parent_direction
+					&& $this->should_force_full_percent_width($settings)
+				) {
 					$settings['width'] = array(
 						'unit' => '%',
 						'size' => 100,

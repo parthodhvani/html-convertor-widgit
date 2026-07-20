@@ -48,10 +48,16 @@ final class ElementorPreviewRenderer implements EngineInterface
 				}
 				$s = (array) ($el['settings'] ?? array());
 				$candidate = (string) ($s['background_color'] ?? '');
-				if ('' !== $candidate && false === stripos($candidate, 'rgba(0, 0, 0, 0)')) {
-					$body_bg = $candidate;
-					break;
+				// Skip translucent sticky headers (rgba with alpha < 1) — prefer
+				// a solid page canvas so the preview matches meta.page / body.
+				if ('' === $candidate || false !== stripos($candidate, 'rgba(0, 0, 0, 0)')) {
+					continue;
 				}
+				if (preg_match('/rgba\s*\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*(0?\.\d+|0)\s*\)/i', $candidate)) {
+					continue;
+				}
+				$body_bg = $candidate;
+				break;
 			}
 		}
 		$body_style = array();
@@ -456,6 +462,157 @@ HTML;
 					: (ltrim($icon_html) . ($icon_html !== '' ? ' ' : '') . $text);
 				$attr = empty($st) ? '' : ' style="' . htmlspecialchars(implode(';', $st), ENT_QUOTES) . '"';
 				return '<div class="e-widget-button"><a href="' . $url . '"' . $attr . '>' . $label . '</a></div>';
+			case 'testimonial':
+				$content = htmlspecialchars((string) ($s['testimonial_content'] ?? ''), ENT_QUOTES);
+				$name = htmlspecialchars((string) ($s['testimonial_name'] ?? ''), ENT_QUOTES);
+				$job = htmlspecialchars((string) ($s['testimonial_job'] ?? ''), ENT_QUOTES);
+				$c_color = (string) ($s['content_content_color'] ?? '');
+				$n_color = (string) ($s['name_text_color'] ?? '');
+				$j_color = (string) ($s['job_text_color'] ?? '');
+				$html = '<div class="e-testimonial">';
+				if ('' !== $content) {
+					$html .= '<p' . ('' !== $c_color ? ' style="color:' . htmlspecialchars($c_color, ENT_QUOTES) . '"' : '') . '>' . $content . '</p>';
+				}
+				if ('' !== $name || '' !== $job) {
+					$html .= '<div class="e-testimonial-meta">';
+					if ('' !== $name) {
+						$html .= '<strong' . ('' !== $n_color ? ' style="color:' . htmlspecialchars($n_color, ENT_QUOTES) . '"' : '') . '>' . $name . '</strong>';
+					}
+					if ('' !== $job) {
+						$html .= '<span' . ('' !== $j_color ? ' style="color:' . htmlspecialchars($j_color, ENT_QUOTES) . '"' : '') . '>' . $job . '</span>';
+					}
+					$html .= '</div>';
+				}
+				return $html . '</div>';
+			case 'call-to-action':
+				$title = htmlspecialchars((string) ($s['title'] ?? ''), ENT_QUOTES);
+				$desc = htmlspecialchars((string) ($s['description'] ?? ''), ENT_QUOTES);
+				$btn = htmlspecialchars((string) ($s['button'] ?? ''), ENT_QUOTES);
+				$title_c = (string) ($s['title_color'] ?? '');
+				$desc_c = (string) ($s['description_color'] ?? '');
+				$btn_c = (string) ($s['button_text_color'] ?? '');
+				$btn_bg = (string) ($s['button_background_color'] ?? '');
+				$html = '<div class="e-cta" style="text-align:center">';
+				if ('' !== $title) {
+					$tst = array();
+					$title_mb = !empty($s['title_spacing']['size'])
+						? (float) $s['title_spacing']['size']
+						: 14;
+					$tst[] = 'margin:0 0 ' . $title_mb . 'px';
+					if ('' !== $title_c) {
+						$tst[] = 'color:' . $title_c;
+					}
+					foreach (array(
+						'title_typography_font_family' => 'font-family',
+						'title_typography_font_size' => 'font-size',
+						'title_typography_font_weight' => 'font-weight',
+						'title_typography_line_height' => 'line-height',
+						'title_typography_letter_spacing' => 'letter-spacing',
+					) as $key => $css_prop) {
+						$val = $s[$key] ?? null;
+						if (is_array($val) && isset($val['size'])) {
+							$tst[] = $css_prop . ':' . (float) $val['size'] . (string) ($val['unit'] ?? 'px');
+						} elseif (is_string($val) && '' !== $val) {
+							$tst[] = $css_prop . ':' . $val;
+						}
+					}
+					$html .= '<h2 style="' . htmlspecialchars(implode(';', $tst), ENT_QUOTES) . '">' . $title . '</h2>';
+				}
+				if ('' !== $desc) {
+					$desc_mb = !empty($s['description_spacing']['size'])
+						? (float) $s['description_spacing']['size']
+						: 28;
+					$dst = array('margin:0 0 ' . $desc_mb . 'px');
+					if ('' !== $desc_c) {
+						$dst[] = 'color:' . $desc_c;
+					}
+					if (!empty($s['description_max_width']['size'])) {
+						$dst[] = 'max-width:' . (float) $s['description_max_width']['size']
+							. (string) ($s['description_max_width']['unit'] ?? 'px');
+						$dst[] = 'margin-left:auto';
+						$dst[] = 'margin-right:auto';
+					}
+					foreach (array(
+						'description_typography_font_family' => 'font-family',
+						'description_typography_font_size' => 'font-size',
+						'description_typography_font_weight' => 'font-weight',
+						'description_typography_line_height' => 'line-height',
+					) as $key => $css_prop) {
+						$val = $s[$key] ?? null;
+						if (is_array($val) && isset($val['size'])) {
+							$dst[] = $css_prop . ':' . (float) $val['size'] . (string) ($val['unit'] ?? 'px');
+						} elseif (is_string($val) && '' !== $val) {
+							$dst[] = $css_prop . ':' . $val;
+						}
+					}
+					$html .= '<p style="' . htmlspecialchars(implode(';', $dst), ENT_QUOTES) . '">' . $desc . '</p>';
+				}
+				if ('' !== $btn) {
+					$bst = array('display:inline-flex','align-items:center','gap:10px','text-decoration:none','font-weight:600');
+					$pad = $s['button_padding'] ?? null;
+					if (is_array($pad)) {
+						$u = (string) ($pad['unit'] ?? 'px');
+						$bst[] = 'padding:' . (float) ($pad['top'] ?? 14) . $u . ' '
+							. (float) ($pad['right'] ?? 28) . $u . ' '
+							. (float) ($pad['bottom'] ?? 14) . $u . ' '
+							. (float) ($pad['left'] ?? 28) . $u;
+					} else {
+						$bst[] = 'padding:14px 28px';
+					}
+					$br = $s['button_border_radius'] ?? null;
+					if (is_array($br)) {
+						$u = (string) ($br['unit'] ?? 'px');
+						$bst[] = 'border-radius:' . (float) ($br['top'] ?? 999) . $u;
+					} else {
+						$bst[] = 'border-radius:999px';
+					}
+					if ('' !== $btn_c) {
+						$bst[] = 'color:' . $btn_c;
+					}
+					$btn_bg_b = (string) ($s['button_background_color_b'] ?? '');
+					if ('' !== $btn_bg && '' !== $btn_bg_b) {
+						$bst[] = 'background-image:linear-gradient(135deg,' . $btn_bg . ',' . $btn_bg_b . ')';
+					} elseif ('' !== $btn_bg) {
+						$bst[] = 'background:' . $btn_bg;
+					}
+					$box_shadow = $s['button_box_shadow_box_shadow'] ?? null;
+					if (!empty($box_shadow) && is_array($box_shadow)) {
+						$bst[] = 'box-shadow:'
+							. (float) ($box_shadow['horizontal'] ?? 0) . 'px '
+							. (float) ($box_shadow['vertical'] ?? 0) . 'px '
+							. (float) ($box_shadow['blur'] ?? 0) . 'px '
+							. (float) ($box_shadow['spread'] ?? 0) . 'px '
+							. (string) ($box_shadow['color'] ?? 'rgba(0,0,0,.2)');
+					}
+					foreach (array(
+						'button_typography_font_family' => 'font-family',
+						'button_typography_font_size' => 'font-size',
+						'button_typography_font_weight' => 'font-weight',
+					) as $key => $css_prop) {
+						$val = $s[$key] ?? null;
+						if (is_array($val) && isset($val['size'])) {
+							$bst[] = $css_prop . ':' . (float) $val['size'] . (string) ($val['unit'] ?? 'px');
+						} elseif (is_string($val) && '' !== $val) {
+							$bst[] = $css_prop . ':' . $val;
+						}
+					}
+					$icon_html = '';
+					$icon_val = (string) ($s['selected_icon']['value'] ?? '');
+					if ('' !== $icon_val) {
+						$icon_html = '<i class="' . htmlspecialchars($icon_val, ENT_QUOTES) . '" aria-hidden="true"></i>';
+					}
+					$align = (string) ($s['icon_align'] ?? 'right');
+					$label = ('left' === $align)
+						? ($icon_html . ($icon_html !== '' ? ' ' : '') . $btn)
+						: ($btn . ($icon_html !== '' ? ' ' . $icon_html : ''));
+					$html .= '<a href="#" style="' . htmlspecialchars(implode(';', $bst), ENT_QUOTES) . '">' . $label . '</a>';
+				}
+				return $html . '</div>';
+			case 'form':
+				return '<form class="e-form" style="display:flex;gap:8px;flex-wrap:wrap">'
+					. '<input type="email" placeholder="E-Mail" style="flex:1;min-width:160px;padding:12px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.2);color:inherit" />'
+					. '<button type="submit" style="padding:12px 22px;border-radius:999px;border:none;background:#C9A227;color:#2a1f00;font-weight:600">Submit</button>'
+					. '</form>';
 			case 'star-rating':
 				$rating = (float) ($s['rating'] ?? 5);
 				$scale = max(1, (int) ($s['rating_scale'] ?? 5));
@@ -473,6 +630,15 @@ HTML;
 				}
 				if (!empty($s['_h2e_aspect_ratio'])) {
 					$img_style[] = 'aspect-ratio:' . (string) $s['_h2e_aspect_ratio'];
+				}
+				if (!empty($s['width']['size'])) {
+					$img_style[] = 'width:' . (float) $s['width']['size'] . (string) ($s['width']['unit'] ?? 'px');
+					$img_style[] = 'max-width:100%';
+				}
+				if (!empty($s['height']['size'])) {
+					$img_style[] = 'height:' . (float) $s['height']['size'] . (string) ($s['height']['unit'] ?? 'px');
+				} elseif (!empty($s['_h2e_bbox']['height']) && !empty($s['width']['size'])) {
+					$img_style[] = 'height:' . (float) $s['_h2e_bbox']['height'] . 'px';
 				}
 				$attr = empty($img_style) ? '' : ' style="' . htmlspecialchars(implode(';', $img_style), ENT_QUOTES) . '"';
 				return '' !== $url ? '<img src="' . $url . '" alt="' . $alt . '"' . $attr . '>' : '';
@@ -543,10 +709,9 @@ HTML;
 				$gap = (float) ($s['gap']['size'] ?? 10);
 				foreach ((array) ($s['social_icon_list'] ?? array()) as $item) {
 					$icon = (string) ($item['social_icon']['value'] ?? 'fa fa-link');
-					$label = htmlspecialchars(preg_replace('/^fa-\w+\s+/', '', $icon) ?? $icon, ENT_QUOTES);
 					$items .= '<span style="display:inline-flex;align-items:center;justify-content:center;'
-						. 'width:40px;height:40px;border-radius:999px;background:rgba(13,59,102,.08);font-size:12px">'
-						. $label . '</span>';
+						. 'width:40px;height:40px;border-radius:999px;background:rgba(255,255,255,.08);color:#fff;font-size:16px">'
+						. '<i class="' . htmlspecialchars($icon, ENT_QUOTES) . '" aria-hidden="true"></i></span>';
 				}
 				return '<div class="e-social-icons" style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:'
 					. $gap . 'px;align-items:center">' . $items . '</div>';
@@ -678,6 +843,8 @@ HTML;
 	{
 		$css = array();
 		$type = (string) ($s['background_background'] ?? '');
+		$overlay_type = (string) ($s['background_overlay_background'] ?? '');
+
 		if ('gradient' === $type) {
 			$a = (string) ($s['background_color'] ?? '#000');
 			$b = (string) ($s['background_color_b'] ?? '#fff');
@@ -687,8 +854,27 @@ HTML;
 			if (!empty($s['background_color'])) {
 				$css[] = 'background-color:' . (string) $s['background_color'];
 			}
+			$layers = array();
+			if ('gradient' === $overlay_type) {
+				$oa = (string) ($s['background_overlay_color'] ?? 'rgba(0,0,0,.4)');
+				$ob = (string) ($s['background_overlay_color_b'] ?? $oa);
+				$oangle = (float) ($s['background_overlay_gradient_angle']['size'] ?? 180);
+				$layers[] = 'linear-gradient(' . $oangle . 'deg,' . $oa . ',' . $ob . ')';
+			}
 			if (!empty($s['background_image']['url'])) {
-				$css[] = 'background-image:url(' . (string) $s['background_image']['url'] . ')';
+				$url = (string) $s['background_image']['url'];
+				// Skip obviously missing local files so gradient/color still shows.
+				$skip = false;
+				if (0 === stripos($url, 'file://')) {
+					$path = substr($url, 7);
+					$skip = !is_file($path);
+				}
+				if (!$skip) {
+					$layers[] = 'url(' . $url . ')';
+				}
+			}
+			if (!empty($layers)) {
+				$css[] = 'background-image:' . implode(',', $layers);
 				$css[] = 'background-size:' . (string) ($s['background_size'] ?? 'cover');
 				$css[] = 'background-position:' . (string) ($s['background_position'] ?? 'center center');
 				$css[] = 'background-repeat:' . (string) ($s['background_repeat'] ?? 'no-repeat');
