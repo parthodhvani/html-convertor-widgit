@@ -872,15 +872,36 @@ final class LayoutTreeConverter
                     $this->css->text_color($node, 'button_text_color'),
                     $this->css->alignment($node, 'align'),
                     $this->css->border($node),
-                    $this->css->box_shadow($node),
                     $this->css->background($node)
                 );
+                // Elementor Button control ids (button-trait.php).
+                $spacing = $this->css->spacing($node, false);
+                if (!empty($spacing['padding']) && is_array($spacing['padding'])) {
+                    $style['text_padding'] = $spacing['padding'];
+                }
+                $shadow = $this->css->box_shadow($node);
+                if (!empty($shadow['box_shadow_box_shadow_type'])) {
+                    $style['button_box_shadow_box_shadow_type'] = $shadow['box_shadow_box_shadow_type'];
+                }
+                if (!empty($shadow['box_shadow_box_shadow'])) {
+                    $style['button_box_shadow_box_shadow'] = $shadow['box_shadow_box_shadow'];
+                }
                 // Legacy solid fill when background() found nothing useful.
                 if (empty($style['background_background']) && empty($style['background_color'])) {
                     $bg = (string) ($node['s']['bg'] ?? '');
                     if ('' !== $bg && false === stripos($bg, 'gradient')) {
+                        $style['background_background'] = 'classic';
                         $style['background_color'] = $bg;
+                    } elseif (!empty($style['border_border'])) {
+                        $style['background_background'] = 'classic';
+                        $style['background_color'] = 'rgba(0,0,0,0)';
                     }
+                }
+                $gap = $node['s']['gap'] ?? null;
+                if (is_numeric($gap) && (float) $gap > 0) {
+                    $style['icon_indent'] = array('unit' => 'px', 'size' => (float) $gap);
+                } elseif (is_string($gap) && preg_match('/^(-?\d+(?:\.\d+)?)\s*px/i', trim($gap), $m)) {
+                    $style['icon_indent'] = array('unit' => 'px', 'size' => (float) $m[1]);
                 }
                 return $style;
             case 'image':
