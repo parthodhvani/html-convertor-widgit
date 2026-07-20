@@ -15,7 +15,7 @@
  *
  * Usage (from plugin root):
  *   node tests/accuracy/run-suite.js
- *   node tests/accuracy/run-suite.js --fixture petra/angebot-conversion-ready.html
+ *   node tests/accuracy/run-suite.js --fixture petra/index.html
  */
 
 const fs = require('fs');
@@ -32,13 +32,16 @@ const DEFAULT_FIXTURES = [
   'sample.html',
   'faq.html',
   'kontakt.html',
+  // Petra light-version (Petra_light-version.zip) — sole Petra fixture set.
   'petra/index.html',
-  'petra/angebot-conversion-ready.html',
-  'petra/contact.html',
+  'petra/angebot.html',
+  'petra/meditation.html',
+  'petra/vortraege.html',
+  'petra/petra-mueller.html',
   'petra/blog.html',
   'petra/blog-detail.html',
   'petra/buchen.html',
-  'petra/vortraege.html',
+  'petra/contact.html',
   'petra/feedbacks.html',
   'bootstrap-grid.html',
   'dark-saas.html',

@@ -414,7 +414,8 @@ final class LayoutTreeConverter
                 $this->css->box_shadow($node),
                 $this->css->sizing($node),
                 $this->css->effects($node),
-                $this->css->spacing($node, !$is_section)
+                $this->css->spacing($node, !$is_section),
+                $this->css->text_color($node, 'text_color')
             );
         }
 

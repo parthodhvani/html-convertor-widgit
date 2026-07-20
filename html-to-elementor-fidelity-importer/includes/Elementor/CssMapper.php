@@ -297,7 +297,25 @@ final class CssMapper
                 $out['background_position'] = $this->bg_position((string) $s['bgPos']);
             }
             if (!empty($s['bgRepeat'])) {
-                $out['background_repeat'] = (string) $s['bgRepeat'];
+                // Multi-layer lists (e.g. "repeat, no-repeat, repeat") are not valid
+                // Elementor single-token controls — prefer the image layer's repeat.
+                $repeat = strtolower(trim((string) $s['bgRepeat']));
+                if (false !== strpos($repeat, ',')) {
+                    $parts = array_map('trim', explode(',', $repeat));
+                    $picked = 'no-repeat';
+                    foreach ($parts as $part) {
+                        if (in_array($part, array('no-repeat', 'repeat', 'repeat-x', 'repeat-y', 'space', 'round'), true)) {
+                            if ('no-repeat' === $part || '' === $bg_image) {
+                                $picked = $part;
+                                if ('no-repeat' === $part) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    $repeat = $picked;
+                }
+                $out['background_repeat'] = $repeat;
             }
             if (null !== $gradient) {
                 $overlay = $this->elementor_gradient_settings($gradient);
@@ -329,7 +347,7 @@ final class CssMapper
 
         // Multi-layer gradient stacks (CTA glows, hero washes) cannot fit in
         // Elementor's 2-stop controls — reinject the full background-image list
-        // so preview/custom CSS keep the gold/violet radial atmosphere.
+        // (gradients + url) so preview/custom CSS keep photo + gold/violet atmosphere.
         if ('' !== $raw_bg_img && false !== stripos($raw_bg_img, 'gradient')) {
             $layers = $this->split_background_layers($raw_bg_img);
             $grad_layers = array();
@@ -340,9 +358,11 @@ final class CssMapper
                 }
             }
             if (count($grad_layers) > 1) {
+                // Keep every layer from the source (including url(...)) so custom CSS
+                // does not replace the Elementor photo with gradients-only.
                 $out = $this->merge_custom_css(
                     $out,
-                    'background-image:' . implode(',', $grad_layers)
+                    'background-image:' . implode(',', $layers)
                 );
                 $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
                     (array) ($out['_h2e_unsupported'] ?? array()),

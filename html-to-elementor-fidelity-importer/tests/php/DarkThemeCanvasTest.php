@@ -332,4 +332,61 @@ final class DarkThemeCanvasTest extends TestCase
 		$this->assertSame(-20.0, (float) ($settings['left']['size'] ?? 0));
 		$this->assertSame(44.0, (float) ($settings['top']['size'] ?? 0));
 	}
+
+	public function test_painted_hero_keeps_light_text_on_light_page_canvas(): void
+	{
+		$layout = array(
+			'meta' => array(
+				'title' => 'Light Petra',
+				'width' => 1440,
+				'height' => 900,
+				'page' => array(
+					'backgroundColor' => 'rgb(247, 250, 252)',
+					'color' => 'rgb(26, 39, 64)',
+				),
+			),
+			'sections' => array(
+				array(
+					'styles' => array('backgroundColor' => 'rgba(0, 0, 0, 0)'),
+					'tree' => array(
+						'tag' => 'section',
+						'cls' => 'hero',
+						's' => array(
+							'disp' => 'block',
+							'w' => 1440,
+							'h' => 800,
+							'color' => 'rgb(255, 255, 255)',
+							'bgImg' => 'linear-gradient(rgb(5,7,15),rgb(11,16,36)), url("https://example.com/hero.jpg")',
+							'bgGrad' => true,
+							'bgSize' => 'cover',
+							'bgPos' => 'center center',
+							'bgRepeat' => 'no-repeat',
+						),
+						'children' => array(
+							array(
+								'tag' => 'h1',
+								'text' => 'Astrologie Schweiz',
+								'atomic' => true,
+								's' => array(
+									'w' => 600,
+									'h' => 80,
+									'fs' => '40px',
+									'color' => 'rgb(255, 255, 255)',
+								),
+							),
+						),
+					),
+				),
+			),
+		);
+
+		$out = (new ElementorJsonGenerator())->generate(
+			RenderResult::from_array($layout),
+			array('confidence' => 90, 'closed_loop' => false)
+		);
+
+		$hero = $out['data'][0]['settings'] ?? array();
+		$this->assertSame('rgb(255, 255, 255)', $hero['text_color'] ?? null);
+		$this->assertNotSame('rgb(26, 39, 64)', $hero['text_color'] ?? null);
+	}
 }

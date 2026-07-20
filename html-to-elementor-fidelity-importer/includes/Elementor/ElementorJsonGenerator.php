@@ -203,7 +203,10 @@ final class ElementorJsonGenerator
 				$settings['background_background'] = 'classic';
 				$settings['background_color'] = $bg;
 			}
-			if ('' !== $color && empty($settings['text_color'])) {
+			// Never stamp body text colour onto painted sections (dark heroes/CTAs/
+			// footers). Light-theme pages use dark body text; applying it here makes
+			// white-on-navy hero copy invisible and tanks screenshot fidelity.
+			if ('' !== $color && empty($settings['text_color']) && !$has_paint) {
 				$settings['text_color'] = $color;
 			}
 			$elements[$i]['settings'] = $settings;
