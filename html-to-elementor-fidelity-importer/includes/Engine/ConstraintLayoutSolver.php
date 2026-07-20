@@ -398,42 +398,13 @@ final class ConstraintLayoutSolver implements EngineInterface
 		// Bootstrap/Tailwind rows often have flush columns (hgap=0) that the
 		// visual tree mis-labels as column.
 		$parent_s = $parent['s'] ?? array();
-		$disp = strtolower((string) ($parent_s['disp'] ?? ''));
+		$disp = (string) ($parent_s['disp'] ?? '');
 		if (false !== strpos($disp, 'flex')) {
 			$fd = strtolower((string) ($parent_s['fd'] ?? 'row'));
 			return (false !== strpos($fd, 'column')) ? 'column' : 'row';
 		}
 		if (false !== strpos($disp, 'grid')) {
 			return 'row';
-		}
-
-		// Normal document flow (block / flow-root / list-item) stacks children
-		// vertically. Do NOT trust visualSiblingLayout=row here — cards like
-		// blog-card (thumb above body) were mis-emitted as flex-direction:row.
-		$is_flow = '' === $disp
-			|| false !== strpos($disp, 'block')
-			|| false !== strpos($disp, 'flow-root')
-			|| false !== strpos($disp, 'list-item')
-			|| 'contents' === $disp;
-		if ($is_flow && false === strpos($disp, 'flex') && false === strpos($disp, 'grid')) {
-			// Only override to row when geometry clearly shows a horizontal band
-			// (siblings share a Y band AND there is no meaningful vertical gap).
-			if (count($boxes) >= 2) {
-				$row_votes = 0;
-				$col_votes = 0;
-				for ($i = 0; $i < count($boxes) - 1; ++$i) {
-					if (Geometry::overlaps_y($boxes[$i], $boxes[$i + 1])) {
-						++$row_votes;
-					}
-					if (Geometry::vertical_gap($boxes[$i], $boxes[$i + 1]) > 4) {
-						++$col_votes;
-					}
-				}
-				if ($row_votes > 0 && $row_votes > $col_votes) {
-					return 'row';
-				}
-			}
-			return 'column';
 		}
 
 		$layout_type = (string) ($parent['layoutType'] ?? '');
