@@ -371,16 +371,7 @@ final class LayoutTreeConverter
      */
     private function widget(string $type, array $settings, array $node): array
     {
-        $identity = $this->identity($node);
-        if ('button' === $type) {
-            // Buttons are now fully styled via native Elementor settings
-            // (background, border, radius, padding, typography, shadow) above —
-            // keeping the original `btn`/`btn-golden`/`hero-badge` classes only
-            // causes unstyled/mismatched rendering since that source CSS isn't
-            // reliably available in the Elementor editor context.
-            unset($identity['_css_classes']);
-        }
-        $settings = array_merge($settings, $this->style_for_widget($type, $node), $identity);
+        $settings = array_merge($settings, $this->style_for_widget($type, $node), $this->identity($node));
         $this->stats['widgets']++;
         $this->stats['native_widgets']++;
         $this->stats['widget_breakdown'][$type] = ($this->stats['widget_breakdown'][$type] ?? 0) + 1;
@@ -891,14 +882,6 @@ final class LayoutTreeConverter
                         $style['background_color'] = $bg;
                     }
                 }
-                // Button widget's internal chip padding is its own control
-                // (`text_padding`, not the generic `padding` used elsewhere) —
-                // without this the pill/badge shape collapses to Elementor's
-                // tiny default and the button relies on source CSS instead.
-                $padding = $this->css->spacing($node, false);
-                if (!empty($padding['padding'])) {
-                    $style['text_padding'] = $padding['padding'];
-                }
                 return $style;
             case 'image':
                 return array_merge(
@@ -1058,18 +1041,13 @@ final class LayoutTreeConverter
      * Retain original id/classes so the imported page benefits from the source
      * stylesheet (kept editable in Elementor's Advanced tab).
      *
-     * Font Awesome / icon-font tokens (fa, fas, far, fab, fa-solid, fa-moon…)
-     * are stripped here: Elementor's Icon widget already renders the icon
-     * natively (SVG), and carrying the original class over makes the page's
-     * own Font Awesome CSS double-paint the glyph via ::before.
-     *
      * @param array<string,mixed> $node Source node.
      * @return array<string,mixed>
      */
     private function identity(array $node): array
     {
         $out = array();
-        $classes = $this->strip_icon_font_classes(trim((string) ($node['cls'] ?? '')));
+        $classes = trim((string) ($node['cls'] ?? ''));
         if ('' !== $classes) {
             $out['_css_classes'] = $classes;
         }
@@ -1090,28 +1068,7 @@ final class LayoutTreeConverter
         }
         return $out;
     }
-    /**
-     * Remove Font Awesome / icon-font class tokens from a class string.
-     * These carry no useful styling once ported into Elementor (the icon
-     * is rendered natively) and only risk colliding with the page's own
-     * Font Awesome CSS, causing a duplicate ::before glyph.
-     *
-     * @param string $classes Space-separated class list.
-     */
-    private function strip_icon_font_classes(string $classes): string
-    {
-        if ('' === $classes) {
-            return '';
-        }
-        $kept = array_filter(
-            preg_split('/\s+/', $classes) ?: array(),
-            static function (string $token): bool {
-                return '' !== $token
-                    && !preg_match('/^(fa|fas|far|fab|fal|fad|fa-solid|fa-regular|fa-brands|fa-light|fa-duotone|fa-[\w-]+)$/i', $token);
-            }
-        );
-        return implode(' ', $kept);
-    }
+
     /**
      * Heuristic: an empty block with height that acts as vertical spacing.
      *

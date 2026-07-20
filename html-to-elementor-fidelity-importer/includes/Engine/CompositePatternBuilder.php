@@ -53,13 +53,10 @@ final class CompositePatternBuilder implements EngineInterface
 			return null;
 		}
 
-		// NEW: <nav> lists → native Elementor Nav Menu widget, not icon-list.
-		$nav_menu = $this->try_nav_menu($node, $role, $cls, $tag);
-		if (null !== $nav_menu) {
-			return $nav_menu;
-		}
-
 		$accordion = $this->try_accordion($node, $role, $cls);
+		if (null !== $accordion) {
+			return $accordion;
+		}
 
 		$form = $this->try_form($node, $role, $cls);
 		if (null !== $form) {
@@ -97,59 +94,6 @@ final class CompositePatternBuilder implements EngineInterface
 		}
 
 		return null;
-	}
-	/**
-	 * @param array<string,mixed> $node Node.
-	 * @param string              $role Layout role.
-	 * @param string              $cls  Classes.
-	 * @param string              $tag  Tag name.
-	 * @return array{type:string,settings:array<string,mixed>,role:string}|null
-	 */
-	private function try_nav_menu(array $node, string $role, string $cls, string $tag): ?array
-	{
-		$hinted = 'nav' === $tag || 'navigation' === $role
-			|| (bool) preg_match('/\b(nav|navbar|menu)\b/', $cls);
-		if (!$hinted) {
-			return null;
-		}
-
-		$items = array();
-		$this->collect_nav_links($node, $items);
-		if (count($items) < 2) {
-			return null;
-		}
-
-		return array(
-			'type' => 'nav-menu',
-			'role' => 'navigation',
-			'settings' => array(
-				// Consumed and replaced by ImportEngine::resolve_nav_menus()
-				// with a real WP menu ID once the page is actually imported.
-				'_h2e_nav_items' => $items,
-				'layout' => 'horizontal',
-				'submenu_icon' => array('value' => 'fas fa-chevron-down', 'library' => 'fa-solid'),
-			),
-		);
-	}
-
-	/**
-	 * @param array<string,mixed>            $node  Node.
-	 * @param array<int,array{title:string,url:string}> $items Accumulator.
-	 */
-	private function collect_nav_links(array $node, array &$items): void
-	{
-		$tag = strtolower((string) ($node['tag'] ?? ''));
-		$text = trim((string) ($node['text'] ?? ''));
-		$href = (string) ($node['href'] ?? '');
-		if ('a' === $tag && '' !== $text && '' !== $href) {
-			$items[] = array('title' => $text, 'url' => $href);
-			return; // Don't descend into an already-captured link.
-		}
-		foreach ((array) ($node['children'] ?? array()) as $child) {
-			if (is_array($child)) {
-				$this->collect_nav_links($child, $items);
-			}
-		}
 	}
 
 	/**

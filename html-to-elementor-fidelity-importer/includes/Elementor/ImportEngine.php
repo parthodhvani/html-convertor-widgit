@@ -90,9 +90,6 @@ final class ImportEngine
 			$data = $this->import_media($data, $post_id, (string) ($args['base_dir'] ?? ''));
 		}
 
-		$data = $this->resolve_nav_menus($data, $title);   // NEW
-
-
 		$this->apply_elementor_meta($post_id, $data);
 
 		$inject_assets = array_key_exists('inject_source_assets', $args)
@@ -127,63 +124,6 @@ final class ImportEngine
 		return $post_id;
 	}
 
-	/**
-	 * Recursively replace placeholder nav-menu widgets (produced by
-	 * CompositePatternBuilder::try_nav_menu) with a real WP menu id.
-	 *
-	 * @param array<int,array<string,mixed>> $elements    Elementor elements tree.
-	 * @param string                          $page_title Fallback menu name.
-	 * @return array<int,array<string,mixed>>
-	 */
-	private function resolve_nav_menus(array $elements, string $page_title): array
-	{
-		foreach ($elements as &$el) {
-			if (!is_array($el)) {
-				continue;
-			}
-			if ('nav-menu' === ($el['widgetType'] ?? '') && !empty($el['settings']['_h2e_nav_items'])) {
-				$items = (array) $el['settings']['_h2e_nav_items'];
-				$el['settings']['menu'] = (string) $this->get_or_create_nav_menu($page_title . ' Menu', $items);
-				unset($el['settings']['_h2e_nav_items']);
-			}
-			if (!empty($el['elements']) && is_array($el['elements'])) {
-				$el['elements'] = $this->resolve_nav_menus($el['elements'], $page_title);
-			}
-		}
-		unset($el);
-		return $elements;
-	}
-
-	/**
-	 * Reuse an existing WP menu with this name, or create one from items.
-	 *
-	 * @param string                                       $name  Menu name.
-	 * @param array<int,array{title:string,url:string}>     $items Link items.
-	 */
-	private function get_or_create_nav_menu(string $name, array $items): int
-	{
-		$existing = wp_get_nav_menu_object($name);
-		if ($existing instanceof \WP_Term) {
-			return (int) $existing->term_id;
-		}
-		$menu_id = wp_create_nav_menu($name);
-		if (is_wp_error($menu_id)) {
-			return 0;
-		}
-		foreach ($items as $i => $item) {
-			wp_update_nav_menu_item(
-				(int) $menu_id,
-				0,
-				array(
-					'menu-item-title' => (string) ($item['title'] ?? ''),
-					'menu-item-url' => (string) ($item['url'] ?? ''),
-					'menu-item-status' => 'publish',
-					'menu-item-position' => $i + 1,
-				)
-			);
-		}
-		return (int) $menu_id;
-	}
 	/**
 	 * Media sideload counters from the last import().
 	 *
@@ -253,34 +193,10 @@ final class ImportEngine
 			$css = rtrim($css) . "\n\n/* h2e element custom css */\n" . $generated;
 		}
 		update_post_meta($post_id, '_h2e_source_css', $css);
-		update_post_meta(
-			$post_id,
-			'_h2e_source_links',
-			array_values($this->filter_icon_font_stylesheets((array) ($assets['stylesheets'] ?? array())))
-		);		if ($inject_js) {
+		update_post_meta($post_id, '_h2e_source_links', array_values((array) ($assets['stylesheets'] ?? array())));
+		if ($inject_js) {
 			update_post_meta($post_id, '_h2e_source_js', (string) ($assets['combinedJs'] ?? ''));
 		}
-	}
-	/**
-	 * Drop icon-font stylesheets (Font Awesome, etc.) from the preserved
-	 * source <link> list. Elementor's Icon widget renders icons natively
-	 * (inline SVG); re-including the original icon-font CSS only causes
-	 * its unscoped `.fa-xxx:before` rules to double-paint on top of
-	 * Elementor's own icon markup, which also carries the fa-* classes.
-	 *
-	 * @param array<int,string> $links Stylesheet URLs.
-	 * @return array<int,string>
-	 */
-	private function filter_icon_font_stylesheets(array $links): array
-	{
-		return array_filter(
-			$links,
-			static function ($href): bool {
-				$href = strtolower((string) $href);
-				return '' !== $href
-					&& !preg_match('/font-?awesome|fontawesome|\/fa-|fa[- ]?icons?/i', $href);
-			}
-		);
 	}
 
 	/**
