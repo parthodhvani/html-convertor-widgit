@@ -142,12 +142,13 @@ final class ConversionPipeline
 		$stages = $converted['stages'] ?? array();
 
 		try {
+			$importer = new ImportEngine();
 			$post_id = $this->run_stage(
 				$stages,
 				'import',
 				'Elementor import',
-				function () use ($converted, $args, $entry_html) {
-					return (new ImportEngine())->import(
+				function () use ($converted, $args, $entry_html, $importer) {
+					return $importer->import(
 						$converted['data'],
 						array(
 							'title' => $args['title'] ?? ($converted['report']['title'] ?: 'Imported Page'),
@@ -156,6 +157,18 @@ final class ConversionPipeline
 							'assets' => $converted['assets'] ?? array(),
 							'tokens' => $converted['tokens'] ?? array(),
 							'base_dir' => dirname($entry_html),
+							'import_media' => array_key_exists('import_media', $args)
+								? (bool) $args['import_media']
+								: (bool) Settings::get('import_media', true),
+							'inject_source_assets' => array_key_exists('inject_source_assets', $args)
+								? (bool) $args['inject_source_assets']
+								: (bool) Settings::get('inject_source_assets', true),
+							'inject_source_js' => array_key_exists('inject_source_js', $args)
+								? (bool) $args['inject_source_js']
+								: (bool) Settings::get('inject_source_js', false),
+							'apply_global_colors' => array_key_exists('apply_global_colors', $args)
+								? (bool) $args['apply_global_colors']
+								: (bool) Settings::get('apply_global_colors', true),
 						)
 					);
 				}
@@ -170,6 +183,10 @@ final class ConversionPipeline
 		$report['post_id'] = $post_id;
 		$report['edit_url'] = admin_url('post.php?post=' . $post_id . '&action=elementor');
 		$report['stages'] = $stages;
+		$report['media'] = $importer->media_stats();
+		if (!empty($args['package']) && is_array($args['package'])) {
+			$report['package'] = $args['package'];
+		}
 		if (!empty($args['debug']) || (bool) Settings::get('debug', false)) {
 			$report['debug_log'] = Logger::buffer_lines();
 		}

@@ -24,7 +24,7 @@ if (!defined('ABSPATH')) {
 	exit; // No direct access.
 }
 
-define('H2E_VERSION', '1.0.0');
+define('H2E_VERSION', '1.0.1');
 define('H2E_PLUGIN_FILE', __FILE__);
 define('H2E_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('H2E_PLUGIN_URL', plugin_dir_url(__FILE__));

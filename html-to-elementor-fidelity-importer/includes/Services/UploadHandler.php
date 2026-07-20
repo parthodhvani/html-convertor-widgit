@@ -45,7 +45,7 @@ final class UploadHandler
 	 *
 	 * @param array{name:string,tmp_name:string,error:int,size:int} $file Single $_FILES entry.
 	 * @param string                                                $dir  Job directory.
-	 * @return array{type:string,path:string,entry:string}
+	 * @return array{type:string,path:string,entry:string,package:array<string,mixed>}
 	 *
 	 * @throws \RuntimeException When the file is invalid.
 	 */
@@ -61,25 +61,38 @@ final class UploadHandler
 		if (in_array($ext, self::ALLOWED_HTML, true)) {
 			$dest = trailingslashit($dir) . 'index.html';
 			$this->move((string) $file['tmp_name'], $dest);
+			$inventory = (new PackageExtractor())->inventory($dest);
+			$inventory['source'] = 'html';
+			$inventory['warning'] = $inventory['has_local_assets']
+				? ''
+				: 'HTML-only upload: relative images (assets/img/…) will not import. Prefer a ZIP that includes the assets folder.';
 			return array(
 				'type' => 'html',
 				'path' => $dir,
 				'entry' => $dest,
+				'package' => $inventory,
 			);
 		}
 
 		if (in_array($ext, self::ALLOWED_PKG, true)) {
 			$zip_path = trailingslashit($dir) . 'package.zip';
 			$this->move((string) $file['tmp_name'], $zip_path);
-			$entry = (new PackageExtractor())->extract($zip_path, $dir);
+			$extractor = new PackageExtractor();
+			$entry = $extractor->extract($zip_path, $dir);
+			$inventory = $extractor->inventory($entry);
+			$inventory['source'] = 'zip';
+			$inventory['warning'] = $inventory['has_local_assets']
+				? ''
+				: 'ZIP extracted, but no local images/CSS/JS were found next to the HTML. Check that assets/ is inside the archive.';
 			return array(
 				'type' => 'package',
 				'path' => $dir,
 				'entry' => $entry,
+				'package' => $inventory,
 			);
 		}
 
-		throw new \RuntimeException('Unsupported file type: .' . $ext);
+		throw new \RuntimeException('Unsupported file type: .' . $ext . ' — upload a .zip (recommended) or .html file.');
 	}
 
 	/**
@@ -87,16 +100,20 @@ final class UploadHandler
 	 *
 	 * @param string $html Raw HTML markup.
 	 * @param string $dir  Job directory.
-	 * @return array{type:string,path:string,entry:string}
+	 * @return array{type:string,path:string,entry:string,package:array<string,mixed>}
 	 */
 	public function store_raw_html(string $html, string $dir): array
 	{
 		$dest = trailingslashit($dir) . 'index.html';
 		file_put_contents($dest, $html); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		$inventory = (new PackageExtractor())->inventory($dest);
+		$inventory['source'] = 'paste';
+		$inventory['warning'] = 'Pasted HTML has no asset files. Relative images will not show — upload a ZIP with HTML + assets/ instead.';
 		return array(
 			'type' => 'html',
 			'path' => $dir,
 			'entry' => $dest,
+			'package' => $inventory,
 		);
 	}
 

@@ -85,6 +85,7 @@ final class AdminPage
 					'converting' => __('Rendering in Chromium and converting…', 'html-to-elementor-fidelity-importer'),
 					'done' => __('Conversion complete.', 'html-to-elementor-fidelity-importer'),
 					'failed' => __('Conversion failed.', 'html-to-elementor-fidelity-importer'),
+					'needZip' => __('For images to show, upload a ZIP that includes your HTML and assets folder.', 'html-to-elementor-fidelity-importer'),
 				),
 			)
 		);

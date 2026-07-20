@@ -55,6 +55,25 @@ if (!function_exists('wp_json_encode')) {
 		return json_encode($data, $options | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE, $depth);
 	}
 }
+if (!function_exists('trailingslashit')) {
+	function trailingslashit(string $path): string
+	{
+		return rtrim($path, "/\\") . '/';
+	}
+}
+if (!function_exists('wp_mkdir_p')) {
+	function wp_mkdir_p(string $path): bool
+	{
+		return is_dir($path) || mkdir($path, 0777, true);
+	}
+}
+if (!function_exists('sanitize_file_name')) {
+	function sanitize_file_name(string $name): string
+	{
+		$name = preg_replace('/[^A-Za-z0-9._-]/', '-', $name) ?? $name;
+		return trim($name, '.-');
+	}
+}
 
 $composer = H2E_PLUGIN_DIR . 'vendor/autoload.php';
 if (is_readable($composer)) {

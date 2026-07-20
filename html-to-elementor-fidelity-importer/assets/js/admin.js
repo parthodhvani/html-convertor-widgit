@@ -139,6 +139,9 @@
 		);
 		reportEl.appendChild( metrics );
 
+		appendPackageReport( reportEl, report.package );
+		appendMediaReport( reportEl, report.media, report.package );
+
 		if ( report.widget_breakdown && Object.keys( report.widget_breakdown ).length ) {
 			appendTextParagraph(
 				reportEl,
@@ -178,9 +181,61 @@
 		}
 	}
 
+	function appendPackageReport( parent, pkg ) {
+		if ( ! pkg || typeof pkg !== 'object' ) {
+			return;
+		}
+		const box = document.createElement( 'div' );
+		const warn = pkg.warning || ( ! pkg.has_local_assets && pkg.source !== 'zip' );
+		box.className = 'h2e-package-report' + ( warn ? ' is-warn' : '' );
+		const parts = [];
+		parts.push( 'Source: ' + ( pkg.source || 'upload' ) );
+		if ( pkg.entry_name ) {
+			parts.push( 'entry ' + pkg.entry_name );
+		}
+		parts.push( ( pkg.images || 0 ) + ' image(s)' );
+		parts.push( ( pkg.stylesheets || 0 ) + ' CSS' );
+		parts.push( ( pkg.scripts || 0 ) + ' JS' );
+		box.textContent = parts.join( ' · ' );
+		if ( pkg.warning ) {
+			const w = document.createElement( 'p' );
+			w.style.margin = '6px 0 0';
+			w.textContent = pkg.warning;
+			box.appendChild( w );
+		}
+		parent.appendChild( box );
+	}
+
+	function appendMediaReport( parent, media, pkg ) {
+		if ( ! media || typeof media !== 'object' ) {
+			return;
+		}
+		const box = document.createElement( 'div' );
+		const failed = ( media.failed || 0 ) > 0;
+		box.className = 'h2e-media-report' + ( failed ? ' is-warn' : '' );
+		box.textContent =
+			'Media library: ' +
+			( media.imported || 0 ) +
+			' imported / ' +
+			( media.attempted || 0 ) +
+			' attempted' +
+			( media.failed ? ' · ' + media.failed + ' failed' : '' ) +
+			( media.skipped ? ' · ' + media.skipped + ' skipped (data URIs)' : '' );
+		if ( failed && pkg && ! pkg.has_local_assets ) {
+			const tip = document.createElement( 'p' );
+			tip.style.margin = '6px 0 0';
+			tip.textContent =
+				'Tip: re-upload as a ZIP that includes the assets/ folder so images can be sideloaded.';
+			box.appendChild( tip );
+		}
+		parent.appendChild( box );
+	}
+
 	function syncSourceExclusive() {
 		const hasFile = fileInput.files && fileInput.files.length > 0;
 		const hasHtml = htmlInput.value.trim().length > 0;
+		const fileNameEl = document.getElementById( 'h2e-file-name' );
+		const packagePreview = document.getElementById( 'h2e-package-preview' );
 
 		if ( hasFile && hasHtml ) {
 			htmlInput.value = '';
@@ -192,7 +247,8 @@
 		} else if ( hasFile ) {
 			htmlInput.disabled = true;
 			htmlHint.hidden = false;
-			htmlHint.textContent = 'Cleared because a file is selected.';
+			htmlHint.textContent =
+				'Paste disabled while a file is selected. Clear the file to paste HTML.';
 			fileHint.hidden = true;
 		} else {
 			htmlInput.disabled = false;
@@ -200,16 +256,108 @@
 			htmlHint.textContent = '';
 			if ( hasHtml ) {
 				fileHint.hidden = false;
-				fileHint.textContent = 'File input ignored while paste HTML has content.';
+				fileHint.textContent =
+					'Paste mode: local images will not import. Prefer a ZIP with assets/.';
 			} else {
 				fileHint.hidden = true;
 				fileHint.textContent = '';
 			}
 		}
+
+		if ( fileNameEl ) {
+			if ( hasFile ) {
+				const f = fileInput.files[ 0 ];
+				fileNameEl.hidden = false;
+				fileNameEl.textContent = f.name + ' (' + Math.round( f.size / 1024 ) + ' KB)';
+			} else {
+				fileNameEl.hidden = true;
+				fileNameEl.textContent = '';
+			}
+		}
+
+		if ( packagePreview ) {
+			if ( hasFile ) {
+				const name = ( fileInput.files[ 0 ].name || '' ).toLowerCase();
+				const isZip = name.endsWith( '.zip' );
+				packagePreview.hidden = false;
+				if ( isZip ) {
+					packagePreview.className = 'h2e-package-preview is-ok';
+					packagePreview.textContent =
+						'ZIP selected — images/CSS/JS inside the archive will be used for conversion.';
+				} else {
+					packagePreview.className = 'h2e-package-preview is-warn';
+					packagePreview.textContent =
+						'HTML-only file — relative assets/img paths will not show. Upload a ZIP for images.';
+				}
+			} else if ( hasHtml ) {
+				packagePreview.hidden = false;
+				packagePreview.className = 'h2e-package-preview is-warn';
+				packagePreview.textContent =
+					'Paste mode has no asset files. Use a ZIP package to import images.';
+			} else {
+				packagePreview.hidden = true;
+				packagePreview.textContent = '';
+			}
+		}
+	}
+
+	function wireDropzone() {
+		const zone = document.getElementById( 'h2e-dropzone' );
+		if ( ! zone || ! fileInput ) {
+			return;
+		}
+		[ 'dragenter', 'dragover' ].forEach( function ( ev ) {
+			zone.addEventListener( ev, function ( e ) {
+				e.preventDefault();
+				e.stopPropagation();
+				zone.classList.add( 'is-dragover' );
+			} );
+		} );
+		[ 'dragleave', 'drop' ].forEach( function ( ev ) {
+			zone.addEventListener( ev, function ( e ) {
+				e.preventDefault();
+				e.stopPropagation();
+				zone.classList.remove( 'is-dragover' );
+			} );
+		} );
+		zone.addEventListener( 'drop', function ( e ) {
+			const files = e.dataTransfer && e.dataTransfer.files;
+			if ( files && files.length ) {
+				fileInput.files = files;
+				syncSourceExclusive();
+			}
+		} );
+	}
+
+	function syncImportMediaCheckboxes( fromMain ) {
+		const main = document.getElementById( 'h2e-import-media-main' );
+		const adv = document.getElementById( 'h2e-import-media' );
+		if ( ! main || ! adv ) {
+			return;
+		}
+		if ( fromMain ) {
+			adv.checked = main.checked;
+		} else {
+			main.checked = adv.checked;
+		}
 	}
 
 	fileInput.addEventListener( 'change', syncSourceExclusive );
 	htmlInput.addEventListener( 'input', syncSourceExclusive );
+	wireDropzone();
+	syncSourceExclusive();
+
+	const mediaMain = document.getElementById( 'h2e-import-media-main' );
+	const mediaAdv = document.getElementById( 'h2e-import-media' );
+	if ( mediaMain && mediaAdv ) {
+		mediaMain.checked = mediaAdv.checked;
+		mediaMain.addEventListener( 'change', function () {
+			syncImportMediaCheckboxes( true );
+		} );
+		mediaAdv.addEventListener( 'change', function () {
+			syncImportMediaCheckboxes( false );
+		} );
+	}
 
 	// Advanced panel toggle (client-side only).
 	const toggleBtn = document.getElementById( 'h2e-toggle-advanced' );
@@ -279,7 +427,13 @@
 		fd.append( 'wait_until', num( 'h2e-wait-until' ) );
 		fd.append( 'render_timeout_ms', num( 'h2e-render-timeout' ) );
 		fd.append( 'capture_screenshots', chk( 'h2e-capture-screenshots' ) );
-		fd.append( 'import_media', chk( 'h2e-import-media' ) );
+		// Prefer Convert-card media toggle; fall back to Advanced.
+		const mediaMainEl = document.getElementById( 'h2e-import-media-main' );
+		const mediaAdvEl = document.getElementById( 'h2e-import-media' );
+		const mediaOn = mediaMainEl
+			? mediaMainEl.checked
+			: !!( mediaAdvEl && mediaAdvEl.checked );
+		fd.append( 'import_media', mediaOn ? '1' : '0' );
 		fd.append( 'inject_source_assets', chk( 'h2e-inject-assets' ) );
 		fd.append( 'inject_source_js', chk( 'h2e-inject-js' ) );
 		fd.append( 'apply_global_colors', chk( 'h2e-global-colors' ) );
@@ -321,7 +475,11 @@
 		payload.capture_screenshots = document.getElementById(
 			'h2e-capture-screenshots'
 		).checked;
-		payload.import_media = document.getElementById( 'h2e-import-media' ).checked;
+		const mediaMainEl = document.getElementById( 'h2e-import-media-main' );
+		const mediaAdvEl = document.getElementById( 'h2e-import-media' );
+		payload.import_media = mediaMainEl
+			? mediaMainEl.checked
+			: !!( mediaAdvEl && mediaAdvEl.checked );
 		payload.inject_source_assets = document.getElementById(
 			'h2e-inject-assets'
 		).checked;
@@ -438,6 +596,9 @@
 			} )
 			.then( function ( res ) {
 				setStatus( H2E_DATA.i18n.done, 'success' );
+				if ( res.package && res.report && ! res.report.package ) {
+					res.report.package = res.package;
+				}
 				renderReport(
 					res.report,
 					res.post_id,

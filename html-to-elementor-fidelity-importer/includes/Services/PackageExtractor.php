@@ -47,6 +47,85 @@ final class PackageExtractor
 	}
 
 	/**
+	 * Inventory local assets next to an extracted entry HTML file.
+	 *
+	 * Used by the admin UI / report so users know whether images will import.
+	 *
+	 * @param string $entry Absolute path to entry HTML.
+	 * @return array{
+	 *   entry:string,
+	 *   entry_name:string,
+	 *   has_local_assets:bool,
+	 *   images:int,
+	 *   stylesheets:int,
+	 *   scripts:int,
+	 *   other_files:int,
+	 *   sample_images:array<int,string>
+	 * }
+	 */
+	public function inventory(string $entry): array
+	{
+		$root = dirname($entry);
+		$images = 0;
+		$stylesheets = 0;
+		$scripts = 0;
+		$other = 0;
+		$sample = array();
+
+		if (!is_dir($root)) {
+			return array(
+				'entry' => $entry,
+				'entry_name' => basename($entry),
+				'has_local_assets' => false,
+				'images' => 0,
+				'stylesheets' => 0,
+				'scripts' => 0,
+				'other_files' => 0,
+				'sample_images' => array(),
+			);
+		}
+
+		$iterator = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+		);
+		/** @var \SplFileInfo $file */
+		foreach ($iterator as $file) {
+			if (!$file->isFile()) {
+				continue;
+			}
+			$path = $file->getPathname();
+			if ($path === $entry) {
+				continue;
+			}
+			$ext = strtolower($file->getExtension());
+			$rel = ltrim(str_replace('\\', '/', substr($path, strlen($root))), '/');
+			if (in_array($ext, array('jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif', 'ico', 'bmp'), true)) {
+				++$images;
+				if (count($sample) < 8) {
+					$sample[] = $rel;
+				}
+			} elseif (in_array($ext, array('css'), true)) {
+				++$stylesheets;
+			} elseif (in_array($ext, array('js', 'mjs'), true)) {
+				++$scripts;
+			} elseif (!in_array($ext, array('html', 'htm'), true)) {
+				++$other;
+			}
+		}
+
+		return array(
+			'entry' => $entry,
+			'entry_name' => basename($entry),
+			'has_local_assets' => ($images + $stylesheets + $scripts) > 0,
+			'images' => $images,
+			'stylesheets' => $stylesheets,
+			'scripts' => $scripts,
+			'other_files' => $other,
+			'sample_images' => $sample,
+		);
+	}
+
+	/**
 	 * Extract using the native ZipArchive, guarding against path traversal (zip-slip).
 	 *
 	 * @param string $zip_path Source archive.

@@ -32,16 +32,35 @@ final class ImportEngine
 	private array $media_cache = array();
 
 	/**
+	 * Last media import counters for the conversion report.
+	 *
+	 * @var array{attempted:int,imported:int,failed:int,skipped:int}
+	 */
+	private array $media_stats = array(
+		'attempted' => 0,
+		'imported' => 0,
+		'failed' => 0,
+		'skipped' => 0,
+	);
+
+	/**
 	 * Create / update an Elementor page from generated data.
 	 *
 	 * @param array<int,array<string,mixed>> $data Elementor _elementor_data array.
-	 * @param array<string,mixed>            $args { title, status, page_id, assets, tokens, base_dir }.
+	 * @param array<string,mixed>            $args { title, status, page_id, assets, tokens, base_dir, import_media, inject_source_assets, inject_source_js, apply_global_colors }.
 	 * @return int Post ID.
 	 *
 	 * @throws \RuntimeException When the page cannot be created.
 	 */
 	public function import(array $data, array $args = array()): int
 	{
+		$this->media_stats = array(
+			'attempted' => 0,
+			'imported' => 0,
+			'failed' => 0,
+			'skipped' => 0,
+		);
+
 		$title = (string) ($args['title'] ?? 'Imported Page');
 		$status = (string) ($args['status'] ?? 'draft');
 		$existing = (int) ($args['page_id'] ?? 0);
@@ -63,21 +82,56 @@ final class ImportEngine
 		}
 		$post_id = (int) $post_id;
 
-		// Phase 11: import media and rewrite URLs to attachments.
-		if (Settings::get('import_media', true)) {
+		// Honor per-request override from the admin form; fall back to saved settings.
+		$import_media = array_key_exists('import_media', $args)
+			? (bool) $args['import_media']
+			: (bool) Settings::get('import_media', true);
+		if ($import_media) {
 			$data = $this->import_media($data, $post_id, (string) ($args['base_dir'] ?? ''));
 		}
 
 		$this->apply_elementor_meta($post_id, $data);
-		$this->store_source_assets($post_id, (array) ($args['assets'] ?? array()), $data);
 
-		// Phase 10: register global colours from extracted tokens.
-		if (Settings::get('apply_global_colors', true)) {
+		$inject_assets = array_key_exists('inject_source_assets', $args)
+			? (bool) $args['inject_source_assets']
+			: (bool) Settings::get('inject_source_assets', true);
+		$inject_js = array_key_exists('inject_source_js', $args)
+			? (bool) $args['inject_source_js']
+			: (bool) Settings::get('inject_source_js', false);
+		$this->store_source_assets(
+			$post_id,
+			(array) ($args['assets'] ?? array()),
+			$data,
+			$inject_assets,
+			$inject_js
+		);
+
+		$apply_colors = array_key_exists('apply_global_colors', $args)
+			? (bool) $args['apply_global_colors']
+			: (bool) Settings::get('apply_global_colors', true);
+		if ($apply_colors) {
 			$this->apply_global_colors((array) ($args['tokens'] ?? array()));
 		}
 
-		Logger::debug('Imported page', array('post_id' => $post_id, 'elements' => count($data)));
+		Logger::debug(
+			'Imported page',
+			array(
+				'post_id' => $post_id,
+				'elements' => count($data),
+				'media' => $this->media_stats,
+			)
+		);
 		return $post_id;
+	}
+
+	/**
+	 * Media sideload counters from the last import().
+	 *
+	 * @return array{attempted:int,imported:int,failed:int,skipped:int}
+	 */
+	public function media_stats(): array
+	{
+		return $this->media_stats;
 	}
 
 	/**
@@ -117,13 +171,20 @@ final class ImportEngine
 	 * Also emits per-element `_h2e_custom_css` declarations scoped to
 	 * `.elementor-element-{id}` so transforms/object-fit/grid tracks are not lost.
 	 *
-	 * @param int                            $post_id Target post.
-	 * @param array<string,mixed>            $assets  Asset bundle from the renderer.
-	 * @param array<int,array<string,mixed>> $data    Elementor tree (optional).
+	 * @param int                            $post_id        Target post.
+	 * @param array<string,mixed>            $assets         Asset bundle from the renderer.
+	 * @param array<int,array<string,mixed>> $data           Elementor tree (optional).
+	 * @param bool                           $inject_assets  Whether to store CSS.
+	 * @param bool                           $inject_js      Whether to store JS.
 	 */
-	private function store_source_assets(int $post_id, array $assets, array $data = array()): void
-	{
-		if (!Settings::get('inject_source_assets', true)) {
+	private function store_source_assets(
+		int $post_id,
+		array $assets,
+		array $data = array(),
+		bool $inject_assets = true,
+		bool $inject_js = false
+	): void {
+		if (!$inject_assets) {
 			return;
 		}
 		$css = (string) ($assets['combinedCss'] ?? '');
@@ -133,7 +194,7 @@ final class ImportEngine
 		}
 		update_post_meta($post_id, '_h2e_source_css', $css);
 		update_post_meta($post_id, '_h2e_source_links', array_values((array) ($assets['stylesheets'] ?? array())));
-		if (Settings::get('inject_source_js', false)) {
+		if ($inject_js) {
 			update_post_meta($post_id, '_h2e_source_js', (string) ($assets['combinedJs'] ?? ''));
 		}
 	}
@@ -204,17 +265,29 @@ final class ImportEngine
 			$s = $element['settings'];
 
 			if (isset($s['image']['url']) && '' !== (string) $s['image']['url']) {
+				++$this->media_stats['attempted'];
 				$media = $this->sideload((string) $s['image']['url'], $post_id, $base_dir);
 				if (null !== $media) {
 					$s['image']['url'] = $media['url'];
 					$s['image']['id'] = $media['id'];
+					++$this->media_stats['imported'];
+				} elseif (0 === strpos((string) $s['image']['url'], 'data:')) {
+					++$this->media_stats['skipped'];
+				} else {
+					++$this->media_stats['failed'];
 				}
 			}
 			if (isset($s['background_image']['url']) && '' !== (string) $s['background_image']['url']) {
+				++$this->media_stats['attempted'];
 				$media = $this->sideload((string) $s['background_image']['url'], $post_id, $base_dir);
 				if (null !== $media) {
 					$s['background_image']['url'] = $media['url'];
 					$s['background_image']['id'] = $media['id'];
+					++$this->media_stats['imported'];
+				} elseif (0 === strpos((string) $s['background_image']['url'], 'data:')) {
+					++$this->media_stats['skipped'];
+				} else {
+					++$this->media_stats['failed'];
 				}
 			}
 			$element['settings'] = $s;
@@ -323,16 +396,31 @@ final class ImportEngine
 	 */
 	private function resolve_local(string $url, string $base_dir): ?string
 	{
-		if (0 === strpos($url, 'file://')) {
-			$url = substr($url, 7);
+		$raw = trim($url);
+		if ('' === $raw) {
+			return null;
 		}
-		if ('' !== $url && '/' === $url[0] && is_readable($url)) {
-			return $url;
+
+		// Chromium emits absolute file:// URLs for package-relative assets.
+		if (0 === stripos($raw, 'file:')) {
+			$raw = preg_replace('#^file://#i', '', $raw) ?? $raw;
+			// file:///path → /path; file://localhost/path → /path
+			$raw = preg_replace('#^localhost#i', '', $raw) ?? $raw;
+			$raw = rawurldecode($raw);
 		}
+
+		if ('' !== $raw && '/' === $raw[0] && is_readable($raw)) {
+			return $raw;
+		}
+
 		if ('' !== $base_dir) {
-			$candidate = trailingslashit($base_dir) . ltrim($url, '/');
+			$base_real = realpath($base_dir);
+			if (false === $base_real) {
+				return null;
+			}
+			$candidate = trailingslashit($base_dir) . ltrim(str_replace('\\', '/', $raw), '/');
 			$real = realpath($candidate);
-			if (false !== $real && 0 === strpos($real, (string) realpath($base_dir)) && is_readable($real)) {
+			if (false !== $real && 0 === strpos($real, $base_real) && is_readable($real)) {
 				return $real;
 			}
 		}
