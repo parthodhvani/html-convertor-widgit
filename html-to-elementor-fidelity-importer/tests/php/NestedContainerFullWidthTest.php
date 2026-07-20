@@ -66,7 +66,7 @@ final class NestedContainerFullWidthTest extends TestCase
 		}
 	}
 
-	public function test_partial_percent_shares_are_forced_to_100(): void
+	public function test_partial_percent_shares_are_preserved_in_row_parents(): void
 	{
 		$elements = array(
 			array(
@@ -131,9 +131,10 @@ final class NestedContainerFullWidthTest extends TestCase
 		$row = $out[0]['elements'][0];
 		$cols = $row['elements'];
 
-		$this->assertSame(100, (int) $cols[0]['settings']['width']['size']);
+		// Row children keep geometry shares so header/nav and splits do not wrap.
+		$this->assertSame(51, (int) $cols[0]['settings']['width']['size']);
 		$this->assertSame('%', $cols[0]['settings']['width']['unit']);
-		$this->assertSame(100, (int) $cols[1]['settings']['width']['size']);
+		$this->assertSame(49, (int) $cols[1]['settings']['width']['size']);
 		// Tiny px chrome stays measured.
 		$this->assertSame(56, (int) $cols[2]['settings']['width']['size']);
 		$this->assertSame('px', $cols[2]['settings']['width']['unit']);

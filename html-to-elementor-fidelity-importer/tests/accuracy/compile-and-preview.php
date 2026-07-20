@@ -53,6 +53,7 @@ $preview = (new ElementorPreviewRenderer())->render(
 	array(
 		'title' => (string) ($layout['meta']['title'] ?? 'H2E Preview'),
 		'width' => 1440,
+		'page' => is_array($layout['meta']['page'] ?? null) ? $layout['meta']['page'] : array(),
 	)
 );
 
