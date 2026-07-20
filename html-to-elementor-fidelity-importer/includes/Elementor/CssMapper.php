@@ -560,11 +560,13 @@ final class CssMapper
         }
 
         // Elliptical / percent radii (organic hero frames) cannot fit Elementor's
-        // four px controls — reinject the raw CSS border-radius string.
+        // four px controls — reinject the raw CSS border-radius string and drop
+        // the misleading px radius so Elementor does not paint a near-rectangle.
         $br_raw = trim((string) ($s['brRaw'] ?? ''));
         if ('' !== $br_raw && '0px' !== $br_raw
             && (false !== strpos($br_raw, '/') || false !== strpos($br_raw, '%'))
         ) {
+            unset($out['border_radius']);
             $out = $this->merge_custom_css($out, 'border-radius:' . $br_raw);
             $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
                 (array) ($out['_h2e_unsupported'] ?? array()),

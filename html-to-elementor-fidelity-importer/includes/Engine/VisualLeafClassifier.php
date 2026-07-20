@@ -222,10 +222,16 @@ final class VisualLeafClassifier
 		if (preg_match('/\b(blog-card|card|post|article)\b/', $cls) && !preg_match('/\b(btn|button|card-link)\b/', $cls)) {
 			return false;
 		}
+		// Text-style card links (gold "Mehr erfahren →") must stay text, not
+		// Elementor Buttons — kit defaults paint solid green fills over them.
+		if (preg_match('/\b(card-link|read-more|more-link|text-link)\b/', $cls)
+			&& !preg_match('/\b(btn|button)\b/', $cls)
+		) {
+			return false;
+		}
 		// Explicit CTA / button classes.
 		if (preg_match('/\b(btn|button)\b/', $cls)
 			|| preg_match('/(?:^|[\s_])cta(?:[\s_]|$)/', $cls)
-			|| preg_match('/\bcard-link\b/', $cls)
 		) {
 			return true;
 		}

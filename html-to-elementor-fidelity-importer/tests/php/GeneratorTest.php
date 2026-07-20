@@ -244,8 +244,31 @@ final class GeneratorTest extends TestCase
 				'brad' => array('tl' => 40, 'tr' => 60, 'br' => 42, 'bl' => 58),
 			),
 		));
-		$this->assertSame('40', (string) $border['border_radius']['top']);
+		// Percent/elliptical radius must not leave a competing px Elementor control.
+		$this->assertArrayNotHasKey('border_radius', $border);
 		$this->assertStringContainsString('border-radius:40% 60% 42% 58% / 55% 45%', $border['_h2e_custom_css']);
 		$this->assertContains('elliptical-border-radius', $border['_h2e_unsupported']);
+	}
+
+	public function test_card_link_classifies_as_text_not_button(): void
+	{
+		$clf = new \HtmlToElementor\Engine\VisualLeafClassifier();
+		$result = $clf->classify(array(
+			'tag' => 'a',
+			'cls' => 'card-link',
+			'text' => 'Mehr erfahren',
+			'href' => 'angebot.html',
+			'html' => '<a href="angebot.html" class="card-link">Mehr erfahren <i class="fa-solid fa-arrow-right"></i></a>',
+			's' => array(
+				'color' => 'rgb(201, 162, 39)',
+				'disp' => 'inline-flex',
+				'w' => 118,
+				'h' => 24,
+				'fw' => '600',
+				'fs' => '14.4px',
+			),
+		));
+		$this->assertSame('text-editor', $result['type'] ?? null);
+		$this->assertStringContainsString('Mehr erfahren', (string) ($result['settings']['editor'] ?? ''));
 	}
 }
