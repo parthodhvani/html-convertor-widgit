@@ -25,6 +25,20 @@ $wait_until = (string) ($settings['wait_until'] ?? 'load');
 		<!-- A. Convert card -->
 		<div class="h2e-card h2e-card--primary">
 			<h2><?php esc_html_e('Convert', 'html-to-elementor-fidelity-importer'); ?></h2>
+
+			<div class="h2e-recommend">
+				<strong><?php esc_html_e('Recommended for images & CSS', 'html-to-elementor-fidelity-importer'); ?></strong>
+				<p>
+					<?php esc_html_e('Upload a ZIP that contains your HTML plus the assets folder (images, CSS, JS). Relative paths like assets/img/photo.jpg will then import into the Media Library.', 'html-to-elementor-fidelity-importer'); ?>
+				</p>
+				<pre class="h2e-zip-structure" aria-label="<?php esc_attr_e('Expected ZIP structure', 'html-to-elementor-fidelity-importer'); ?>">site.zip
+├── index.html
+└── assets/
+    ├── img/      (jpg, png, svg, webp…)
+    ├── css/
+    └── js/</pre>
+			</div>
+
 			<form id="h2e-form">
 				<p>
 					<label for="h2e-title"><strong><?php esc_html_e('Page title', 'html-to-elementor-fidelity-importer'); ?></strong></label><br />
@@ -32,22 +46,40 @@ $wait_until = (string) ($settings['wait_until'] ?? 'load');
 						placeholder="<?php esc_attr_e('Imported Page', 'html-to-elementor-fidelity-importer'); ?>" />
 				</p>
 
-				<p>
-					<label for="h2e-file"><strong><?php esc_html_e('HTML file or ZIP / website export', 'html-to-elementor-fidelity-importer'); ?></strong></label><br />
-					<input type="file" id="h2e-file" name="file" accept=".html,.htm,.zip" />
+				<div class="h2e-upload-block">
+					<label for="h2e-file"><strong><?php esc_html_e('Upload ZIP package (or HTML file)', 'html-to-elementor-fidelity-importer'); ?></strong></label>
+					<div id="h2e-dropzone" class="h2e-dropzone" tabindex="0" role="button"
+						aria-controls="h2e-file"
+						aria-label="<?php esc_attr_e('Drop a ZIP or HTML file here, or click to browse', 'html-to-elementor-fidelity-importer'); ?>">
+						<input type="file" id="h2e-file" name="file" accept=".html,.htm,.zip,application/zip" />
+						<p class="h2e-dropzone-title"><?php esc_html_e('Drop ZIP / HTML here or click to browse', 'html-to-elementor-fidelity-importer'); ?></p>
+						<p class="h2e-dropzone-sub description"><?php esc_html_e('ZIP with assets = images work. HTML-only paste = images will be missing.', 'html-to-elementor-fidelity-importer'); ?></p>
+						<p id="h2e-file-name" class="h2e-file-name" hidden></p>
+					</div>
 					<span id="h2e-file-hint" class="description h2e-source-hint" hidden></span>
-				</p>
+					<div id="h2e-package-preview" class="h2e-package-preview" hidden></div>
+				</div>
 
-				<p>
-					<label for="h2e-html"><strong><?php esc_html_e('…or paste raw HTML', 'html-to-elementor-fidelity-importer'); ?></strong></label><br />
+				<details class="h2e-paste-details">
+					<summary><?php esc_html_e('Or paste raw HTML (no local images)', 'html-to-elementor-fidelity-importer'); ?></summary>
+					<p class="description h2e-paste-warn">
+						<?php esc_html_e('Pasted HTML cannot include local assets/img files. Use a ZIP package if you need images.', 'html-to-elementor-fidelity-importer'); ?>
+					</p>
 					<textarea id="h2e-html" name="html" rows="6" class="large-text code"
 						placeholder="<!DOCTYPE html> ..."></textarea>
 					<span id="h2e-html-hint" class="description h2e-source-hint" hidden></span>
-				</p>
+				</details>
 
 				<p>
 					<label><input type="checkbox" id="h2e-import" name="import" checked />
 						<?php esc_html_e('Import into Elementor', 'html-to-elementor-fidelity-importer'); ?></label>
+				</p>
+				<p>
+					<label><input type="checkbox" id="h2e-import-media-main" name="import_media_main" checked />
+						<?php esc_html_e('Import images into Media Library', 'html-to-elementor-fidelity-importer'); ?></label>
+					<span class="description">
+						<?php esc_html_e('Required for ZIP images to show in Elementor. Keep this on.', 'html-to-elementor-fidelity-importer'); ?>
+					</span>
 				</p>
 
 				<p>
@@ -143,7 +175,7 @@ $wait_until = (string) ($settings['wait_until'] ?? 'load');
 					</p>
 					<p>
 						<label><input type="checkbox" id="h2e-import-media" name="import_media" <?php checked(!empty($settings['import_media'])); ?> />
-							<?php esc_html_e('Download images into Media Library', 'html-to-elementor-fidelity-importer'); ?></label>
+							<?php esc_html_e('Download images into Media Library (same as Convert checkbox)', 'html-to-elementor-fidelity-importer'); ?></label>
 					</p>
 					<p>
 						<label><input type="checkbox" id="h2e-inject-assets" name="inject_source_assets" <?php checked(!empty($settings['inject_source_assets'])); ?> />

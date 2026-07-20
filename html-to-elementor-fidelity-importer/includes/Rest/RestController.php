@@ -131,7 +131,8 @@ final class RestController
 			Logger::begin_request($debug);
 
 			$pipeline = new ConversionPipeline();
-			$do_import = (bool) ($request->get_param('import') ?? true);
+			$do_import = $this->truthy($request->get_param('import') ?? true);
+			$package = is_array($stored['package'] ?? null) ? $stored['package'] : array();
 
 			if ($do_import) {
 				$result = $pipeline->convert_and_import(
@@ -143,27 +144,34 @@ final class RestController
 							'title' => sanitize_text_field((string) ($request->get_param('title') ?: 'Imported Page')),
 							'status' => 'draft',
 							'page_id' => (int) ($request->get_param('page_id') ?? 0),
+							'package' => $package,
 						)
 					)
 				);
+				$report = $result['report'];
+				$report['package'] = $package;
 				return new \WP_REST_Response(
 					array(
 						'success' => true,
 						'imported' => true,
 						'post_id' => $result['post_id'],
-						'report' => $result['report'],
+						'report' => $report,
+						'package' => $package,
 					),
 					200
 				);
 			}
 
 			$converted = $pipeline->convert($stored['entry'], $job['dir'], $overrides);
+			$report = $converted['report'];
+			$report['package'] = $package;
 			return new \WP_REST_Response(
 				array(
 					'success' => true,
 					'imported' => false,
 					'data' => $converted['data'],
-					'report' => $converted['report'],
+					'report' => $report,
+					'package' => $package,
 				),
 				200
 			);
@@ -235,7 +243,7 @@ final class RestController
 			$overrides['service_token'] = sanitize_text_field((string) $request->get_param('service_token'));
 		}
 		if (null !== $request->get_param('node_strip_env')) {
-			$overrides['node_strip_env'] = (bool) $request->get_param('node_strip_env');
+			$overrides['node_strip_env'] = $this->truthy($request->get_param('node_strip_env'));
 		}
 		if (null !== $request->get_param('node_ld_library_path')) {
 			$overrides['node_ld_library_path'] = sanitize_text_field((string) $request->get_param('node_ld_library_path'));
@@ -247,22 +255,22 @@ final class RestController
 			$overrides['render_timeout_ms'] = (int) $request->get_param('render_timeout_ms');
 		}
 		if (null !== $request->get_param('capture_screenshots')) {
-			$overrides['capture_screenshots'] = (bool) $request->get_param('capture_screenshots');
+			$overrides['capture_screenshots'] = $this->truthy($request->get_param('capture_screenshots'));
 		}
 		if (null !== $request->get_param('import_media')) {
-			$overrides['import_media'] = (bool) $request->get_param('import_media');
+			$overrides['import_media'] = $this->truthy($request->get_param('import_media'));
 		}
 		if (null !== $request->get_param('inject_source_assets')) {
-			$overrides['inject_source_assets'] = (bool) $request->get_param('inject_source_assets');
+			$overrides['inject_source_assets'] = $this->truthy($request->get_param('inject_source_assets'));
 		}
 		if (null !== $request->get_param('inject_source_js')) {
-			$overrides['inject_source_js'] = (bool) $request->get_param('inject_source_js');
+			$overrides['inject_source_js'] = $this->truthy($request->get_param('inject_source_js'));
 		}
 		if (null !== $request->get_param('apply_global_colors')) {
-			$overrides['apply_global_colors'] = (bool) $request->get_param('apply_global_colors');
+			$overrides['apply_global_colors'] = $this->truthy($request->get_param('apply_global_colors'));
 		}
 		if (null !== $request->get_param('debug')) {
-			$overrides['debug'] = (bool) $request->get_param('debug');
+			$overrides['debug'] = $this->truthy($request->get_param('debug'));
 		}
 
 		$bp = $request->get_param('breakpoints');
@@ -343,5 +351,22 @@ final class RestController
 		unset($update['conversion_mode']);
 		Settings::update($update);
 		return new \WP_REST_Response(Settings::all(), 200);
+	}
+
+	/**
+	 * Parse FormData / JSON truthy flags. (bool)"0" is true in PHP — avoid that.
+	 *
+	 * @param mixed $value Raw request value.
+	 */
+	private function truthy(mixed $value): bool
+	{
+		if (is_bool($value)) {
+			return $value;
+		}
+		if (is_int($value) || is_float($value)) {
+			return 0 !== (int) $value;
+		}
+		$s = strtolower(trim((string) $value));
+		return !in_array($s, array('', '0', 'false', 'no', 'off'), true);
 	}
 }
