@@ -60,8 +60,8 @@ final class ContainerTreeOptimizer
 	 * Ensure nesting levels 2–10 fill their parent in Elementor (Full Width + 100%).
 	 *
 	 * Nested containers (including former column shares like 40%/51%) are forced
-	 * to width 100% through depth 10. Tiny px chrome boxes and absolute/fixed
-	 * layers are left alone so icons/overlays keep their measure.
+	 * to width 100% through depth 10 so Elementor structure stays intact. Tiny px
+	 * chrome boxes and absolute/fixed layers are left alone.
 	 *
 	 * @param array<int,array<string,mixed>> $elements Root elements.
 	 * @return array<int,array<string,mixed>>

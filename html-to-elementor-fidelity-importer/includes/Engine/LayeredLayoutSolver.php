@@ -93,10 +93,47 @@ final class LayeredLayoutSolver
 			} elseif (!empty($bg['s']['bgImg']) && '' === $src) {
 				$settings['_h2e_layer_bg'] = (string) $bg['s']['bgImg'];
 			} else {
-				// Keep media frames (e.g. founder photo wrappers) as nested content
-				// when they are not a usable full-bleed background URL.
+				// Keep media frames (e.g. founder photo wrappers) as nested
+				// containers so elliptical radius / overflow clip survive —
+				// convert_content alone would hoist the bare <img>.
+				$frame_children = array();
 				foreach ($convert_content($bg) as $el) {
-					array_unshift($content_elements, $el);
+					$frame_children[] = $el;
+				}
+				if ($this->is_framed_media($bg) || VisualSignals::has_clip_shape($bg['s'] ?? array())) {
+					$frame_settings = $this->css->combine(
+						array(
+							'content_width' => 'full',
+							'flex_direction' => 'column',
+						),
+						$this->css->background($bg),
+						$this->css->border($bg),
+						$this->css->box_shadow($bg),
+						$this->css->sizing($bg),
+						$this->css->effects($bg)
+					);
+					$cls = trim((string) ($bg['cls'] ?? ''));
+					if ('' !== $cls) {
+						$frame_settings['_css_classes'] = sanitize_html_class(
+							preg_replace('/\s+/', ' ', $cls) ?? $cls
+						);
+						// Preserve multi-class tokens Elementor can still use.
+						$frame_settings['_css_classes'] = implode(
+							' ',
+							array_filter(array_map('sanitize_html_class', preg_split('/\s+/', $cls) ?: array()))
+						);
+					}
+					array_unshift($content_elements, array(
+						'id' => ElementId::generate(),
+						'elType' => 'container',
+						'settings' => $frame_settings,
+						'elements' => array_values($frame_children),
+						'isInner' => true,
+					));
+				} else {
+					foreach ($frame_children as $el) {
+						array_unshift($content_elements, $el);
+					}
 				}
 			}
 		}
@@ -174,6 +211,10 @@ final class LayeredLayoutSolver
 			return true;
 		}
 
+		if (VisualSignals::has_clip_shape($node['s'] ?? array())) {
+			return true;
+		}
+
 		$brad = $node['s']['brad'] ?? null;
 		if (is_array($brad)) {
 			$vals = array_map('floatval', array_values($brad));
@@ -188,7 +229,6 @@ final class LayeredLayoutSolver
 		}
 
 		$w = (float) ($node['s']['w'] ?? 0);
-		$parent_hint = (float) ($node['s']['maxW'] ?? 0);
 		// Distinct portrait frames are usually narrower than a full hero column.
 		if ($w > 0 && $w <= 520 && preg_match('/\b(frame|portrait|founder)\b/', $cls)) {
 			return true;

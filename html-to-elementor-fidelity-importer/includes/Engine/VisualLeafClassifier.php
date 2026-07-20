@@ -223,7 +223,10 @@ final class VisualLeafClassifier
 			return false;
 		}
 		// Explicit CTA / button classes.
-		if (preg_match('/\b(btn|button|cta|card-link)\b/', $cls)) {
+		if (preg_match('/\b(btn|button)\b/', $cls)
+			|| preg_match('/(?:^|[\s_])cta(?:[\s_]|$)/', $cls)
+			|| preg_match('/\bcard-link\b/', $cls)
+		) {
 			return true;
 		}
 		// Visual button chrome: filled background + padding + compact control height.
