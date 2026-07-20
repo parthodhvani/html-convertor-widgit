@@ -925,12 +925,11 @@ final class CompositePatternBuilder implements EngineInterface
 	}
 
 	/**
-	 * Map CTA title/description/button chrome onto Elementor Call to Action controls.
+	 * Map CTA title/description/button colours onto Elementor Call to Action controls.
 	 *
-	 * Controls: title_color / title_typography_*, description_color /
-	 * description_typography_*, button_text_color, button_background_color,
-	 * button_typography_*, button_box_shadow_*, button padding/radius, and
-	 * nested FA selected_icon (preview + Pro CTA consumers).
+	 * Controls: title_color, description_color, button_text_color,
+	 * button_background_color (Pro CTA). Border/shadow/bg still come from
+	 * style_for_widget / map_painted_composite on the root.
 	 *
 	 * @param array<string,mixed> $node CTA root.
 	 * @return array<string,mixed>
@@ -950,54 +949,26 @@ final class CompositePatternBuilder implements EngineInterface
 		}
 		if (null !== $title_node) {
 			$out = array_merge($out, $mapper->text_color($title_node, 'title_color'));
-			$out = array_merge($out, $this->prefix_typography($mapper->typography($title_node), 'title_'));
-			$mb = (float) ($title_node['s']['mb'] ?? 0);
-			if ($mb > 0) {
-				$out['title_spacing'] = array('unit' => 'px', 'size' => $mb);
-			}
 		}
 
 		$desc_node = $this->find_descendant_by_tag($node, array('p'));
 		if (null !== $desc_node) {
 			$out = array_merge($out, $mapper->text_color($desc_node, 'description_color'));
-			$out = array_merge($out, $this->prefix_typography($mapper->typography($desc_node), 'description_'));
-			$max_raw = trim((string) ($desc_node['s']['maxW'] ?? ''));
-			if ('' !== $max_raw && !in_array(strtolower($max_raw), array('none', 'auto'), true)
-				&& preg_match('/^(\d+(?:\.\d+)?)\s*px$/i', $max_raw, $mw)
-			) {
-				$out['description_max_width'] = array('unit' => 'px', 'size' => (float) $mw[1]);
-			} else {
-				$mw = (float) ($desc_node['s']['w'] ?? 0);
-				if ($mw >= 200 && $mw <= 900) {
-					$out['description_max_width'] = array('unit' => 'px', 'size' => round($mw, 0));
-				}
-			}
-			$mb = (float) ($desc_node['s']['mb'] ?? 0);
-			if ($mb > 0) {
-				$out['description_spacing'] = array('unit' => 'px', 'size' => $mb);
-			}
 		}
 
-		// Prefer a real btn/button descendant — never the CTA root itself
-		// (cta-banner matches VisualSignals::looks_button via \bcta\b).
 		$btn_node = null;
-		$this->walk_text($node, function (array $n) use (&$btn_node, $node): void {
-			if (null !== $btn_node || $n === $node) {
+		$this->walk_text($node, function (array $n) use (&$btn_node): void {
+			if (null !== $btn_node) {
 				return;
 			}
 			$cls = strtolower((string) ($n['cls'] ?? ''));
 			$tag = strtolower((string) ($n['tag'] ?? ''));
-			if (preg_match('/\b(btn|button)\b/', $cls) || 'button' === $tag) {
-				$btn_node = $n;
-				return;
-			}
-			if ('a' === $tag && VisualSignals::looks_button($n)) {
+			if (VisualSignals::looks_button($n) || preg_match('/\b(btn|button)\b/', $cls) || 'button' === $tag) {
 				$btn_node = $n;
 			}
 		});
 		if (null !== $btn_node) {
 			$out = array_merge($out, $mapper->text_color($btn_node, 'button_text_color'));
-			$out = array_merge($out, $this->prefix_typography($mapper->typography($btn_node), 'button_'));
 			$bg = (string) ($btn_node['s']['bg'] ?? '');
 			if ('' !== $bg && false === stripos($bg, 'gradient') && 'transparent' !== strtolower($bg)) {
 				$out['button_background_color'] = $bg;
@@ -1005,103 +976,11 @@ final class CompositePatternBuilder implements EngineInterface
 				$grad = $mapper->parse_gradient((string) ($btn_node['s']['bgImg'] ?? $btn_node['s']['bg'] ?? ''));
 				if (null !== $grad) {
 					$out['button_background_color'] = $grad['color_a'];
-					if (!empty($grad['color_b'])) {
-						$out['button_background_color_b'] = $grad['color_b'];
-					}
 				}
 			}
-
-			$spacing = $mapper->spacing($btn_node, false);
-			if (!empty($spacing['padding']) && is_array($spacing['padding'])) {
-				$out['button_padding'] = $spacing['padding'];
-			}
-			$border = $mapper->border($btn_node);
-			if (!empty($border['border_radius']) && is_array($border['border_radius'])) {
-				$out['button_border_radius'] = $border['border_radius'];
-			}
-			$shadow = $mapper->box_shadow($btn_node);
-			if (!empty($shadow['box_shadow_box_shadow_type'])) {
-				$out['button_box_shadow_box_shadow_type'] = $shadow['box_shadow_box_shadow_type'];
-			}
-			if (!empty($shadow['box_shadow_box_shadow'])) {
-				$out['button_box_shadow_box_shadow'] = $shadow['box_shadow_box_shadow'];
-			}
-
-			$out = array_merge($out, $this->nested_fa_icon_settings($btn_node));
 		}
 
 		return $out;
-	}
-
-	/**
-	 * Remap CssMapper typography_* keys onto a prefixed Elementor group
-	 * (title_typography_*, description_typography_*, button_typography_*).
-	 *
-	 * @param array<string,mixed> $typo   Typography settings.
-	 * @param string              $prefix Control prefix (e.g. "title_").
-	 * @return array<string,mixed>
-	 */
-	private function prefix_typography(array $typo, string $prefix): array
-	{
-		$out = array();
-		foreach ($typo as $key => $value) {
-			if (!is_string($key) || !str_starts_with($key, 'typography_')) {
-				continue;
-			}
-			$out[$prefix . $key] = $value;
-		}
-		return $out;
-	}
-
-	/**
-	 * Extract a nested Font Awesome <i> onto selected_icon + icon_align.
-	 *
-	 * @param array<string,mixed> $node Button-like node.
-	 * @return array<string,mixed>
-	 */
-	private function nested_fa_icon_settings(array $node): array
-	{
-		$html = (string) ($node['html'] ?? '');
-		if ('' === $html) {
-			$html = (string) ($node['outerHTML'] ?? '');
-		}
-		if ('' === $html || !preg_match('/<i\b[^>]*\bclass\s*=\s*["\']([^"\']+)["\'][^>]*>/i', $html, $m)) {
-			return array();
-		}
-
-		$icon_cls = trim(preg_replace('/\s+/', ' ', $m[1]) ?? '');
-		if ('' === $icon_cls || !preg_match('/\bfa-[\w-]+/', $icon_cls)) {
-			return array();
-		}
-
-		$library = 'fa-solid';
-		$value = $icon_cls;
-		if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+(fa-[\w-]+)/i', $icon_cls, $im)) {
-			$prefix = strtolower($im[1]);
-			$name = strtolower($im[2]);
-			$value = $prefix . ' ' . $name;
-			if ('fab' === $prefix || 'fa-brands' === $prefix) {
-				$library = 'fa-brands';
-			} elseif ('far' === $prefix || 'fa-regular' === $prefix) {
-				$library = 'fa-regular';
-			} else {
-				$library = 'fa-solid';
-			}
-		} elseif (preg_match('/\b(fa-[\w-]+)\b/', $icon_cls, $im)) {
-			$value = 'fas ' . strtolower($im[1]);
-		}
-
-		$icon_pos = (int) strpos($html, $m[0]);
-		$text_before = trim(wp_strip_all_tags(substr($html, 0, $icon_pos)));
-		$align = '' === $text_before ? 'left' : 'right';
-
-		return array(
-			'selected_icon' => array(
-				'value' => $value,
-				'library' => $library,
-			),
-			'icon_align' => $align,
-		);
 	}
 
 	/**
