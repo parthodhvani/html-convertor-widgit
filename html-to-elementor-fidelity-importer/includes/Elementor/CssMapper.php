@@ -277,6 +277,13 @@ final class CssMapper
             $gradient = $this->parse_gradient((string) ($s['bg'] ?? ''));
         }
 
+        // Drop local background images that cannot be loaded (broken CSS-relative
+        // urls like assets/css/assets/img/…). Keep the gradient layer instead so
+        // heroes/CTAs still paint.
+        if ('' !== $bg_image && !$this->background_url_reachable($bg_image)) {
+            $bg_image = '';
+        }
+
         if ('' !== $bg_image) {
             $out['background_background'] = 'classic';
             $out['background_image'] = array(
@@ -317,6 +324,30 @@ final class CssMapper
             // Do not overwrite gradient color A with a solid fill when gradient won.
             if ('gradient' !== ($out['background_background'] ?? '')) {
                 $out['background_color'] = $bg_color;
+            }
+        }
+
+        // Multi-layer gradient stacks (CTA glows, hero washes) cannot fit in
+        // Elementor's 2-stop controls — reinject the full background-image list
+        // so preview/custom CSS keep the gold/violet radial atmosphere.
+        if ('' !== $raw_bg_img && false !== stripos($raw_bg_img, 'gradient')) {
+            $layers = $this->split_background_layers($raw_bg_img);
+            $grad_layers = array();
+            foreach ($layers as $layer) {
+                $layer = trim($layer);
+                if ('' !== $layer && false !== stripos($layer, 'gradient')) {
+                    $grad_layers[] = $layer;
+                }
+            }
+            if (count($grad_layers) > 1) {
+                $out = $this->merge_custom_css(
+                    $out,
+                    'background-image:' . implode(',', $grad_layers)
+                );
+                $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
+                    (array) ($out['_h2e_unsupported'] ?? array()),
+                    array('multi-layer-gradient')
+                )));
             }
         }
 
@@ -537,6 +568,20 @@ final class CssMapper
             $out['_h2e_aspect_ratio'] = $ar;
         }
 
+        // Lock display size from computed style / bbox. SVGs (logos) otherwise
+        // render at intrinsic width/height and blow up headers/footers.
+        $w = (float) ($s['w'] ?? $node['bbox']['width'] ?? 0);
+        $h = (float) ($s['h'] ?? $node['bbox']['height'] ?? 0);
+        if ($w >= 8 && $w <= 1200) {
+            $out['width'] = array('unit' => 'px', 'size' => round($w, 2));
+            $css[] = 'width:' . round($w, 2) . 'px';
+            $css[] = 'max-width:100%';
+        }
+        if ($h >= 8 && $h <= 1200) {
+            $out['height'] = array('unit' => 'px', 'size' => round($h, 2));
+            $css[] = 'height:' . round($h, 2) . 'px';
+        }
+
         if (!empty($css)) {
             $out = $this->merge_custom_css($out, implode(';', $css));
             $out['_h2e_unsupported'] = array_values(array_unique(array_merge(
@@ -544,6 +589,7 @@ final class CssMapper
                 array_filter(array(
                     '' !== $object_fit && 'fill' !== $object_fit ? 'object-fit' : '',
                     ('' !== $ar && 'auto' !== $ar) ? 'aspect-ratio' : '',
+                    ($w >= 8 && $w <= 1200) || ($h >= 8 && $h <= 1200) ? 'image-size-lock' : '',
                 ))
             )));
         }
@@ -1250,6 +1296,41 @@ final class CssMapper
     }
 
     /**
+     * True when a mapped background URL looks loadable.
+     *
+     * Remote http(s) URLs are assumed reachable (checked at import sideload).
+     * Local file:// / absolute paths must exist on disk — broken CSS-relative
+     * resolutions (e.g. …/css/assets/img/missing.jpg) are rejected so gradients win.
+     */
+    private function background_url_reachable(string $url): bool
+    {
+        $url = trim($url);
+        if ('' === $url || 'none' === strtolower($url)) {
+            return false;
+        }
+        if (0 === stripos($url, 'data:')) {
+            return true;
+        }
+        if (preg_match('#^https?://#i', $url)) {
+            return true;
+        }
+        $path = $url;
+        if (0 === stripos($path, 'file://')) {
+            $path = substr($path, 7);
+            // file:///path → /path
+            if (preg_match('#^/[A-Za-z]:#', $path)) {
+                // Windows file:///C:/...
+                $path = ltrim($path, '/');
+            }
+        }
+        if ('' !== $path && $path[0] === '/') {
+            return is_file($path) && is_readable($path);
+        }
+        // Relative paths without a base — keep and let import resolve.
+        return true;
+    }
+
+    /**
      * Split a CSS background-image list into layers (comma-aware of nested parens).
      *
      * @param string $value Raw background-image.
@@ -1377,6 +1458,45 @@ final class CssMapper
         $existing = trim((string) ($settings['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
         $settings['_h2e_custom_css'] = '' === $existing ? $css : ($existing . ';' . $css);
         return $settings;
+    }
+
+    /**
+     * Merge mapper result bags without clobbering `_h2e_custom_css` /
+     * `_h2e_unsupported` (plain array_merge would drop multi-layer gradients
+     * when a later effects() bag only carries overflow/filter).
+     *
+     * @param array<string,mixed> ...$parts Setting bags.
+     * @return array<string,mixed>
+     */
+    public function combine(array ...$parts): array
+    {
+        $out = array();
+        $custom = array();
+        $unsupported = array();
+        foreach ($parts as $part) {
+            if (!is_array($part) || empty($part)) {
+                continue;
+            }
+            if (isset($part['_h2e_custom_css'])) {
+                $chunk = trim((string) $part['_h2e_custom_css'], " \t\n\r\0\x0B;");
+                if ('' !== $chunk) {
+                    $custom[] = $chunk;
+                }
+                unset($part['_h2e_custom_css']);
+            }
+            if (isset($part['_h2e_unsupported']) && is_array($part['_h2e_unsupported'])) {
+                $unsupported = array_merge($unsupported, $part['_h2e_unsupported']);
+                unset($part['_h2e_unsupported']);
+            }
+            $out = array_merge($out, $part);
+        }
+        if (!empty($custom)) {
+            $out['_h2e_custom_css'] = implode(';', $custom);
+        }
+        if (!empty($unsupported)) {
+            $out['_h2e_unsupported'] = array_values(array_unique(array_filter($unsupported)));
+        }
+        return $out;
     }
 
     /**
