@@ -213,25 +213,4 @@ final class GeneratorTest extends TestCase
 		$layered['layeredLayout'] = array('background' => null, 'content' => array(), 'in_flow' => array());
 		$this->assertFalse($recognition->container_needs_fallback($layered));
 	}
-
-	public function test_css_mapper_combine_preserves_custom_css_bags(): void
-	{
-		$mapper = new CssMapper();
-		$combined = $mapper->combine(
-			array(
-				'_h2e_custom_css' => 'background-image:linear-gradient(red,blue)',
-				'_h2e_unsupported' => array('multi-layer-gradient'),
-				'background_background' => 'gradient',
-			),
-			array(
-				'_h2e_custom_css' => 'overflow:hidden',
-				'_h2e_unsupported' => array('overflow'),
-			)
-		);
-		$this->assertSame('gradient', $combined['background_background']);
-		$this->assertStringContainsString('background-image:linear-gradient(red,blue)', $combined['_h2e_custom_css']);
-		$this->assertStringContainsString('overflow:hidden', $combined['_h2e_custom_css']);
-		$this->assertContains('multi-layer-gradient', $combined['_h2e_unsupported']);
-		$this->assertContains('overflow', $combined['_h2e_unsupported']);
-	}
 }

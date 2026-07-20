@@ -190,11 +190,7 @@ final class VisualSignals
 			return false;
 		}
 
-		// Match btn/button, or a standalone "cta" token — but NOT cta-banner /
-		// call-to-action wrappers (hyphen breaks \b so "cta" matched inside them).
-		if (preg_match('/\b(btn|button)\b/', $cls)
-			|| preg_match('/(?:^|[\s_])cta(?:[\s_]|$)/', $cls)
-		) {
+		if (preg_match('/\b(btn|button|cta)\b/', $cls)) {
 			return true;
 		}
 

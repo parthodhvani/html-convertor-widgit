@@ -896,7 +896,7 @@ final class CompositePatternBuilder implements EngineInterface
 				}
 				return;
 			}
-			if ('a' === $tag && (preg_match('/\b(btn|button)\b/', $cls_n) || preg_match('/(?:^|[\s_])cta(?:[\s_]|$)/', $cls_n)) && '' === $button) {
+			if ('a' === $tag && preg_match('/\b(btn|button|cta)\b/', $cls_n) && '' === $button) {
 				$button = $text;
 				$link = (string) ($n['href'] ?? '');
 				return;

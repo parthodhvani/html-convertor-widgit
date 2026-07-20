@@ -187,18 +187,12 @@ final class ImportEngine
 		if (!$inject_assets) {
 			return;
 		}
-		// Keep uploaded package CSS separate from generated Elementor-scoped rules
-		// so the front end can apply: uploaded CSS → Elementor defaults → H2E fixes.
-		$uploaded = (string) ($assets['combinedCss'] ?? '');
+		$css = (string) ($assets['combinedCss'] ?? '');
 		$generated = $this->collect_element_custom_css($data);
-		update_post_meta($post_id, '_h2e_uploaded_css', $uploaded);
-		update_post_meta($post_id, '_h2e_element_css', $generated);
-		// Legacy combined blob for older readers / exports.
-		$legacy = $uploaded;
 		if ('' !== $generated) {
-			$legacy = rtrim($uploaded) . "\n\n/* h2e element custom css */\n" . $generated;
+			$css = rtrim($css) . "\n\n/* h2e element custom css */\n" . $generated;
 		}
-		update_post_meta($post_id, '_h2e_source_css', $legacy);
+		update_post_meta($post_id, '_h2e_source_css', $css);
 		update_post_meta($post_id, '_h2e_source_links', array_values((array) ($assets['stylesheets'] ?? array())));
 		if ($inject_js) {
 			update_post_meta($post_id, '_h2e_source_js', (string) ($assets['combinedJs'] ?? ''));

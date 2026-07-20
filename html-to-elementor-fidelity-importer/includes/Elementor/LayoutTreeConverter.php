@@ -407,7 +407,7 @@ final class LayoutTreeConverter
             if (empty($settings['flex_direction'])) {
                 $settings['flex_direction'] = 'column';
             }
-            $settings = $this->css->combine(
+            $settings = array_merge(
                 $settings,
                 $this->css->background($node),
                 $this->css->border($node),
@@ -849,7 +849,7 @@ final class LayoutTreeConverter
         }
         switch ($type) {
             case 'heading':
-                return $this->css->combine(
+                return array_merge(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'title_color'),
                     $this->css->alignment($node, 'align'),
@@ -858,7 +858,7 @@ final class LayoutTreeConverter
                     $this->css->border($node)
                 );
             case 'text-editor':
-                return $this->css->combine(
+                return array_merge(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'text_color'),
                     $this->css->alignment($node, 'align'),
@@ -867,7 +867,7 @@ final class LayoutTreeConverter
                     $this->css->border($node)
                 );
             case 'button':
-                $style = $this->css->combine(
+                $style = array_merge(
                     $this->css->typography($node),
                     $this->css->text_color($node, 'button_text_color'),
                     $this->css->alignment($node, 'align'),
@@ -905,7 +905,7 @@ final class LayoutTreeConverter
                 }
                 return $style;
             case 'image':
-                return $this->css->combine(
+                return array_merge(
                     $this->css->alignment($node, 'align'),
                     $this->css->spacing($node, true),
                     $this->css->border($node),
@@ -929,7 +929,7 @@ final class LayoutTreeConverter
             case 'price-table':
             case 'testimonial':
             case 'call-to-action':
-                return $this->css->combine(
+                return array_merge(
                     $this->css->spacing($node, true),
                     $this->css->background($node),
                     $this->css->border($node),

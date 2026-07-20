@@ -1461,45 +1461,6 @@ final class CssMapper
     }
 
     /**
-     * Merge mapper result bags without clobbering `_h2e_custom_css` /
-     * `_h2e_unsupported` (plain array_merge would drop multi-layer gradients
-     * when a later effects() bag only carries overflow/filter).
-     *
-     * @param array<string,mixed> ...$parts Setting bags.
-     * @return array<string,mixed>
-     */
-    public function combine(array ...$parts): array
-    {
-        $out = array();
-        $custom = array();
-        $unsupported = array();
-        foreach ($parts as $part) {
-            if (!is_array($part) || empty($part)) {
-                continue;
-            }
-            if (isset($part['_h2e_custom_css'])) {
-                $chunk = trim((string) $part['_h2e_custom_css'], " \t\n\r\0\x0B;");
-                if ('' !== $chunk) {
-                    $custom[] = $chunk;
-                }
-                unset($part['_h2e_custom_css']);
-            }
-            if (isset($part['_h2e_unsupported']) && is_array($part['_h2e_unsupported'])) {
-                $unsupported = array_merge($unsupported, $part['_h2e_unsupported']);
-                unset($part['_h2e_unsupported']);
-            }
-            $out = array_merge($out, $part);
-        }
-        if (!empty($custom)) {
-            $out['_h2e_custom_css'] = implode(';', $custom);
-        }
-        if (!empty($unsupported)) {
-            $out['_h2e_unsupported'] = array_values(array_unique(array_filter($unsupported)));
-        }
-        return $out;
-    }
-
-    /**
      * Map background-size to an Elementor keyword.
      *
      * @param string $value background-size value.

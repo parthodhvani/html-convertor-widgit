@@ -280,8 +280,7 @@ final class WidgetClassifier
         // Button chrome (class or filled+padded) → Button; else linked text.
         $cls = strtolower((string) ($node['cls'] ?? ''));
         $s = $node['s'] ?? array();
-        $has_chrome = preg_match('/\b(btn|button)\b/', $cls)
-            || preg_match('/(?:^|[\s_])cta(?:[\s_]|$)/', $cls)
+        $has_chrome = preg_match('/\b(btn|button|cta)\b/', $cls)
             || (!empty($s['bg']) && ((float) ($s['pt'] ?? 0) + (float) ($s['pb'] ?? 0) + (float) ($s['pl'] ?? 0) + (float) ($s['pr'] ?? 0)) >= 6);
         if ($has_chrome) {
             return array(
