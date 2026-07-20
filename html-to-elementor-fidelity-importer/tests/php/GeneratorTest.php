@@ -234,4 +234,18 @@ final class GeneratorTest extends TestCase
 		$this->assertContains('multi-layer-gradient', $combined['_h2e_unsupported']);
 		$this->assertContains('overflow', $combined['_h2e_unsupported']);
 	}
+
+	public function test_css_mapper_elliptical_border_radius_emits_raw_css(): void
+	{
+		$mapper = new CssMapper();
+		$border = $mapper->border(array(
+			's' => array(
+				'brRaw' => '40% 60% 42% 58% / 55% 45%',
+				'brad' => array('tl' => 40, 'tr' => 60, 'br' => 42, 'bl' => 58),
+			),
+		));
+		$this->assertSame('40', (string) $border['border_radius']['top']);
+		$this->assertStringContainsString('border-radius:40% 60% 42% 58% / 55% 45%', $border['_h2e_custom_css']);
+		$this->assertContains('elliptical-border-radius', $border['_h2e_unsupported']);
+	}
 }
