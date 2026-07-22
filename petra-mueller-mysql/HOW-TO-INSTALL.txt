@@ -1,0 +1,24 @@
+PETRA MUELLER - WordPress (copy to XAMPP)
+
+1) Copy this entire folder to:
+   D:\xampp\htdocs\petra-mueller
+
+2) Import the MySQL file (next to this package / in petra-mueller-mysql):
+   wp_petra_mueller.sql
+   into phpMyAdmin: http://localhost:8082/phpmyadmin/
+
+   - Click Import, choose wp_petra_mueller.sql, Go
+   - Or run 01-create-database.sql first if needed
+
+3) Open:
+   http://localhost:8082/petra-mueller/
+
+Admin login:
+   Username: nimesh
+   Password: nimesh@123
+
+wp-config.php is already set for XAMPP:
+   DB_NAME = wp_petra_mueller
+   DB_USER = root
+   DB_PASSWORD = (empty)
+   DB_HOST = localhost
