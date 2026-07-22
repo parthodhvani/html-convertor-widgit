@@ -1,12 +1,15 @@
 <?php
 /**
- * Orchestrates Claude generation + WordPress install + theme/content apply.
+ * Orchestrates package generation + WordPress install + theme/content apply.
+ *
+ * Default mode is local (no API key). Optional Anthropic Claude mode when configured.
  */
 
 declare(strict_types=1);
 
 require_once __DIR__ . '/ClaudeClient.php';
 require_once __DIR__ . '/PromptBuilder.php';
+require_once __DIR__ . '/LocalPackageBuilder.php';
 require_once __DIR__ . '/WordPressInstaller.php';
 
 final class SiteGenerator
@@ -60,28 +63,49 @@ final class SiteGenerator
         $this->emit('Slug: ' . $slug);
 
         // ------------------------------------------------------------------
-        // 1) Ask Claude for the full website package (JSON)
+        // 1) Build website package (local by default; Claude optional)
         // ------------------------------------------------------------------
-        $this->emit('Step A: Connecting to Claude and generating website package…');
+        $provider = strtolower((string) ($this->config['ai_provider'] ?? 'local'));
+        if ($provider === 'auto') {
+            $provider = $this->claude->isConfigured() ? 'anthropic' : 'local';
+        }
 
-        $userPrompt = PromptBuilder::buildAgencyPrompt(
-            $websiteName,
-            $domain,
-            $description,
-            $htdocs,
-            $project,
-            $dbName
-        );
-
-        $package = $this->claude->chatJson(
-            [
+        if ($provider === 'anthropic' || $provider === 'claude') {
+            if (!$this->claude->isConfigured()) {
+                throw new RuntimeException(
+                    'Anthropic/Claude API key is not set. Use ai_provider=local (default), '
+                    . 'or set anthropic_api_key in config.php.'
+                );
+            }
+            $this->emit('Step A: Connecting to Claude and generating website package…');
+            $userPrompt = PromptBuilder::buildAgencyPrompt(
+                $websiteName,
+                $domain,
+                $description,
+                $htdocs,
+                $project,
+                $dbName
+            );
+            $package = $this->claude->chatJson(
                 [
-                    'role'    => 'user',
-                    'content' => $userPrompt . "\n\nReturn the complete JSON website package now.",
+                    [
+                        'role'    => 'user',
+                        'content' => $userPrompt . "\n\nReturn the complete JSON website package now.",
+                    ],
                 ],
-            ],
-            PromptBuilder::jsonSystemPrompt()
-        );
+                PromptBuilder::jsonSystemPrompt()
+            );
+            $this->emit('Claude package received.');
+        } else {
+            if (in_array($provider, ['cursor', 'cursor_api'], true)) {
+                $this->emit(
+                    'Note: Cursor API keys are for Cloud Agents, not Claude-style chat. '
+                    . 'Falling back to built-in local generator.'
+                );
+            }
+            $this->emit('Step A: Building website package with built-in local generator (no API key)…');
+            $package = LocalPackageBuilder::build($websiteName, $description, $domain);
+        }
 
         $packageFile = $this->config['generated_dir'] . DIRECTORY_SEPARATOR .
             $slug . '-' . date('Ymd-His') . '.json';
@@ -89,7 +113,7 @@ final class SiteGenerator
             $packageFile,
             json_encode($package, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
         );
-        $this->emit('Saved Claude package: ' . $packageFile);
+        $this->emit('Saved package: ' . $packageFile);
 
         // ------------------------------------------------------------------
         // 2) Install WordPress + database

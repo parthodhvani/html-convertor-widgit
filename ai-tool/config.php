@@ -2,8 +2,13 @@
 /**
  * AI Tool – configuration
  *
- * Copy this file to your XAMPP htdocs as: D:\xampp\htdocs\ai-tool\
- * Set your Anthropic (Claude) API key below before using the form.
+ * Copy this folder to: D:\xampp\htdocs\ai-tool\
+ *
+ * Default mode needs NO API key (built-in local generator).
+ * Optional: set Anthropic Claude key for richer AI content.
+ *
+ * Note: A Cursor API key cannot replace Claude chat here.
+ * Cursor keys are for Cloud Agents, not PHP chat completions.
  */
 
 declare(strict_types=1);
@@ -19,10 +24,14 @@ if (is_file($localFile)) {
 
 $defaults = [
     // ------------------------------------------------------------------
-    // Claude / Anthropic API
-    // Get a key at: https://console.anthropic.com/
-    // Prefer config.local.php or ANTHROPIC_API_KEY env var.
+    // AI provider: local | anthropic | auto
+    // local     = built-in generator (no API key)  ← default
+    // anthropic = Claude Messages API (needs key)
+    // auto      = Claude if key present, else local
     // ------------------------------------------------------------------
+    'ai_provider' => getenv('AI_PROVIDER') ?: 'local',
+
+    // Optional Claude / Anthropic API (only used when ai_provider=anthropic|auto)
     'anthropic_api_key' => getenv('ANTHROPIC_API_KEY') ?: 'YOUR_ANTHROPIC_API_KEY_HERE',
     'anthropic_model'   => getenv('ANTHROPIC_MODEL') ?: 'claude-sonnet-4-20250514',
     'anthropic_api_url' => 'https://api.anthropic.com/v1/messages',

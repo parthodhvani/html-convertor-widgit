@@ -1,9 +1,11 @@
 <?php
 /**
  * Optional local overrides (not committed).
- * Copy to config.local.php and set your key:
+ *
+ * Default needs no keys. Example for Claude mode:
  *
  * return [
+ *   'ai_provider' => 'anthropic',
  *   'anthropic_api_key' => 'sk-ant-...',
  * ];
  */
@@ -11,5 +13,5 @@
 declare(strict_types=1);
 
 return [
-    'anthropic_api_key' => 'YOUR_ANTHROPIC_API_KEY_HERE',
+    'ai_provider' => 'local',
 ];

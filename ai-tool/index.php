@@ -7,7 +7,8 @@
 declare(strict_types=1);
 
 $config = require __DIR__ . '/config.php';
-$apiConfigured = (($config['anthropic_api_key'] ?? '') !== ''
+$provider = strtolower((string) ($config['ai_provider'] ?? 'local'));
+$claudeConfigured = (($config['anthropic_api_key'] ?? '') !== ''
     && ($config['anthropic_api_key'] ?? '') !== 'YOUR_ANTHROPIC_API_KEY_HERE');
 ?>
 <!DOCTYPE html>
@@ -24,19 +25,22 @@ $apiConfigured = (($config['anthropic_api_key'] ?? '') !== ''
       <p class="eyebrow">AI Tool</p>
       <h1>WordPress Website Generator</h1>
       <p class="lede">
-        Enter your business details. Claude designs and builds a complete local WordPress site
+        Enter your business details. This tool builds a complete local WordPress site
         under your htdocs folder with database, custom theme, and Gutenberg content.
+        <strong>No Claude or Cursor API key required</strong> (local generator mode).
       </p>
     </header>
 
-    <?php if (!$apiConfigured): ?>
-      <div class="notice notice-warn" role="status">
-        <strong>Claude API key required.</strong>
-        Open <code>ai-tool/config.php</code> and set <code>anthropic_api_key</code>
-        (from <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>),
-        or set the <code>ANTHROPIC_API_KEY</code> environment variable.
-      </div>
-    <?php endif; ?>
+    <div class="notice notice-ok" role="status">
+      Running in <strong><?= htmlspecialchars($provider, ENT_QUOTES, 'UTF-8') ?></strong> mode.
+      <?php if ($provider === 'local'): ?>
+        Works without any API key. Optional Claude key can be added later for richer AI copy.
+      <?php elseif ($claudeConfigured): ?>
+        Claude API key detected.
+      <?php else: ?>
+        Claude key missing — set <code>anthropic_api_key</code> or switch <code>ai_provider</code> to <code>local</code>.
+      <?php endif; ?>
+    </div>
 
     <main class="card">
       <form id="generate-form" method="post" action="process.php" autocomplete="on">
@@ -76,7 +80,7 @@ $apiConfigured = (($config['anthropic_api_key'] ?? '') !== ''
           >
         </div>
 
-        <button type="submit" class="btn" id="submit-btn" <?= $apiConfigured ? '' : 'disabled' ?>>
+        <button type="submit" class="btn" id="submit-btn">
           Generate WordPress website
         </button>
       </form>
@@ -91,6 +95,7 @@ $apiConfigured = (($config['anthropic_api_key'] ?? '') !== ''
     <footer class="foot">
       <p>Admin credentials after install: <code>nimesh</code> / <code>nimesh@123</code></p>
       <p>Sites are created next to this folder in htdocs, e.g. <code>http://localhost/your-site-slug/</code></p>
+      <p>Cursor API keys cannot power this form (they are for Cloud Agents, not chat completions).</p>
     </footer>
   </div>
 
