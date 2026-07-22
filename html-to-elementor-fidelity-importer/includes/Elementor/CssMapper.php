@@ -709,16 +709,26 @@ final class CssMapper
                 $unsupported[] = 'position:fixed';
             }
             $inset = is_array($s['inset'] ?? null) ? $s['inset'] : array();
+            $resolved = array();
             foreach (array('top', 'right', 'bottom', 'left') as $side) {
                 $val = (string) ($inset[$side] ?? '');
                 if ('' !== $val && 'auto' !== $val) {
                     $size = $this->size($val);
                     if ($size) {
-                        $out[$side] = $size;
+                        $resolved[$side] = $size;
                     } else {
                         $css[] = $side . ':' . $val;
                     }
                 }
+            }
+            if (isset($resolved['top'], $resolved['right'], $resolved['bottom'], $resolved['left'])) {
+                $resolved = array(
+                    'top' => $resolved['top'],
+                    'left' => $resolved['left'],
+                );
+            }
+            foreach ($resolved as $side => $size) {
+                $out[$side] = $size;
             }
         }
 
@@ -1131,16 +1141,29 @@ final class CssMapper
         }
 
         $inset = is_array($s['inset'] ?? null) ? $s['inset'] : array();
+        $resolved = array();
         foreach (array('top', 'right', 'bottom', 'left') as $side) {
             $raw = $s[$side] ?? ($inset[$side] ?? null);
             if (null === $raw || '' === $raw || 'auto' === $raw) {
                 continue;
             }
             $size = $this->size($raw);
-            if (!$size) {
-                continue;
+            if ($size) {
+                $resolved[$side] = $size;
             }
-            // Elementor advanced offsets + preview-friendly side controls.
+        }
+
+        // getComputedStyle fills all four insets for absolute boxes even when
+        // only two were authored. Emitting all four over-constrains Elementor
+        // (and the preview oracle). Prefer the paint origin: top + left.
+        if (isset($resolved['top'], $resolved['right'], $resolved['bottom'], $resolved['left'])) {
+            $resolved = array(
+                'top' => $resolved['top'],
+                'left' => $resolved['left'],
+            );
+        }
+
+        foreach ($resolved as $side => $size) {
             $out[$side] = $size;
             if ('left' === $side) {
                 $out['offset_x'] = $size;

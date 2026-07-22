@@ -186,6 +186,101 @@ final class EngineTest extends TestCase
 		$this->assertArrayHasKey('background_image', $container['settings']);
 	}
 
+	public function test_layered_layout_preserves_absolute_content_bbox(): void
+	{
+		$solver = new LayeredLayoutSolver(new \HtmlToElementor\Elementor\CssMapper());
+		$node = array(
+			'tag' => 'section',
+			'bbox' => array('x' => 0, 'y' => 0, 'width' => 1440, 'height' => 520),
+			's' => array('pos' => 'relative', 'h' => 520, 'bg' => 'rgb(17,17,17)'),
+			'layeredLayout' => array(
+				'background' => array(
+					'tag' => 'div',
+					's' => array(
+						'pos' => 'absolute',
+						'bgImg' => 'linear-gradient(135deg, rgb(51,65,85), rgb(15,23,42))',
+						'bgGrad' => true,
+					),
+					'bbox' => array('x' => 0, 'y' => 0, 'width' => 1440, 'height' => 520),
+				),
+				'overlay' => null,
+				'content' => array(
+					array(
+						'tag' => 'div',
+						'cls' => 'content',
+						's' => array(
+							'pos' => 'absolute',
+							'z' => 2,
+							'inset' => array(
+								'top' => '182px',
+								'left' => '144px',
+								'right' => '986px',
+								'bottom' => '171px',
+							),
+						),
+						'bbox' => array('x' => 144, 'y' => 182, 'width' => 310, 'height' => 167),
+						'children' => array(
+							array('tag' => 'h1', 'text' => 'Summit 2026', 'atomic' => true, 's' => array('fs' => '48px')),
+						),
+					),
+					array(
+						'tag' => 'div',
+						'cls' => 'badge',
+						'text' => 'Limited seats',
+						's' => array('pos' => 'absolute', 'z' => 2),
+						'bbox' => array('x' => 1215, 'y' => 62, 'width' => 110, 'height' => 35),
+						'children' => array(),
+					),
+				),
+				'in_flow' => array(),
+			),
+		);
+
+		$container = $solver->to_container(
+			$node,
+			static function (array $child): array {
+				$text = trim((string) ($child['text'] ?? ''));
+				if ('' === $text && !empty($child['children'][0]['text'])) {
+					$text = (string) $child['children'][0]['text'];
+				}
+				return array(
+					array(
+						'id' => 'w1',
+						'elType' => 'widget',
+						'widgetType' => 'heading',
+						'settings' => array(
+							'title' => $text,
+							'position' => 'absolute',
+							'left' => array('unit' => 'px', 'size' => 999),
+						),
+						'elements' => array(),
+					),
+				);
+			},
+			static function (): void {
+			}
+		);
+
+		$this->assertNotNull($container);
+		$this->assertSame('relative', $container['settings']['position'] ?? null);
+		$abs = array();
+		foreach ((array) ($container['elements'] ?? array()) as $el) {
+			if ('absolute' === (($el['settings']['position'] ?? null))) {
+				$abs[] = $el;
+			}
+		}
+		$this->assertCount(2, $abs, 'both absolute content layers must stay positioned containers');
+		$this->assertSame(144.0, (float) ($abs[0]['settings']['left']['size'] ?? -1));
+		$this->assertSame(182.0, (float) ($abs[0]['settings']['top']['size'] ?? -1));
+		$this->assertArrayNotHasKey('right', $abs[0]['settings']);
+		$this->assertArrayNotHasKey('bottom', $abs[0]['settings']);
+		$this->assertSame(1215.0, (float) ($abs[1]['settings']['left']['size'] ?? -1));
+		$this->assertSame(62.0, (float) ($abs[1]['settings']['top']['size'] ?? -1));
+		// Inner widgets must not keep competing absolute offsets.
+		$inner_pos = $abs[0]['elements'][0]['settings']['position'] ?? null;
+		$this->assertTrue(empty($inner_pos) || 'absolute' !== $inner_pos);
+	}
+
 	public function test_constraint_solver_detects_horizontal_stack(): void
 	{
 		$solver = new ConstraintLayoutSolver();

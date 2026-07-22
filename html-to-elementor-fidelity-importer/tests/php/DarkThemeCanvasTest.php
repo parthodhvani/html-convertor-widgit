@@ -331,6 +331,9 @@ final class DarkThemeCanvasTest extends TestCase
 		$this->assertSame('absolute', $settings['position'] ?? null);
 		$this->assertSame(-20.0, (float) ($settings['left']['size'] ?? 0));
 		$this->assertSame(44.0, (float) ($settings['top']['size'] ?? 0));
+		// Full four-side computed insets must not over-constrain Elementor.
+		$this->assertArrayNotHasKey('right', $settings);
+		$this->assertArrayNotHasKey('bottom', $settings);
 	}
 
 	public function test_painted_hero_keeps_light_text_on_light_page_canvas(): void
