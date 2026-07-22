@@ -1,0 +1,17 @@
+<?php
+/**
+ * Optional local overrides (not committed).
+ *
+ * Default needs no keys. Example for Claude mode:
+ *
+ * return [
+ *   'ai_provider' => 'anthropic',
+ *   'anthropic_api_key' => 'sk-ant-...',
+ * ];
+ */
+
+declare(strict_types=1);
+
+return [
+    'ai_provider' => 'local',
+];
