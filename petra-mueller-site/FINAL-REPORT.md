@@ -104,9 +104,15 @@ http://127.0.0.1:8080/
 
 ## 12. Folder Path
 
-- Live install: `/var/www/html/petra-mueller`
+- **Your Windows XAMPP (target):** `D:\xampp\htdocs\petra-mueller`
+- **Your phpMyAdmin:** http://localhost:8082/phpmyadmin/ → database `wp_petra_mueller`
+- **Your site URL:** http://localhost:8082/petra-mueller/
+- Cloud VM (already running): `/var/www/html/petra-mueller`
 - Repo package: `/workspace/petra-mueller-site/`
-- Windows XAMPP equivalent (when migrating): `D:\xampp\htdocs\petra-mueller`
+- **Windows installer:** `petra-mueller-site/xampp-install/INSTALL-XAMPP.bat`  
+  Artifact zip: `petra-mueller-xampp-install.zip`
+
+**Important:** A cloud agent cannot access your Windows `D:\` or local phpMyAdmin. Run `INSTALL-XAMPP.bat` on your PC after starting Apache + MySQL.
 
 ## 13. Installed Pages
 

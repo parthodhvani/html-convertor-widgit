@@ -20,7 +20,26 @@ This cloud agent runs on **Linux**, not Windows XAMPP. Equivalent paths:
 | MySQL via XAMPP | MariaDB (`wp_petra_mueller`) |
 | Apache | PHP built-in server `http://127.0.0.1:8080` |
 
-## Quick start (this machine)
+## Install on your Windows XAMPP (real local path)
+
+This cloud environment **cannot write to** `D:\xampp\...` or open your
+`http://localhost:8082/phpmyadmin/`. Use the Windows package:
+
+1. Download **`petra-mueller-xampp-install.zip`** from the agent artifacts  
+   (or use folder `petra-mueller-site/xampp-install` after pull)
+2. Start **Apache + MySQL** in XAMPP Control Panel
+3. Double-click **`INSTALL-XAMPP.bat`**
+
+That creates:
+
+- Folder: `D:\xampp\htdocs\petra-mueller`
+- Database: `wp_petra_mueller` (shows in phpMyAdmin)
+- Site: http://localhost:8082/petra-mueller/
+
+Manual phpMyAdmin path: import `01-create-database.sql` then `wp_petra_mueller.sql`.  
+Details: `xampp-install/README.md`.
+
+## Quick start (Linux cloud VM — already installed)
 
 ```bash
 sudo service mariadb start

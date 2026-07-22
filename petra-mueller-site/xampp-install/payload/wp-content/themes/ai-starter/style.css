@@ -1,0 +1,17 @@
+/*
+Theme Name: AI Starter
+Theme URI: https://petramuellerzug.ch/
+Author: AI Digital Agency
+Author URI: https://example.com/
+Description: Lightweight custom Gutenberg theme for Petra Müller – Astrologie & Persönlichkeitsentwicklung in Zug. Core blocks only. Premium, accessible, performance-focused.
+Version: 1.0.0
+Requires at least: 6.4
+Tested up to: 6.7
+Requires PHP: 8.0
+License: GNU General Public License v2 or later
+License URI: http://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: ai-starter
+Tags: custom-colors, custom-logo, custom-menu, editor-style, featured-images, full-site-editing, block-patterns, translation-ready, blog, one-column, accessibility-ready
+*/
+
+/* Fallback base — detailed design tokens live in theme.json + assets/css/theme.css */
