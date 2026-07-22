@@ -52,8 +52,24 @@ final class LayeredLayoutSolver
 		}
 
 		$content_elements = array();
+		$has_absolute_layer = false;
 		foreach ((array) ($layers['content'] ?? array()) as $content_node) {
+			if (!is_array($content_node)) {
+				continue;
+			}
+			$inner = array();
 			foreach ($convert_content($content_node) as $el) {
+				$inner[] = $el;
+			}
+			if ($this->is_absolute_layer($content_node)) {
+				// Preserve the browser-solved absolute wrapper. Flattening children
+				// into the parent flex column drops left/top (e.g. hero .content at
+				// left:10% / top:35%) and collapses layered heroes to ~60% pixels.
+				$has_absolute_layer = true;
+				$content_elements[] = $this->absolute_layer_container($content_node, $node, $inner);
+				continue;
+			}
+			foreach ($inner as $el) {
 				$content_elements[] = $el;
 			}
 		}
@@ -76,6 +92,12 @@ final class LayeredLayoutSolver
 			$this->css->background($node),
 			$this->css->sizing($node)
 		);
+		// Absolute children need a positioned containing block (browser default
+		// for position:relative ancestors). Elementor containers are relative in
+		// preview CSS, but native editor requires an explicit position.
+		if ($has_absolute_layer && empty($settings['position'])) {
+			$settings['position'] = 'relative';
+		}
 
 		$bg = $layers['background'] ?? null;
 		if (is_array($bg)) {
@@ -170,6 +192,130 @@ final class LayeredLayoutSolver
 			'elements' => array_values($content_elements),
 			'isInner' => false,
 		);
+	}
+
+	/**
+	 * Whether a content layer is browser-absolute / fixed.
+	 *
+	 * @param array<string,mixed> $node Layer node.
+	 */
+	private function is_absolute_layer(array $node): bool
+	{
+		$pos = strtolower((string) ($node['s']['pos'] ?? ''));
+		return in_array($pos, array('absolute', 'fixed'), true);
+	}
+
+	/**
+	 * Emit an absolute/fixed content layer as a positioned Elementor container.
+	 *
+	 * Offsets come from browser bbox relative to the layered parent — not from
+	 * reconstructing flex alignment. getComputedStyle fills all four insets when
+	 * only two were authored; using bbox left/top avoids over-constraint.
+	 *
+	 * @param array<string,mixed>            $layer    Absolute content node.
+	 * @param array<string,mixed>            $parent   Layered parent node.
+	 * @param array<int,array<string,mixed>> $children Already-converted children.
+	 * @return array<string,mixed>
+	 */
+	private function absolute_layer_container(array $layer, array $parent, array $children): array
+	{
+		$pos = strtolower((string) ($layer['s']['pos'] ?? 'absolute'));
+		$settings = $this->css->combine(
+			array(
+				'content_width' => 'full',
+				'flex_direction' => 'column',
+				'position' => 'fixed' === $pos ? 'fixed' : 'absolute',
+			),
+			$this->css->background($layer),
+			$this->css->border($layer),
+			$this->css->box_shadow($layer),
+			$this->css->sizing($layer),
+			$this->css->spacing($layer, true),
+			$this->css->effects($layer)
+		);
+
+		$parent_box = Geometry::bbox($parent);
+		$box = Geometry::bbox($layer);
+		$left = round($box['x'] - $parent_box['x'], 2);
+		$top = round($box['y'] - $parent_box['y'], 2);
+
+		$settings['left'] = array('unit' => 'px', 'size' => $left);
+		$settings['top'] = array('unit' => 'px', 'size' => $top);
+		$settings['offset_x'] = $settings['left'];
+		$settings['offset_y'] = $settings['top'];
+		$settings['_offset_orientation_h'] = 'start';
+		$settings['_offset_orientation_v'] = 'start';
+		unset($settings['right'], $settings['bottom']);
+
+		if ($box['width'] > 0) {
+			$settings['width'] = array('unit' => 'px', 'size' => round($box['width'], 2));
+			$settings['flex_grow'] = 0;
+			$settings['flex_shrink'] = 0;
+		}
+		if ($box['height'] > 0 && empty($settings['min_height']['size'])) {
+			$settings['min_height'] = array('unit' => 'px', 'size' => round($box['height'], 2));
+		}
+
+		$z = $layer['s']['z'] ?? $layer['s']['zIndex'] ?? null;
+		if (is_numeric($z)) {
+			$settings['z_index'] = (int) $z;
+		}
+
+		$cls = trim((string) ($layer['cls'] ?? ''));
+		if ('' !== $cls) {
+			$settings['_css_classes'] = implode(
+				' ',
+				array_filter(array_map('sanitize_html_class', preg_split('/\s+/', $cls) ?: array()))
+			);
+		}
+
+		// Children already carry leaf paint; strip duplicate absolute offsets so
+		// the wrapper is the single positioning context.
+		$children = $this->strip_absolute_offsets($children);
+
+		return array(
+			'id' => ElementId::generate(),
+			'elType' => 'container',
+			'settings' => $settings,
+			'elements' => array_values($children),
+			'isInner' => true,
+		);
+	}
+
+	/**
+	 * Remove absolute offsets from nested widgets/containers (wrapper owns them).
+	 *
+	 * @param array<int,array<string,mixed>> $elements Elements.
+	 * @return array<int,array<string,mixed>>
+	 */
+	private function strip_absolute_offsets(array $elements): array
+	{
+		foreach ($elements as $i => $el) {
+			if (!is_array($el)) {
+				continue;
+			}
+			$settings = (array) ($el['settings'] ?? array());
+			$pos = strtolower((string) ($settings['position'] ?? ''));
+			if (in_array($pos, array('absolute', 'fixed'), true)) {
+				unset(
+					$settings['position'],
+					$settings['left'],
+					$settings['right'],
+					$settings['top'],
+					$settings['bottom'],
+					$settings['offset_x'],
+					$settings['offset_y'],
+					$settings['_offset_orientation_h'],
+					$settings['_offset_orientation_v']
+				);
+				$el['settings'] = $settings;
+			}
+			if (!empty($el['elements']) && is_array($el['elements'])) {
+				$el['elements'] = $this->strip_absolute_offsets($el['elements']);
+			}
+			$elements[$i] = $el;
+		}
+		return $elements;
 	}
 
 	/**
