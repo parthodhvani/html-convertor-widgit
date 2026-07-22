@@ -260,6 +260,35 @@ final class ContainerHierarchyTest extends TestCase
 		$this->assertSame(1, $this->count_containers(array($result)));
 	}
 
+	public function test_max_width_wrapper_survives_elimination_instead_of_full_bleed(): void
+	{
+		$converter = new LayoutTreeConverter();
+		$tree = array(
+			'tag' => 'section',
+			'cls' => 'section',
+			's' => array('disp' => 'block'),
+			'children' => array(
+				array(
+					'tag' => 'div',
+					'cls' => 'container',
+					// No background/border/padding of its own — only a
+					// max-width + auto-margin constraint. Must not be
+					// treated as a "meaningless" pass-through wrapper.
+					's' => array('disp' => 'block', 'maxW' => '1200px', 'w' => 1200, 'ml' => 120, 'mr' => 120),
+					'children' => array(
+						array('tag' => 'p', 'text' => 'Hello', 'atomic' => true, 's' => array('fs' => '16px')),
+					),
+				),
+			),
+		);
+
+		$result = $converter->convert_section($tree);
+		$this->assertNotNull($result);
+		$this->assertSame('container', $result['elType']);
+		$this->assertSame(2, $this->count_containers(array($result)));
+		$this->assertSame('container', $result['elements'][0]['elType'] ?? '');
+	}
+
 	/**
 	 * @param array<int,array<string,mixed>> $elements Elements.
 	 */

@@ -133,6 +133,14 @@ final class WrapperEliminationEngine implements EngineInterface
 		if ($pt > 0) {
 			return false;
 		}
+		// A `max-width` (or `width` + `margin:0 auto`) wrapper is providing a
+		// deliberate "boxed content inside a full-bleed section" width
+		// constraint even though it paints nothing — collapsing it would
+		// destroy that relationship (the child would inherit the section's
+		// full width instead of staying centered/measured).
+		if (VisualSignals::has_width_constraint($s)) {
+			return false;
+		}
 		$text = trim((string) ($node['text'] ?? ''));
 		if ('' !== $text) {
 			return false;

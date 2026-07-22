@@ -21,6 +21,7 @@ const { pathToFileURL } = require('url');
 const puppeteer = require('puppeteer');
 
 const { browserPageSegmenter } = require('./segmenter');
+const { chromeLaunchOptions, resolveChromeExecutable } = require('./chromeLaunch');
 
 const DEFAULT_CONFIG = {
   breakpoints: {
@@ -79,22 +80,12 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
 
   if (config.debug) {
     // eslint-disable-next-line no-console
-    console.log('Launching Chrome from:', '/usr/bin/google-chrome');
+    console.log('Launching Chrome from:', resolveChromeExecutable() || 'puppeteer cache');
     // eslint-disable-next-line no-console
     console.log('Puppeteer version:', require('puppeteer/package.json').version);
   }
 
-  const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/google-chrome',
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--font-render-hinting=none',
-    ],
-  });
+  const browser = await puppeteer.launch(chromeLaunchOptions());
 
   try {
     const page = await browser.newPage();
@@ -114,6 +105,21 @@ async function renderToLayout(inputPath, outDir, userConfig = {}) {
 
     // Expand collapsed panels and force reveal animations visible for extraction.
     await page.evaluate(() => {
+      // Freeze every CSS transition/animation before the reveal-forcing
+      // mutations below trigger a reflow. Without this, forcing
+      // opacity/transform to their end state via inline styles still
+      // *starts* a transition on elements with a `transition` property, and
+      // getBoundingClientRect()/getComputedStyle() reads immediately after
+      // can intermittently observe a mid-transition frame (e.g. transform
+      // still partway through `translateY(...)`, or a sub-pixel/zero-size
+      // box during a scale-in) — a race that silently drops the element
+      // from isVisible() ~1 in 4 runs, emptying whole grids/sections
+      // non-deterministically. A page-wide freeze makes every geometry read
+      // in this pass deterministic.
+      const freeze = document.createElement('style');
+      freeze.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+      document.head.appendChild(freeze);
+
       document.documentElement.classList.remove('js');
       document.body && document.body.classList.remove('js');
 

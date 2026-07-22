@@ -93,6 +93,112 @@ function browserPageSegmenter() {
     return false;
   }
 
+  // Interactive elements worth checking for a `:hover` style change (kept
+  // narrow — parsing every stylesheet rule against every node would be slow
+  // and CTAs/links/buttons are the only nodes Elementor has hover controls
+  // for today).
+  const HOVER_CANDIDATE_TAGS = new Set(['a', 'button']);
+
+  /**
+   * One-time scan of every same-origin stylesheet for rules containing a
+   * `:hover` selector, expanded into {selector (hover stripped), decl} pairs.
+   * `rule.style` always exposes expanded longhand properties even when the
+   * author wrote shorthand (e.g. `background: red`), so reading the
+   * longhands directly is reliable without a shorthand parser.
+   */
+  function collectHoverRules() {
+    const props = [
+      'background-color', 'color',
+      // Longhand border-*-color first (what Chromium's CSSOM normally
+      // exposes even when the author wrote the `border`/`border-color`
+      // shorthand); the bare shorthand is also read as a fallback.
+      'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+      'border-color',
+      'box-shadow',
+    ];
+    const rules = [];
+    Array.from(document.styleSheets).forEach((sheet) => {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (e) {
+        return; // Cross-origin stylesheet — cssRules access throws.
+      }
+      if (!cssRules) return;
+      Array.from(cssRules).forEach((rule) => {
+        if (!rule.selectorText || !rule.style || rule.selectorText.indexOf(':hover') === -1) return;
+        rule.selectorText.split(',').forEach((rawSelector) => {
+          const selector = rawSelector.replace(/:hover\b/g, '').replace(/::?(before|after)\b.*$/, '').trim();
+          if (!selector) return;
+          const decl = {};
+          props.forEach((p) => {
+            const v = rule.style.getPropertyValue(p);
+            if (v) decl[p] = v;
+          });
+          if (Object.keys(decl).length) rules.push({ selector, decl });
+        });
+      });
+    });
+    return rules;
+  }
+
+  let hoverRulesCache = null;
+  function getHoverRules() {
+    if (hoverRulesCache === null) hoverRulesCache = collectHoverRules();
+    return hoverRulesCache;
+  }
+
+  /**
+   * Resolve `var(--name)` tokens in a raw declaration value against an
+   * element's own resolved custom-property environment (same approach as
+   * `extractCssVars` below) — `rule.style` returns the literal authored CSS
+   * text, so a hover rule written as `color: var(--secondary)` would
+   * otherwise hand PHP the unusable string "var(--secondary)" instead of
+   * the actual colour.
+   */
+  function resolveVarTokens(value, cs) {
+    if (!value || typeof value !== 'string' || value.indexOf('var(') === -1) return value;
+    return value.replace(/var\(\s*(--[a-zA-Z0-9-_]+)\s*(?:,\s*([^)]+))?\)/g, (match, name, fallback) => {
+      const resolved = cs.getPropertyValue(name);
+      if (resolved && resolved.trim()) return resolved.trim();
+      return fallback ? fallback.trim() : match;
+    });
+  }
+
+  /**
+   * Merge every matching `:hover` rule's declarations for one element
+   * (later/more-specific source-order rules simply overwrite earlier ones —
+   * an approximation of the cascade, good enough for the handful of
+   * properties captured here). Returns null when nothing matches.
+   */
+  function hoverStyleFor(el) {
+    const merged = {};
+    getHoverRules().forEach(({ selector, decl }) => {
+      let matches = false;
+      try {
+        matches = el.matches(selector);
+      } catch (e) {
+        matches = false;
+      }
+      if (matches) Object.assign(merged, decl);
+    });
+    if (!Object.keys(merged).length) return null;
+
+    const cs = window.getComputedStyle(el);
+    Object.keys(merged).forEach((k) => {
+      merged[k] = resolveVarTokens(merged[k], cs);
+    });
+
+    const out = {};
+    if (merged['background-color'] && !transparent(merged['background-color'])) out.bg = merged['background-color'];
+    if (merged.color) out.color = merged.color;
+    const bdc = merged['border-top-color'] || merged['border-right-color']
+      || merged['border-bottom-color'] || merged['border-left-color'] || merged['border-color'];
+    if (bdc && !transparent(bdc)) out.bdc = bdc;
+    if (merged['box-shadow'] && merged['box-shadow'] !== 'none') out.sh = merged['box-shadow'];
+    return Object.keys(out).length ? out : null;
+  }
+
   function anchorIsContainer(el) {
     const kids = Array.from(el.children);
     if (kids.length === 0) return false;
@@ -442,6 +548,11 @@ function browserPageSegmenter() {
       },
       cssVars: vars,
     };
+
+    if (HOVER_CANDIDATE_TAGS.has(tag) || role === 'button') {
+      const hover = hoverStyleFor(el);
+      if (hover) node.hover = hover;
+    }
 
     // Phase 12 — capture measured text metrics for atomic/text leaves.
     const direct = node.text;

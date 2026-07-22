@@ -66,7 +66,7 @@ final class NestedContainerFullWidthTest extends TestCase
 		}
 	}
 
-	public function test_partial_percent_shares_are_forced_to_100(): void
+	public function test_row_children_keep_their_measured_percentage_share(): void
 	{
 		$elements = array(
 			array(
@@ -131,12 +131,48 @@ final class NestedContainerFullWidthTest extends TestCase
 		$row = $out[0]['elements'][0];
 		$cols = $row['elements'];
 
-		$this->assertSame(100, (int) $cols[0]['settings']['width']['size']);
+		// Row (side-by-side) children keep their measured share — forcing
+		// them to 100% would collapse/stack a two-column layout.
+		$this->assertSame(51, (int) $cols[0]['settings']['width']['size']);
 		$this->assertSame('%', $cols[0]['settings']['width']['unit']);
-		$this->assertSame(100, (int) $cols[1]['settings']['width']['size']);
+		$this->assertSame(49, (int) $cols[1]['settings']['width']['size']);
 		// Tiny px chrome stays measured.
 		$this->assertSame(56, (int) $cols[2]['settings']['width']['size']);
 		$this->assertSame('px', $cols[2]['settings']['width']['unit']);
 		$this->assertSame('full', $cols[0]['settings']['content_width']);
+	}
+
+	public function test_column_stacked_partial_percent_is_still_forced_to_100(): void
+	{
+		$elements = array(
+			array(
+				'id' => 'root',
+				'elType' => 'container',
+				'isInner' => false,
+				'settings' => array('content_width' => 'full', 'flex_direction' => 'column'),
+				'elements' => array(
+					array(
+						'id' => 'stack',
+						'elType' => 'container',
+						'isInner' => true,
+						'settings' => array(
+							'content_width' => 'full',
+							'flex_direction' => 'column',
+							// A stray measured percentage (e.g. inherited from an
+							// ancestor row) on a column-stacked child must still be
+							// normalized to full width.
+							'width' => array('unit' => '%', 'size' => 80),
+						),
+						'elements' => array(),
+					),
+				),
+			),
+		);
+
+		$out = (new ContainerTreeOptimizer())->ensure_nested_full_widths($elements);
+		$stack = $out[0]['elements'][0];
+
+		$this->assertSame(100, (int) $stack['settings']['width']['size']);
+		$this->assertSame('%', $stack['settings']['width']['unit']);
 	}
 }

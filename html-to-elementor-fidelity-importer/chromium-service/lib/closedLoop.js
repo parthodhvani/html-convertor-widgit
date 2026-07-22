@@ -12,6 +12,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const puppeteer = require('puppeteer');
 const { compareScreenshots } = require('../compare');
+const { chromeLaunchOptions } = require('./chromeLaunch');
 
 /**
  * Screenshot an HTML file at a given viewport width.
@@ -26,17 +27,7 @@ async function screenshotHtml(htmlPath, outPng, opts = {}) {
   const height = opts.height || 900;
   const timeout = opts.timeout || 60000;
 
-  const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/google-chrome',
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--font-render-hinting=none',
-    ],
-  });
+  const browser = await puppeteer.launch(chromeLaunchOptions());
 
   try {
     const page = await browser.newPage();

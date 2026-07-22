@@ -281,6 +281,7 @@ final class LayoutGraphEmitter
 			if (!$signals['has_background'] && !$signals['has_border'] && !$signals['has_shadow']
 				&& !$signals['has_padding'] && empty($signals['has_clip_shape'])
 				&& '' === $role && empty($node['layoutConstraint'])
+				&& !VisualSignals::has_width_constraint((array) ($node['s'] ?? array()))
 			) {
 				return $this->emit_node($children[0], $is_section, $parent_row, $parent_width);
 			}
@@ -348,6 +349,13 @@ final class LayoutGraphEmitter
 		if ($signals['has_background'] || $signals['has_border'] || $signals['has_shadow']
 			|| $signals['has_padding'] || !empty($signals['has_clip_shape'])
 		) {
+			return true;
+		}
+
+		// An unpainted `max-width` / centered wrapper still owns a real width
+		// constraint — hoisting its children into the parent would let them
+		// inherit the section's full width instead of staying boxed/centered.
+		if (VisualSignals::has_width_constraint((array) ($node['s'] ?? array()))) {
 			return true;
 		}
 

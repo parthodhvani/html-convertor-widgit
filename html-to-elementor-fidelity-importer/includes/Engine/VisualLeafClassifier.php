@@ -312,31 +312,46 @@ final class VisualLeafClassifier
 		}
 
 		$icon_cls = trim(preg_replace('/\s+/', ' ', $m[1]) ?? '');
-		if ('' === $icon_cls || !preg_match('/\bfa-[\w-]+/', $icon_cls)) {
+		if ('' === $icon_cls) {
 			return array();
 		}
 
 		$library = 'fa-solid';
 		$value = $icon_cls;
-		if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+(fa-[\w-]+)/i', $icon_cls, $im)) {
-			$prefix = strtolower($im[1]);
-			$name = strtolower($im[2]);
-			$value = $prefix . ' ' . $name;
-			if ('fab' === $prefix || 'fa-brands' === $prefix) {
-				$library = 'fa-brands';
-			} elseif ('far' === $prefix || 'fa-regular' === $prefix) {
-				$library = 'fa-regular';
-			} else {
-				$library = 'fa-solid';
-				// Normalise fa4-style "fas fa-arrow-right" etc.
-				if (in_array($prefix, array('fas', 'far', 'fab', 'fal'), true)) {
-					$value = $prefix . ' ' . $name;
-				} elseif (str_starts_with($prefix, 'fa-')) {
-					$value = $prefix . ' ' . $name;
+		if (preg_match('/\bfa-[\w-]+/', $icon_cls)) {
+			if (preg_match('/\b(fa-(?:solid|regular|brands)|fa[srlb]?)\s+(fa-[\w-]+)/i', $icon_cls, $im)) {
+				$prefix = strtolower($im[1]);
+				$name = strtolower($im[2]);
+				$value = $prefix . ' ' . $name;
+				if ('fab' === $prefix || 'fa-brands' === $prefix) {
+					$library = 'fa-brands';
+				} elseif ('far' === $prefix || 'fa-regular' === $prefix) {
+					$library = 'fa-regular';
+				} else {
+					$library = 'fa-solid';
+					// Normalise fa4-style "fas fa-arrow-right" etc.
+					if (in_array($prefix, array('fas', 'far', 'fab', 'fal'), true)) {
+						$value = $prefix . ' ' . $name;
+					} elseif (str_starts_with($prefix, 'fa-')) {
+						$value = $prefix . ' ' . $name;
+					}
 				}
+			} elseif (preg_match('/\b(fa-[\w-]+)\b/', $icon_cls, $im)) {
+				$value = 'fas ' . strtolower($im[1]);
 			}
-		} elseif (preg_match('/\b(fa-[\w-]+)\b/', $icon_cls, $im)) {
-			$value = 'fas ' . strtolower($im[1]);
+		} elseif (preg_match('/\b(bi|bi-[\w-]+|ion|ion-[\w-]+|bx|bx-[\w-]+|la|la-[\w-]+|ti-[\w-]+|icon-[\w-]+|glyphicon|glyphicon-[\w-]+|uil|uil-[\w-]+|feather|ri-[\w-]+)\b/i', $icon_cls)) {
+			// Non-Font-Awesome icon-font convention (Bootstrap Icons, Ionicons,
+			// Boxicons, Line Awesome, Themify, Glyphicons, Unicons, Feather,
+			// RemixIcon…): Elementor's Icon widget renders any font-icon
+			// library as `<i class="{value}">`, so passing the source class
+			// string through verbatim still renders correctly on the
+			// frontend — the icon font's own stylesheet ships with the
+			// original page CSS that Frontend.php re-applies on import.
+			// `library` is metadata only; it doesn't gate frontend markup.
+			$value = $icon_cls;
+			$library = 'fa-solid';
+		} else {
+			return array();
 		}
 
 		// Icon before visible text → leading (left); otherwise trailing (right).

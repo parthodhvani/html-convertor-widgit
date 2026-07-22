@@ -90,6 +90,26 @@ final class VisualSignals
 	}
 
 	/**
+	 * Whether a node deliberately constrains its own width — a `max-width`
+	 * (or `width` + `margin:0 auto`) box — even though it paints no
+	 * background/border/shadow/padding. Such nodes must never be treated as
+	 * pass-through/meaningless wrappers: collapsing them lets their child
+	 * inherit the section's full width instead of staying boxed/centered.
+	 *
+	 * @param array<string,mixed> $s Computed styles.
+	 */
+	public static function has_width_constraint(array $s): bool
+	{
+		$max_w = strtolower(trim((string) ($s['maxW'] ?? '')));
+		if ('' !== $max_w && !in_array($max_w, array('none', 'auto', '0', '0px'), true)) {
+			return true;
+		}
+		$ml = (float) ($s['ml'] ?? 0);
+		$mr = (float) ($s['mr'] ?? 0);
+		return $ml > 8 && $mr > 8 && abs($ml - $mr) <= max(4.0, 0.1 * max($ml, $mr));
+	}
+
+	/**
 	 * @param array<string,mixed> $node Tree node.
 	 */
 	public static function is_layered(array $node): bool

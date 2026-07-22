@@ -290,6 +290,13 @@ final class VisualTreeBuilder implements EngineInterface
 		if (!empty($pseudo['before']) || !empty($pseudo['after'])) {
 			return false;
 		}
+		// A `max-width` (or `width` + `margin:0 auto`) wrapper deliberately
+		// constrains its child's width even though it paints nothing —
+		// promoting the child would drop that constraint and let it inherit
+		// the section's full width instead of staying boxed/centered.
+		if (VisualSignals::has_width_constraint($s)) {
+			return false;
+		}
 		$pad = (float) ($s['pt'] ?? 0) + (float) ($s['pb'] ?? 0) + (float) ($s['pl'] ?? 0) + (float) ($s['pr'] ?? 0);
 		return $pad <= 0 && '' === trim((string) ($node['text'] ?? ''));
 	}

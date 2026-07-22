@@ -752,10 +752,55 @@ final class CssMapper
         if (null === $parsed) {
             return array();
         }
-        return array(
+        $out = array(
             'box_shadow_box_shadow_type' => 'yes',
             'box_shadow_box_shadow' => $parsed,
         );
+
+        // Elementor's native box-shadow control only holds one layer. When
+        // the source stacks 2+ (a tight dark shadow plus a soft colored
+        // glow is common on gradient CTAs/cards), keep the first layer as
+        // the native control for editability, and also emit the full
+        // multi-layer value as custom CSS (!important, since Elementor's
+        // own generated rule otherwise wins on specificity) so later layers
+        // still render instead of being silently dropped.
+        if (count($this->split_shadow_layers($shadow)) > 1) {
+            $out = $this->merge_custom_css($out, 'box-shadow:' . $shadow . ' !important');
+        }
+
+        return $out;
+    }
+
+    /**
+     * Split a (possibly multi-layer) CSS box-shadow value into its
+     * comma-separated layers. Only splits on commas outside parentheses, so
+     * the commas inside `rgba(r, g, b, a)` never break a layer apart —
+     * Chromium's computed style always puts the colour function first in
+     * each layer, so a naive top-level split is required (not `'),'`).
+     *
+     * @param string $shadow Raw box-shadow value.
+     * @return array<int,string>
+     */
+    private function split_shadow_layers(string $shadow): array
+    {
+        $layers = array();
+        $current = '';
+        $depth = 0;
+        foreach (str_split($shadow) as $ch) {
+            if ('(' === $ch) {
+                ++$depth;
+            } elseif (')' === $ch) {
+                $depth = max(0, $depth - 1);
+            }
+            if (',' === $ch && 0 === $depth) {
+                $layers[] = trim($current);
+                $current = '';
+                continue;
+            }
+            $current .= $ch;
+        }
+        $layers[] = trim($current);
+        return array_values(array_filter($layers, static fn ($l) => '' !== $l));
     }
 
     /**
@@ -995,6 +1040,23 @@ final class CssMapper
             }
             // Center constrained measure boxes (margin:auto equivalent in flex).
             $out['align_self'] = 'center';
+        } else {
+            // No max-width, but a plain fixed width with roughly-equal
+            // left/right margins is the classic `width:Npx;margin:0 auto`
+            // centering idiom. Map it the same way max-width is mapped — a
+            // 100% width capped at the measured px size, centered —
+            // reproducing the same rendered size while staying
+            // responsive-safe (unlike copying the hard px width verbatim).
+            $w = (float) ($s['w'] ?? 0);
+            $ml = (float) ($s['ml'] ?? 0);
+            $mr = (float) ($s['mr'] ?? 0);
+            if ($w > 0 && $ml > 8 && $mr > 8 && abs($ml - $mr) <= max(4.0, 0.1 * max($ml, $mr))) {
+                $out['max_width'] = array('unit' => 'px', 'size' => round($w, 2));
+                if (empty($out['width'])) {
+                    $out['width'] = array('unit' => '%', 'size' => 100);
+                }
+                $out['align_self'] = 'center';
+            }
         }
 
         $min_w = $this->constrained_size($s['minW'] ?? null);
@@ -1005,6 +1067,19 @@ final class CssMapper
         $min_h = $this->constrained_size($s['minH'] ?? null);
         if (null !== $min_h && $min_h['size'] > 0) {
             $out['min_height'] = $min_h;
+        } else {
+            // No explicit CSS min-height (e.g. a fixed `height:` was used
+            // instead, which computed style can't distinguish from
+            // auto-resolved height): fall back to the node's measured
+            // rendered height so a fixed-height block — a hero section
+            // that isn't itself the emitted section root — keeps its
+            // vertical size instead of collapsing to Elementor's default
+            // auto height. Safe as a floor: the content already fills this
+            // height in the source render.
+            $measured_h = round((float) \HtmlToElementor\Engine\Geometry::bbox($node)['height'], 2);
+            if ($measured_h > 0) {
+                $out['min_height'] = array('unit' => 'px', 'size' => $measured_h);
+            }
         }
 
         $max_h = $this->constrained_size($s['maxH'] ?? null);

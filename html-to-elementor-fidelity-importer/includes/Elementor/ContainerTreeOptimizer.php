@@ -683,7 +683,8 @@ final class ContainerTreeOptimizer
 				$settings = (array) ($element['settings'] ?? array());
 				$settings['content_width'] = 'full';
 
-				if ($depth >= 2 && $depth <= 10 && $this->should_force_full_percent_width($settings)) {
+				if ($depth >= 2 && $depth <= 10 && 'row' !== $parent_direction
+					&& $this->should_force_full_percent_width($settings)) {
 					$settings['width'] = array(
 						'unit' => '%',
 						'size' => 100,
@@ -720,9 +721,13 @@ final class ContainerTreeOptimizer
 	/**
 	 * Whether this nested container should be forced to width:100%.
 	 *
-	 * Percentage column shares (e.g. 51%) are overridden — Elementor nested
-	 * containers must fill their parent through depth 10. Only absolute/fixed
-	 * layers and tiny intrinsic px chrome are skipped.
+	 * Applies only to containers stacked inside a column-direction parent —
+	 * Elementor nested containers otherwise default to width:100% there, so a
+	 * stray measured percentage (e.g. 80% left over from an ancestor row) must
+	 * be normalized back to full width. Row-direction parents are handled by
+	 * the caller (their children keep the measured percentage share that
+	 * lays them out side-by-side). Absolute/fixed layers and tiny intrinsic
+	 * px chrome are also skipped.
 	 *
 	 * @param array<string,mixed> $settings Container settings.
 	 */

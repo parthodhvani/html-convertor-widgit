@@ -79,6 +79,14 @@ final class ChromiumService
 	 */
 	private function render_cli(string $entry_html, string $job_dir, array $settings): array
 	{
+		if (!\function_exists('proc_open') || !\function_exists('proc_close')) {
+			throw new \RuntimeException(
+				'PHP function proc_open() is disabled on this server (often via disable_functions). ' .
+				'CLI render mode cannot start Node. Either ask your host to enable proc_open and proc_close, ' .
+				'or switch Chromium service mode to HTTP and run: node chromium-service/server.js'
+			);
+		}
+
 		$node = (string) ($settings['node_binary'] ?? 'node');
 		$script = $this->service_script();
 		$output = trailingslashit($job_dir) . 'layout.json';
@@ -106,8 +114,8 @@ final class ChromiumService
 		// Puppeteer reads chromium-service/.puppeteerrc.cjs from cwd — always
 		// spawn from the service directory (entry/out paths are absolute).
 		$cwd = dirname($script);
-		$process = proc_open($cmd, $descriptor, $pipes, $cwd, $this->child_env($settings));
-		if (!is_resource($process)) {
+		$process = \proc_open($cmd, $descriptor, $pipes, $cwd, $this->child_env($settings));
+		if (!\is_resource($process)) {
 			throw new \RuntimeException('Unable to start Node process.');
 		}
 		fclose($pipes[0]); // phpcs:ignore WordPress.WP.AlternativeFunctions
@@ -115,7 +123,7 @@ final class ChromiumService
 		fclose($pipes[1]); // phpcs:ignore WordPress.WP.AlternativeFunctions
 		$stderr = stream_get_contents($pipes[2]);
 		fclose($pipes[2]); // phpcs:ignore WordPress.WP.AlternativeFunctions
-		$code = proc_close($process);
+		$code = \proc_close($process);
 
 		if (0 !== $code) {
 			throw new \RuntimeException('Chromium CLI exited with code ' . $code . ': ' . $stdout . $stderr);

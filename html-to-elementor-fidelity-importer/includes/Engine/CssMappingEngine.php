@@ -455,6 +455,14 @@ final class CssMappingEngine implements EngineInterface
 		if (!empty($shadow['box_shadow_box_shadow'])) {
 			$style['button_box_shadow_box_shadow'] = $shadow['box_shadow_box_shadow'];
 		}
+		// Multi-layer shadows stamp the full value onto the shared custom-CSS
+		// bag (see CssMapper::box_shadow) — carry it over so a second/third
+		// shadow layer still renders instead of being dropped here.
+		if (!empty($shadow['_h2e_custom_css'])) {
+			$existing = trim((string) ($style['_h2e_custom_css'] ?? ''), " \t\n\r\0\x0B;");
+			$addition = trim((string) $shadow['_h2e_custom_css'], " \t\n\r\0\x0B;");
+			$style['_h2e_custom_css'] = '' === $existing ? $addition : ($existing . ';' . $addition);
+		}
 
 		if (empty($style['background_background']) && empty($style['background_color'])) {
 			$bg = (string) ($node['s']['bg'] ?? '');
@@ -476,6 +484,41 @@ final class CssMappingEngine implements EngineInterface
 				'unit' => 'px',
 				'size' => $gap,
 			);
+		}
+
+		// Explicit CSS width/min-width (e.g. a fixed-width CTA, or a
+		// full-width mobile button) — otherwise silently dropped, since
+		// nothing else maps container-style sizing onto the Button widget.
+		$size = $this->mapper->sizing($node);
+		foreach (array('width', 'min_width') as $size_key) {
+			if (!empty($size[$size_key])) {
+				$style[$size_key] = $size[$size_key];
+			}
+		}
+
+		// `:hover` style deltas captured by the Chromium extractor (see
+		// chromium-service/lib/segmenter.js `hoverStyleFor`) — map onto
+		// Elementor's real Button hover-tab control IDs (verified against
+		// elementor/includes/widgets/traits/button-trait.php).
+		$hover = (array) ($node['hover'] ?? array());
+		if (!empty($hover['color'])) {
+			$style['hover_color'] = (string) $hover['color'];
+		}
+		if (!empty($hover['bg'])) {
+			$style['button_background_hover_background'] = 'classic';
+			$style['button_background_hover_color'] = (string) $hover['bg'];
+		}
+		if (!empty($hover['bdc'])) {
+			$style['button_hover_border_color'] = (string) $hover['bdc'];
+		}
+		if (!empty($hover['sh'])) {
+			$hover_shadow = $this->mapper->box_shadow(array('s' => array('sh' => $hover['sh'])));
+			if (!empty($hover_shadow['box_shadow_box_shadow_type'])) {
+				$style['button_hover_box_shadow_box_shadow_type'] = $hover_shadow['box_shadow_box_shadow_type'];
+			}
+			if (!empty($hover_shadow['box_shadow_box_shadow'])) {
+				$style['button_hover_box_shadow_box_shadow'] = $hover_shadow['box_shadow_box_shadow'];
+			}
 		}
 
 		return $style;

@@ -3,7 +3,7 @@
  * Plugin Name:       HTML To Elementor Fidelity Importer
  * Plugin URI:        https://github.com/html-to-elementor/fidelity-importer
  * Description:       Import arbitrary HTML/CSS/JS pages into Elementor while maximizing Chromium-rendered visual fidelity. Renders the source in headless Chromium, extracts the computed layout, segments it into sections and produces valid Elementor container data.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.2
  * Requires PHP:      8.2
  * Author:            HTML To Elementor
